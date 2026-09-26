@@ -1962,7 +1962,7 @@ function Invoke-CmdVersion {
         }
         $statusWord = "current"
         $remedy = $null
-        if ($pending -gt 0) { $statusWord = "updates_pending"; $remedy = "exakit update" }
+        if ($pending -gt 0) { $statusWord = "update_pending"; $remedy = "exakit update" }
         [ordered]@{
             installed       = $true
             status          = $statusWord

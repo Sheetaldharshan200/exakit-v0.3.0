@@ -5203,7 +5203,7 @@ with open(sys.argv[1], encoding="utf-8") as handle:
 pending = int(sys.argv[2] or 0)
 print(json.dumps({
     "installed": True,
-    "status": "updates_pending" if pending > 0 else "current",
+    "status": "update_pending" if pending > 0 else "current",
     "remedy": "exakit update" if pending > 0 else None,
     "pending": pending,
     "kit": {"version": sys.argv[3], "installed_at": sys.argv[4] or None},

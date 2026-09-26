@@ -153,7 +153,7 @@ check "both exit 2" "2 2" "$(bash "$CLI" sql 'SELCT 1' >/dev/null 2>&1; printf '
 echo "11. --json on version and mcp-status, unknown options rejected:"
 _v="$(bash "$CLI" version --json 2>/dev/null)"
 check "version --json is one object with the contract keys" "yes" \
-    "$(printf '%s' "$_v" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["installed"] is True; assert d["status"] in ("current","updates_pending"); assert (d["remedy"] is None) == (d["status"] == "current"); print("yes")' 2>/dev/null || echo no)"
+    "$(printf '%s' "$_v" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["installed"] is True; assert d["status"] in ("current","update_pending"); assert (d["remedy"] is None) == (d["status"] == "current"); print("yes")' 2>/dev/null || echo no)"
 has "...with component rows" '"component": "exakit"' "$_v"
 # EVERY row says whether it is optional. Without this an agent could not tell
 # "you never installed this add-on" from "a piece of your kit is missing":
