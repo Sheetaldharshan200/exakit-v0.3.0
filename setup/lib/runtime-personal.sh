@@ -428,6 +428,11 @@ personal_check_requirements() {
                 info "  [wsl2]"
                 info "  memory=8GB"
                 info "Then apply it from PowerShell: wsl --shutdown  (reopen this distro afterwards)"
+                # The escape hatch belongs in BOTH arms. It was only in the else
+                # branch, so it was invisible to exactly the users most likely to
+                # be refused by a rounding edge on a machine that really does have
+                # the memory.
+                info "Already sized correctly? Force past this check with EXAKIT_FORCE=1."
             else
                 info "Nothing was installed. Re-run on a machine with ${EXAKIT_PERSONAL_MIN_RAM_GB}+ GB RAM (or force at your own risk with EXAKIT_FORCE=1)."
             fi

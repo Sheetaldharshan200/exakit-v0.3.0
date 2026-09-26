@@ -139,7 +139,13 @@ detect_ram_gb() {
             *)           _dr_ram=$(( _dr_bytes / 1073741824 )) ;;
         esac
     else
-        _dr_ram="$(awk '/MemTotal/ { printf "%d", $2 / 1048576 }' /proc/meminfo 2>/dev/null)"
+        # ROUNDED, NOT TRUNCATED. A VM is never given the whole nominal amount -
+        # the guest kernel reserves some - so a WSL2 distro allocated 8 GB reports
+        # MemTotal around 7.63 GB. printf "%d" truncated that to 7, the 8 GB gate
+        # refused the install, and the WSL remedy told the user to set the very
+        # value that produces it (memory=8GB). Rounding costs nothing on a real
+        # machine and stops the loop on a virtual one.
+        _dr_ram="$(awk '/MemTotal/ { printf "%.0f", $2 / 1048576 }' /proc/meminfo 2>/dev/null)"
     fi
     case "$_dr_ram" in
         ''|*[!0-9]*) echo 0 ;;

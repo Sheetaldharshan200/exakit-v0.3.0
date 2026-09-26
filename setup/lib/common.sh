@@ -1324,8 +1324,9 @@ exakit_can_run_python() {
 # moved to stderr — splicing its progress lines into the very value it was
 # computing, which is how `runtime.type` came back as a multi-line blob.
 # Anything that needs only the standard library runs here instead.
+# Twin of the guard above: a stub that satisfies `command -v` must not be run.
 run_python_any() {
-    if [ "${EXAKIT_DISABLE_SYSTEM_PYTHON:-0}" != "1" ] && command -v python3 >/dev/null 2>&1; then
+    if _exakit_has_system_python3; then
         python3 "$@"
         return $?
     fi
@@ -1334,10 +1335,17 @@ run_python_any() {
 
 # Is there any Python 3 at all? Never installs one from a read-only query
 # (exakit_ensure_uv enforces that); callers degrade instead of failing.
+# A STUB SATISFIES `command -v`. On a Mac without the Xcode Command Line Tools -
+# or with them present but the licence unaccepted - /usr/bin/python3 is a 118 KB
+# shim that exists, is executable, and fails on every invocation. Guarding on
+# `command -v python3` therefore answered "yes, Python is available" and then
+# produced nothing: `exakit status --json` emitted ZERO BYTES with exit 3, which
+# AGENTS.md documents as "not running, or still installing", so an agent polling
+# that loop never terminated. _exakit_has_system_python3 (above) already answers
+# this correctly by EXECUTING a probe and keeping its stderr; these two are the
+# weaker twin of it and now defer to it.
 exakit_can_run_python_any() {
-    if [ "${EXAKIT_DISABLE_SYSTEM_PYTHON:-0}" != "1" ] && command -v python3 >/dev/null 2>&1; then
-        return 0
-    fi
+    _exakit_has_system_python3 && return 0
     exakit_can_run_python
 }
 
@@ -11132,6 +11140,29 @@ exakit_uninstall_run() {
     _step() { # _step <message>  — narrate the action (or the plan line)
         if [ "$_dry" = "1" ]; then info "  will remove: $1"; else info "$1"; fi
     }
+    # _un_safe_target <path> — is this a path this command may delete?
+    #
+    # EXAKIT_HOME IS TAKEN FROM THE ENVIRONMENT AND WAS NEVER CHECKED. It is
+    # spelled `${EXAKIT_HOME:-$HOME/.exasol-starter-kit}` at the top of this
+    # file, so whatever the caller exported is what `rm -rf` was handed — and
+    # the kit's OWN WSL remedy tells people to set it and keep it exported, so
+    # the users most likely to have it set permanently are the ones an
+    # `exakit uninstall` would point wherever it happened to say. A relative
+    # value made the target depend on the current directory, and `--yes`
+    # bypassed the only confirmation. Four cheap questions close that:
+    # absolute, not the home directory itself, not a filesystem root, and
+    # carrying the manifest that proves the kit made it.
+    _un_safe_target() {
+        case "$1" in
+            /*) : ;;
+            *)  return 1 ;;
+        esac
+        [ "$1" != "/" ] || return 1
+        [ "$1" != "$HOME" ] || return 1
+        [ "${1%/}" != "${HOME%/}" ] || return 1
+        [ -f "$1/manifest.json" ] || return 1
+        return 0
+    }
     _rm() { # _rm <path> — remove a path unless dry-run
         [ "$_dry" = "1" ] || rm -rf "$1"
     }
@@ -11252,6 +11283,12 @@ exakit_uninstall_run() {
             if mv "$EXAKIT_HOME/backups" "$_un_keep" 2>/dev/null; then
                 info "AI client config snapshots kept at $_un_keep (delete it when you are sure)"
             fi
+        fi
+        if ! _un_safe_target "$EXAKIT_HOME"; then
+            error "Refusing to remove $EXAKIT_HOME: it is not an absolute path to a kit home the kit created."
+            info "EXAKIT_HOME must be an absolute path holding the kit's manifest.json, and cannot be your home directory."
+            info "Nothing was removed. Check EXAKIT_HOME, or unset it to use the default ~/.exasol-starter-kit."
+            die "Unsafe EXAKIT_HOME: $EXAKIT_HOME"
         fi
         _step "kit home $EXAKIT_HOME (credentials, logs, manifest, snapshots, pyexasol venv, add-ons)"
         _rm "$EXAKIT_HOME"
