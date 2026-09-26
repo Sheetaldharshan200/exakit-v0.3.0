@@ -334,6 +334,14 @@ detect_rootless_podman_gap() {
             return 0
         fi
     done
+    # newuidmap is the setuid helper that USES the subuid ranges. Present ranges
+    # with no helper is the shape `--no-install-recommends podman` leaves on
+    # Debian and Ubuntu, and it was the one gap_kind could name and this could
+    # not - so the caller got an empty reason and preflight said all-clear.
+    if ! command -v newuidmap >/dev/null 2>&1; then
+        printf 'the setuid helper newuidmap is missing, so rootless Podman cannot map your subuid range — install it with your package manager (Debian/Ubuntu: sudo apt-get install uidmap; Fedora/RHEL: sudo dnf install shadow-utils; Arch: sudo pacman -S shadow; Alpine: sudo apk add shadow-uidmap)'
+        return 0
+    fi
     if [ ! -f /sys/fs/cgroup/cgroup.controllers ]; then
         if [ "$(detect_os)" = "wsl" ]; then
             # There is no GRUB in WSL and the kernel comes from Windows, so the

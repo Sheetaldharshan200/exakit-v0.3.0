@@ -97,6 +97,15 @@ EXAKIT_EXAPUMP_REPO="exasol-labs/exapump"
 # outrank an answer the caller gave in the environment.
 _EXAKIT_KIT_REPO_FROM_ENV="${EXAKIT_KIT_REPO:-${EXAKIT_REPO:-}}"
 EXAKIT_KIT_REPO="${EXAKIT_KIT_REPO:-${EXAKIT_REPO:-krishna-exasol/update-path}}"
+# --retry-all-errors landed in curl 7.71. Without it plain --retry ignores the
+# mid-stream transport failures that actually strand a large download, so it is
+# worth having where available and must be absent where not: an unknown flag
+# makes curl exit 2 and fail the download it was meant to save.
+if curl --help all 2>/dev/null | grep -q -- "--retry-all-errors"; then
+    EXAKIT_CURL_RETRY_ALL="--retry-all-errors"
+else
+    EXAKIT_CURL_RETRY_ALL=""
+fi
 EXAKIT_VERSION_LOOKUP_CONNECT_TIMEOUT="${EXAKIT_VERSION_LOOKUP_CONNECT_TIMEOUT:-5}"
 EXAKIT_VERSION_LOOKUP_MAX_TIME="${EXAKIT_VERSION_LOOKUP_MAX_TIME:-12}"
 
@@ -6477,7 +6486,16 @@ fetch() {
     mkdir -p "$(dirname "$_dest")"
     _exakit_log_file "GET   $_url -> $_dest"
     ui_spin_begin "${EXAKIT_ACTIVE_LABEL:-downloading $(basename "$_dest")}"
-    curl -fL --proto '=https' --retry 3 --connect-timeout 15 \
+    # BOUNDED, AND RESUMABLE. --connect-timeout only caps the handshake: a server
+    # that accepts and then stalls held this forever, times four with --retry,
+    # and the spinner no-ops without a TTY so there was no progress signal
+    # either. Seen for real as curl exit 92 on a 189 MB asset after 423s.
+    # --speed-limit/--speed-time abandons a transfer that has genuinely stopped
+    # moving rather than one that is merely slow; -C - resumes instead of
+    # restarting from byte zero; --retry-all-errors covers the transport errors
+    # plain --retry does not (curl 7.71+, hence the capability probe).
+    curl -fL --proto '=https' --retry 3 $EXAKIT_CURL_RETRY_ALL --connect-timeout 15 \
+        --speed-limit 1024 --speed-time 60 -C - \
         -sS -o "$_dest" "$_url"
     _fetch_rc=$?
     ui_spin_end
