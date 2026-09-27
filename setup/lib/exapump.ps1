@@ -457,7 +457,18 @@ function Set-ExapumpTomlSection {
         $content += $section
     }
 
+    # LOCKED BEFORE THE SECRET GOES IN, not after. $content carries plaintext
+    # database passwords, and this staging file used to be created by
+    # Set-Content at whatever ACL the directory handed down - so between the
+    # write and the Move there was a readable copy of the admin credential on
+    # disk. Protect-ExakitFile $ConfigPath at the caller locked only the final
+    # name. The kit's own Python half states the rule it is following here
+    # (mcp/runtime/filesystem.py): on Windows it is protect_path() on the temp
+    # file, BEFORE the replace, that provides the guarantee. A rename keeps the
+    # file's explicit DACL, so the destination arrives already locked.
     $tmp = "$ConfigPath.tmp"
+    New-Item -ItemType File -Path $tmp -Force | Out-Null
+    if (Get-Command Protect-ExakitFile -ErrorAction SilentlyContinue) { Protect-ExakitFile $tmp }
     Set-Content -Path $tmp -Value $content -NoNewline
     Move-Item -Force $tmp $ConfigPath
 }

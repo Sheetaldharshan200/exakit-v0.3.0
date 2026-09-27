@@ -688,8 +688,17 @@ function Set-McpReadonlyAccess {
         # every exit path - success, a thrown Fail, or any other exception - so no
         # individual step has to remember to clean it up.
         try {
+            # Created empty and locked first. GetTempPath() honours %TMP%, so on
+            # a machine where TEMP is redirected to a share or a folder-
+            # redirected profile the inherited ACL is not owner-only - and both
+            # the ADMIN and the read-only password are about to be written into
+            # this file. Set-ExapumpTomlSection protects its own staging file
+            # too; this covers the destination name itself.
+            New-Item -ItemType File -Path $tempConfig -Force | Out-Null
+            Protect-ExakitFile $tempConfig
             Set-ExapumpTomlSection -ConfigPath $tempConfig -Profile "admin" -Host_ $dbHost -Port $dbPort -User $runtimeUser -Password $adminPassword
             Set-ExapumpTomlSection -ConfigPath $tempConfig -Profile "mcp_readonly" -Host_ $dbHost -Port $dbPort -User $readonlyUser -Password $readonlyPassword -Schema $defaultSchemaUc
+            Protect-ExakitFile $tempConfig
 
             # Verify the TOML config was created and is readable
             if (-not (Test-Path $tempConfig)) {

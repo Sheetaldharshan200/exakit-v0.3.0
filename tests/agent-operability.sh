@@ -1677,5 +1677,92 @@ check "...and routes it to the Linux setup" "setup/setup-linux.sh" \
 check "gate(macos) unchanged" \
     "OK: Compatibility check passed (macos arm64, 16 GB RAM, 100 GB free)" "$(_p2gate macos 0)"
 
+echo
+echo "the boot entry a login actually runs:"
+# MAC-05. The plist is XML and its ProgramArguments is an ARGV, and the writer
+# used to honour neither: `for arg in $cmd` word-split and glob-expanded a
+# space-joined string, and the path went between XML tags unescaped. A kit
+# under "/Volumes/Data Disk" wrote a first argument of "/Volumes/Data"; a path
+# containing a wildcard was replaced by whatever matched in the current
+# directory; an & anywhere in the path produced a document launchd cannot parse
+# at all. Every one of those was then reported as "starts at login", because
+# launchctl load's exit status was discarded.
+#
+# Checked through macOS's OWN parser rather than by grepping the XML: what
+# matters is what launchd reads back, not what the generator emitted.
+_as_plist() { # _as_plist <newline-delimited argv> -> "arg|arg|arg" or PARSE-ERROR
+    _asp_dir="$WORK/plist"; rm -rf "$_asp_dir"; mkdir -p "$_asp_dir"
+    _asp_f="$_asp_dir/t.plist"
+    ROOT="$ROOT" ARGV="$1" OUT="$_asp_f" bash -c '
+        . "$ROOT/setup/lib/common.sh" >/dev/null 2>&1
+        {
+            printf "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            printf "<plist version=\"1.0\">\n<dict>\n"
+            printf "  <key>ProgramArguments</key>\n  <array>\n"
+            printf "%s\n" "$ARGV" | while IFS= read -r a; do
+                [ -n "$a" ] || continue
+                printf "    <string>%s</string>\n" "$(_exakit_xml_escape "$a")"
+            done
+            printf "  </array>\n</dict>\n</plist>\n"
+        } > "$OUT"' 2>/dev/null
+    if command -v /usr/libexec/PlistBuddy >/dev/null 2>&1; then
+        _asp_out="$(/usr/libexec/PlistBuddy -c "Print :ProgramArguments" "$_asp_f" 2>&1)"
+        case "$_asp_out" in
+            *"Error Reading File"*|*ampersand*) printf 'PARSE-ERROR' ; return ;;
+        esac
+        printf '%s' "$_asp_out" | sed -e '1d' -e '$d' -e 's/^[[:space:]]*//' | paste -sd'|' -
+    else
+        printf 'SKIP'
+    fi
+}
+if [ "$(uname -s)" = "Darwin" ]; then
+    # The glob case is run from a directory with files in it on purpose: an
+    # unquoted expansion there returns those files, which is how this defect
+    # turns a kit path into someone else's filenames.
+    mkdir -p "$WORK/globcwd" && : > "$WORK/globcwd/a.txt" && : > "$WORK/globcwd/b.txt"
+    check "an ordinary path is two arguments" "/opt/kit/exasol|start" \
+        "$(_as_plist "/opt/kit/exasol
+start")"
+    check "a path with a space stays ONE argument" "/Volumes/Data Disk/exasol|start" \
+        "$(_as_plist "/Volumes/Data Disk/exasol
+start")"
+    check "a path with a wildcard is not expanded" "$WORK/globcwd/*|start" \
+        "$(cd "$WORK/globcwd" && _as_plist "$WORK/globcwd/*
+start")"
+    check "XML metacharacters keep the plist parseable" "/opt/R&D <x>/exasol|start" \
+        "$(_as_plist "/opt/R&D <x>/exasol
+start")"
+    check "dash-server's flags are separate arguments" "/opt/dash|--host|127.0.0.1|--port|8501" \
+        "$(_as_plist "/opt/dash
+--host
+127.0.0.1
+--port
+8501")"
+fi
+# ...and the registration stops claiming success when launchd refuses the file.
+_as_src="$(sed -n '/^_exakit_autostart_register()/,/^}/p' "$ROOT/setup/lib/common.sh")"
+has "a refused launchctl load is not reported as OK" 'launchctl load refused' "$_as_src"
+lacks "the plist argv is never word-split"           'for _ar_arg in $_ar_cmd' "$_as_src"
+# LIN-04: the unit shape is declared by the service, not guessed from the
+# command line. The guess tested for a leading "podman start", which the one
+# service every Linux install registers - the database, whose boot command is
+# "$(personal_cli) start" - never matched. It therefore got Type=simple with
+# Restart=on-failure: a clean start exits 0, so systemd reported inactive(dead)
+# while the database was up, and a start that failed once at boot was retried
+# at the 100 ms default until the start limit put the unit in failed for good.
+_as_kind() { bash -c '. "'"$ROOT"'/setup/lib/common.sh" >/dev/null 2>&1; _exakit_service_autostart_kind "'"$1"'"'; }
+check "the database boot command is a hand-off" "handoff"     "$(_as_kind database)"
+check "dash-server is supervised"               "longrunning" "$(_as_kind dash-server)"
+check "an unknown service defaults to supervised" "longrunning" "$(_as_kind not-a-service)"
+lacks "the unit shape is not guessed from a substring" '"podman start"*)' \
+    "$(sed -n '/^_exakit_autostart_register()/,/^}/p' "$ROOT/setup/lib/common.sh")"
+has "a supervised unit cannot trip the start limit" 'RestartSec=5' \
+    "$(sed -n '/^_exakit_autostart_register()/,/^}/p' "$ROOT/setup/lib/common.sh")"
+
+# systemd reads the same contract back as one quoted line.
+check "ExecStart quotes an argument with a space" '"/Volumes/Data Disk/exasol" start' \
+    "$(bash -c '. "'"$ROOT"'/setup/lib/common.sh" >/dev/null 2>&1; _exakit_autostart_argv_line "/Volumes/Data Disk/exasol
+start"')"
+
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]

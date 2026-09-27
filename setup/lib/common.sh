@@ -10679,12 +10679,22 @@ exakit_service_stop() {
 
 # _exakit_service_autostart_command <id> — the command a boot entry runs, or
 # nothing when the service needs no entry.
+#
+# ONE ARGUMENT PER LINE. It used to be one space-joined line, which is not a
+# format that can express an argv: the macOS arm split it with an unquoted
+# `for arg in $cmd`, so a kit under a path with a space in it wrote a plist
+# whose first ProgramArguments entry was "/Volumes/Data" and whose second was
+# "Disk/exasol/bin/exasol" - two arguments, neither of them a program - and the
+# same expansion globbed any path containing a wildcard character. launchd then
+# refused the entry at every login while `exakit autostart` had already
+# reported success. A newline is the one delimiter none of these arguments can
+# contain.
 _exakit_service_autostart_command() {
     if [ "$1" = "database" ]; then
         case "$(exakit_installation_runtime_type 2>/dev/null || true)" in
             personal)
                 _sac_cli="$(personal_cli 2>/dev/null || true)"
-                [ -n "$_sac_cli" ] && printf '%s start\n' "$_sac_cli"
+                [ -n "$_sac_cli" ] && printf '%s\nstart\n' "$_sac_cli"
                 ;;
         esac
         return 0
@@ -10695,6 +10705,63 @@ _exakit_service_autostart_command() {
 }
 
 _exakit_autostart_label() { printf '%s.%s\n' "$EXAKIT_AUTOSTART_PREFIX" "$1"; }
+
+# _exakit_service_autostart_kind <id> — "handoff" when the boot command starts
+# something and returns, "longrunning" when systemd should supervise the
+# process it spawns. THE SERVICE SAYS WHICH; the unit writer used to guess, by
+# testing whether the command line began with "podman start".
+#
+# The guess was wrong for the one service every Linux install registers. The
+# database's boot command is "$(personal_cli) start" — ~/.local/bin/exasol
+# start — which never matched, so the database got Type=simple with
+# Restart=on-failure. Two bites followed. A clean start exits 0, so after boot
+# `systemctl --user status` reported inactive (dead) while the database was up
+# and fine. And a start that failed at boot for a transient reason (rootless
+# Podman not up yet, storage not mounted) was retried at systemd's 100 ms
+# default, tripping DefaultStartLimitBurst within about half a second — after
+# which systemd gives up permanently, and the box comes up with no database
+# while `exakit autostart` still calls the entry registered.
+_exakit_service_autostart_kind() {
+    if [ "$1" = "database" ]; then
+        printf 'handoff\n'
+        return 0
+    fi
+    _sak_fn="$(_exakit_addon_fn "$1" autostart_kind)"
+    if command -v "$_sak_fn" >/dev/null 2>&1; then
+        "$_sak_fn"
+        return 0
+    fi
+    # dash-server and exasol-scheduler both run their process in the
+    # foreground, which is what systemd supervises. That is the safe default:
+    # a long-running service wrongly called a handoff is never restarted.
+    printf 'longrunning\n'
+}
+
+# _exakit_xml_escape <text> — text safe to place between XML tags. A plist is
+# XML, and the paths that go into one are user-controlled: a single & or < in a
+# directory name produced a document launchd could not parse, which failed the
+# same silent way the word-splitting did. & first, or the escapes get escaped.
+_exakit_xml_escape() {
+    printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
+
+# _exakit_autostart_argv_line <newline-delimited argv> — the same arguments as
+# one systemd ExecStart line. systemd does its own splitting, so an argument
+# carrying a space has to arrive quoted or it arrives as two.
+_exakit_autostart_argv_line() {
+    _aal_out=""
+    while IFS= read -r _aal_arg; do
+        [ -n "$_aal_arg" ] || continue
+        case "$_aal_arg" in
+            *[[:space:]]*|*'"'*|*\\*)
+                _aal_arg="\"$(printf '%s' "$_aal_arg" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')\"" ;;
+        esac
+        _aal_out="${_aal_out:+$_aal_out }$_aal_arg"
+    done <<EOF_ARGV
+$1
+EOF_ARGV
+    printf '%s' "$_aal_out"
+}
 
 # _exakit_autostart_register <id> — write the platform's boot entry. Returns 1
 # (with an explanation) when the platform has no supervisor to register with.
@@ -10716,8 +10783,9 @@ _exakit_autostart_register() {
                 printf '<plist version="1.0">\n<dict>\n'
                 printf '  <key>Label</key><string>%s</string>\n' "$_ar_label"
                 printf '  <key>ProgramArguments</key>\n  <array>\n'
-                for _ar_arg in $_ar_cmd; do
-                    printf '    <string>%s</string>\n' "$_ar_arg"
+                printf '%s\n' "$_ar_cmd" | while IFS= read -r _ar_arg; do
+                    [ -n "$_ar_arg" ] || continue
+                    printf '    <string>%s</string>\n' "$(_exakit_xml_escape "$_ar_arg")"
                 done
                 printf '  </array>\n'
                 printf '  <key>RunAtLoad</key><true/>\n'
@@ -10732,7 +10800,15 @@ _exakit_autostart_register() {
             # Load it now so the entry is live without a logout, and so a
             # rewritten plist replaces the old registration.
             launchctl unload "$_ar_plist" >/dev/null 2>&1
-            launchctl load "$_ar_plist" >/dev/null 2>&1
+            # THE EXIT STATUS IS THE WHOLE POINT. Discarded, a plist launchd
+            # refuses to load was followed by an "OK ... starts at login" line,
+            # so the one failure mode this code has reported as success.
+            if ! launchctl load "$_ar_plist" >/dev/null 2>&1; then
+                warn "$_ar_id: the login entry was written, but launchd refused to load it."
+                info "Nothing will start at login until that is fixed. See what launchd makes of it with: launchctl load $_ar_plist"
+                _exakit_log_file "ERROR $_ar_id: launchctl load refused $_ar_plist"
+                return 1
+            fi
             # The plist path is not something to act on: `exakit autostart`
             # turns this off and `exakit status` reports it. Printed per SERVICE
             # it was also one line each, so a kit with add-ons announced the same
@@ -10767,17 +10843,25 @@ _exakit_autostart_register() {
             fi
             mkdir -p "$EXAKIT_SYSTEMD_USER_DIR" || { warn "Could not create $EXAKIT_SYSTEMD_USER_DIR"; return 1; }
             _ar_unit="$EXAKIT_SYSTEMD_USER_DIR/$_ar_label.service"
-            # A `podman start` trigger exits the moment the container is up:
-            # under Type=simple that reads as the service dying, and
-            # Restart=on-failure would loop it at boot. oneshot+RemainAfterExit
-            # is the honest shape for a starter that hands off.
-            case "$_ar_cmd" in
-                "podman start"*) _ar_svc='Type=oneshot\nRemainAfterExit=yes' ;;
-                *)               _ar_svc='Type=simple\nRestart=on-failure' ;;
+            # Joined back into one line, because ExecStart is one line - but
+            # joined with quoting, so an argument with a space in it survives
+            # systemd's own splitting instead of arriving as two.
+            _ar_exec="$(_exakit_autostart_argv_line "$_ar_cmd")"
+            # A starter that hands off exits the moment the thing it started is
+            # up: under Type=simple that reads as the service dying.
+            # oneshot+RemainAfterExit is the honest shape for it.
+            #
+            # RestartSec=5 on the other arm regardless. systemd's default is
+            # 100 ms, which burns DefaultStartLimitBurst in half a second and
+            # then stops trying for good - so a service that fails once at boot
+            # for a transient reason never comes back at all.
+            case "$(_exakit_service_autostart_kind "$_ar_id")" in
+                handoff) _ar_svc='Type=oneshot\nRemainAfterExit=yes' ;;
+                *)       _ar_svc='Type=simple\nRestart=on-failure\nRestartSec=5' ;;
             esac
             {
                 printf '[Unit]\nDescription=Exasol Starter Kit: %s\n\n' "$_ar_id"
-                printf "[Service]\n${_ar_svc}\nExecStart=%s\n\n" "$_ar_cmd"
+                printf "[Service]\n${_ar_svc}\nExecStart=%s\n\n" "$_ar_exec"
                 printf '[Install]\nWantedBy=default.target\n'
             } > "$_ar_unit" || { warn "Could not write $_ar_unit"; return 1; }
             systemctl --user daemon-reload >/dev/null 2>&1
@@ -10830,7 +10914,24 @@ _exakit_autostart_unregister() {
 _exakit_autostart_registered() {
     _arg_label="$(_exakit_autostart_label "$1")"
     [ -f "$EXAKIT_LAUNCHAGENT_DIR/$_arg_label.plist" ] && return 0
-    [ -f "$EXAKIT_SYSTEMD_USER_DIR/$_arg_label.service" ] && return 0
+    if [ -f "$EXAKIT_SYSTEMD_USER_DIR/$_arg_label.service" ]; then
+        # A FILE ON DISK IS NOT A REGISTRATION. `systemctl --user enable` can
+        # fail after the unit is written - no linger, a read-only wants
+        # directory - and this probe answering "yes" on file existence alone is
+        # what let `exakit autostart` and `exakit status` both report a boot
+        # entry that systemd would never run.
+        #
+        # Only a POSITIVE refusal downgrades the answer. is-enabled has many
+        # non-zero shapes (static, linked, indirect) and cannot be consulted at
+        # all where there is no user bus, and treating any of those as "not
+        # registered" would be a worse lie in the other direction.
+        if command -v systemctl >/dev/null 2>&1; then
+            case "$(systemctl --user is-enabled "$_arg_label.service" 2>/dev/null)" in
+                disabled|masked) return 1 ;;
+            esac
+        fi
+        return 0
+    fi
     return 1
 }
 
