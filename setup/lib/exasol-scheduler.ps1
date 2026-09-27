@@ -330,7 +330,16 @@ function Write-ExasolSchedulerLauncher {
         '}'
     )
     $text = ($lines -join "`r`n") -replace "@GIVEUP@", (Get-ExasolSchedulerGiveUpMarker)
-    Set-Content -Path (Get-ExasolSchedulerLauncherPath) -Value $text -Encoding ASCII
+    # In the code page cmd.exe reads a batch file in, not ASCII. `-Encoding Ascii`
+    # turns every byte above 0x7F into a literal "?", so a profile path like
+    # C:\Users\Wojcik with an accent silently produced a launcher pointing at a
+    # directory that does not exist - while the install printed "launcher
+    # written". Same approach as Set-ExakitCmdShim, including its fallback: a
+    # machine whose OEM code page cannot be resolved keeps the old behaviour
+    # rather than losing the file.
+    $oemEnc = Get-ExakitOemEncoding
+    if ($oemEnc) { [System.IO.File]::WriteAllText((Get-ExasolSchedulerLauncherPath), $text, $oemEnc) }
+    else { Set-Content -Path (Get-ExasolSchedulerLauncherPath) -Value $text -Encoding Ascii }
     return $true
 }
 
