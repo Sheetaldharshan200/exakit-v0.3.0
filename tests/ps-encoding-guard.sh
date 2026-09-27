@@ -130,5 +130,44 @@ done <<EOF
 $(find "$ROOT" -name '*.ps1' -not -path "$ROOT/.git/*" -not -path "$ROOT/.claude/*" | sort)
 EOF
 
+# 5. Out-String, in product code, without -Width.
+#
+# Windows PowerShell 5.1's Out-String runs the FORMATTING subsystem and hard
+# wraps at $Host.UI.RawUI.BufferSize.Width - 80 in a console, 120 headless.
+# PowerShell 7 does not wrap at all, so the pwsh CI leg cannot see this, and
+# the folding only ever happens on the engine real users get (exakit.cmd runs
+# powershell.exe). One of these captures is fed to ConvertFrom-Json: a folded
+# config_path line made Get-McpClientStates throw, return $null, and silently
+# drop the kit back to the undifferentiated client menu. The test suites have
+# always passed -Width 4096; the product code passed it nowhere.
+for file in $(find "$ROOT/setup" -name '*.ps1' | sort); do
+    rel="${file#$ROOT/}"
+    bare="$(grep -n 'Out-String' "$file" \
+            | grep -v -- '-Width' \
+            | grep -vE '^[0-9]+:[[:space:]]*#' | cut -d: -f1 | tr '\n' ' ')"
+    if [ -n "$(printf '%s' "$bare" | tr -d ' ')" ]; then
+        fail "$rel captures through Out-String with no -Width (lines ${bare% }) - 5.1 folds it to the terminal width"
+    else
+        pass "$rel widens every Out-String capture"
+    fi
+done
+
+# 6. A redirected pipe that nobody reads.
+#
+# RedirectStandardError = $true with no read of StandardError is a deadlock,
+# not an ignore: the Windows anonymous pipe buffers 4 KB, and a probe that
+# writes past that blocks on the write and never exits. WaitForExit then burns
+# its whole timeout, the probe is killed, and the $null that comes back reads
+# to every caller as "this feature is not supported".
+for file in $(find "$ROOT/setup" -name '*.ps1' | sort); do
+    rel="${file#$ROOT/}"
+    grep -q 'RedirectStandardError[[:space:]]*=[[:space:]]*\$true' "$file" || continue
+    if grep -q 'StandardError\.ReadToEnd' "$file"; then
+        pass "$rel drains the stderr pipe it redirects"
+    else
+        fail "$rel redirects stderr and never reads it - a chatty probe deadlocks against WaitForExit"
+    fi
+done
+
 printf '\n%d checks, %d failed\n' "$checks" "$fails"
 [ "$fails" -eq 0 ]

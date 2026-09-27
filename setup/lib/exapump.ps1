@@ -231,7 +231,7 @@ function Install-Exapump {
             $have = ""
             try {
                 $ErrorActionPreference = "Continue"
-                $versionOut = (& $existing --version 2>&1 | Out-String)
+                $versionOut = (& $existing --version 2>&1 | Out-String -Width 4096)
                 if ($versionOut -match '(\d+\.\d+\.\d+)') { $have = $Matches[1] }
             } catch { } finally {
                 $ErrorActionPreference = $previousEAP
@@ -1109,10 +1109,21 @@ function Get-ExakitTableName {
     return $table
 }
 
+# THE PROFILE, NOT $HOME - the same distinction Get-ExakitProfileHome exists to
+# make. cmd.exe does not expand ~ itself, so the literal reaches the kit and
+# this function is the only expansion there is. On a domain machine $HOME is
+# the account's home-directory attribute (H:\, \\server\share\user) while the
+# user's Downloads are under %USERPROFILE%, so `exakit data-load ~/Downloads/
+# sales.csv` - the spelling every doc, skill and agent emits - resolved against
+# the network share and reported the file missing while it sat in plain sight.
 function Get-ExakitNormalizedPath {
     param([Parameter(Mandatory)][string]$Path)
-    if ($Path -eq "~") { return $HOME }
-    if ($Path.StartsWith("~/") -or $Path.StartsWith("~\")) { return Join-Path $HOME $Path.Substring(2) }
+    $home_ = if (Get-Command Get-ExakitProfileHome -ErrorAction SilentlyContinue) {
+        Get-ExakitProfileHome
+    } else { $HOME }
+    if (-not $home_) { $home_ = $HOME }
+    if ($Path -eq "~") { return $home_ }
+    if ($Path.StartsWith("~/") -or $Path.StartsWith("~\")) { return Join-Path $home_ $Path.Substring(2) }
     return $Path
 }
 

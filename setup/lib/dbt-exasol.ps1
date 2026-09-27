@@ -75,7 +75,7 @@ function Get-DbtExasolPackageVersion {
         $ErrorActionPreference = "Continue"
         $version = & $python -c "from importlib.metadata import version; print(version('dbt-exasol'))" 2>$null
         if ($LASTEXITCODE -ne 0) { return $null }
-        return ($version | Out-String).Trim()
+        return ($version | Out-String -Width 4096).Trim()
     } catch {
         return $null
     } finally { $ErrorActionPreference = $prevEap }
@@ -113,7 +113,7 @@ function Test-DbtExasolSystemPresent {
         $prevEap = $ErrorActionPreference
         try {
             $ErrorActionPreference = "Continue"
-            $out = & $cmd.Source --version 2>&1 | Out-String
+            $out = & $cmd.Source --version 2>&1 | Out-String -Width 4096
             if ($out -match "exasol") { return $true }
         } catch {
         } finally { $ErrorActionPreference = $prevEap }

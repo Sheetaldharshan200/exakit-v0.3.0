@@ -78,7 +78,15 @@ mcp_uv_install() {
         # uv via a verified release asset. Brew is preferred above precisely to
         # avoid this path on the common macOS case. Fetched over TLS from the
         # official host as a documented, accepted risk until then.
-        curl -LsSf --retry 3 https://astral.sh/uv/install.sh | run_logged sh || \
+        # --proto/--proto-redir: this is the one artifact the kit installs
+        # WITHOUT a digest, and it is also the longest-lived one - uvx is the
+        # process the AI client launches to run the MCP server, and it is
+        # handed EXA_PASSWORD on every start. -L follows redirects, so without
+        # --proto-redir a 302 to http:// is fetched in the clear and piped
+        # straight into sh. Every binary download in this kit already carries
+        # --proto '=https'; the script that is executed carried neither.
+        curl -LsSf --proto '=https' --proto-redir '=https' --retry 3 \
+            https://astral.sh/uv/install.sh | run_logged sh || \
             die "uv installation failed (see log)"
         # The uv installer defaults to ~/.local/bin
         case ":$PATH:" in

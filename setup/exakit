@@ -2140,7 +2140,16 @@ _with_notice() {
 #
 # `sql` is excluded on purpose: its argument is arbitrary SQL text, and a
 # statement that happens to contain --help is a query, not a request for help.
-if [ $# -ge 2 ] && [ "$1" != "sql" ]; then
+#
+# A leading help flag is excluded too: `exakit --help --json` is the help
+# COMMAND with an option, not a request for a topic literally named "--help".
+# It used to fall in here, be rendered as a command page for that topic, and
+# print grep's usage block instead of the JSON document an agent asked for.
+case "${1:-}" in
+    help|--help|-h) _help_skip=1 ;;
+    *)              _help_skip=0 ;;
+esac
+if [ $# -ge 2 ] && [ "$1" != "sql" ] && [ "$_help_skip" -eq 0 ]; then
     for _help_arg in "$@"; do
         case "$_help_arg" in
             --help|-h)

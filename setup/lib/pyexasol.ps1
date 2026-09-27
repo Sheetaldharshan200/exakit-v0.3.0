@@ -32,7 +32,7 @@ function Get-PyexasolInstalledVersion {
         $ErrorActionPreference = "Continue"
         $version = & $python -c "import pyexasol; print(pyexasol.__version__)" 2>$null
         if ($LASTEXITCODE -ne 0) { return $null }
-        return ($version | Out-String).Trim()
+        return ($version | Out-String -Width 4096).Trim()
     } catch {
         return $null
     } finally { $ErrorActionPreference = $prevEap }

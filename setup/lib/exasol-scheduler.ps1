@@ -205,7 +205,7 @@ function Invoke-ExasolSchedulerSql {
         # and an argv is visible to every local process for the life of the
         # call.
         $result = ($Sql | & $bin sql -p $script:ExapumpProfile 2>&1)
-        return @{ Success = ($LASTEXITCODE -eq 0); Output = ($result | Out-String) }
+        return @{ Success = ($LASTEXITCODE -eq 0); Output = ($result | Out-String -Width 4096) }
     } catch {
         return @{ Success = $false; Output = "$_" }
     } finally {

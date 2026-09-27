@@ -575,8 +575,29 @@ has "the twin loads it too"                   'legacy-crossing.ps1' "$(cat "$ROO
 has "...and dispatches migrate"               'Invoke-CmdMigrate' "$(cat "$ROOT/setup/exakit.ps1")"
 has "the help document describes it"          '"command": "migrate"' "$(cat "$ROOT/setup/help/exakit.json")"
 has "...with the source it takes"             'docker-nano' "$(cat "$ROOT/setup/help/exakit.json")"
-has "the usage header names it"               'migrate docker-nano' "$(sed -n '1,80p' "$ROOT/setup/exakit")"
-has "...on the Windows side too"              'migrate docker-nano' "$(sed -n '1,60p' "$ROOT/setup/exakit.ps1")"
+# THE RENDERED SURFACE, not a banner comment. These two lines used to sed the
+# first 80 (and 60) lines of each CLI and look for "migrate docker-nano" - a
+# range that lands squarely in the `#` header block, so what they asserted was
+# the presence of a string in a comment no user or agent ever reads. The real
+# help is rendered from setup/help/*.json, and dropping the crossing from that
+# document made the command invisible to everyone while all 199 checks passed.
+# The range was brittle in the ordinary way too: add 20 lines to the banner and
+# the check fails for a reason unrelated to the crossing.
+_lc_help="$(bash "$ROOT/setup/exakit" help --json 2>/dev/null)"
+has "the rendered help offers the crossing"   '"command": "migrate"' "$_lc_help"
+has "...naming the source it takes"           'docker-nano' "$_lc_help"
+# ...and the capture is a document, not an error page that happens to contain
+# the words: an empty or non-JSON answer must not read as a pass.
+check "...as a parseable help document" "yes" \
+    "$(printf '%s' "$_lc_help" | python3 -c 'import json,sys
+try:
+    d = json.load(sys.stdin)
+    print("yes" if any(c.get("command") == "migrate" for c in d.get("commands", [])) else "no")
+except Exception:
+    print("no")' 2>/dev/null)"
+# The Windows twin renders from those same documents rather than carrying its
+# own help text, which is the property that keeps the two surfaces equal.
+has "...on the Windows side too"              'Show-ExakitHelpJson' "$(cat "$ROOT/setup/exakit.ps1")"
 # Bad input is refused BEFORE the install check, exit 2, so a typo never reads
 # as "not installed".
 _mg() { EXAKIT_HOME="$WORK/mg-nohome" EXAKIT_BIN_DIR="$WORK/mg-nohome/bin" bash "$ROOT/setup/exakit" migrate "$@" 2>&1; echo "RC=$?"; }

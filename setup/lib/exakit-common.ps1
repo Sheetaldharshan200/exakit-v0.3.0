@@ -2006,15 +2006,33 @@ function Invoke-ExakitBounded {
     $process = $null
     try {
         $process = [System.Diagnostics.Process]::Start($info)
-        # Read stdout on a task so a chatty command cannot fill the pipe buffer and
-        # deadlock against our own WaitForExit.
+        # BOTH pipes on tasks, and both started before the wait. Redirecting a
+        # pipe and never reading it is exactly the deadlock this comment used
+        # to claim it had prevented, and stderr was the unread one: a Windows
+        # anonymous pipe buffers 4 KB, so a probe that writes more than that to
+        # stderr blocks forever on the write, never exits, and WaitForExit
+        # burns its entire timeout before we kill it. Every caller reads the
+        # $null that comes back as "this feature is not supported", so a tool
+        # that prints its usage to stderr, or a runtime emitting deprecation
+        # warnings, silently withholds a capability the launcher needs - after
+        # stalling for the full timeout to do it.
         $reader = $process.StandardOutput.ReadToEndAsync()
+        $errReader = $process.StandardError.ReadToEndAsync()
         if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
             try { $process.Kill() } catch { }
             Write-ExakitLog "WARN" "$FilePath did not answer within ${TimeoutSeconds}s; giving up"
             return $null
         }
-        if ($process.ExitCode -ne 0) { return $null }
+        if ($process.ExitCode -ne 0) {
+            # Now that it is drained, stderr is worth keeping: a probe that
+            # failed for a nameable reason used to fail namelessly.
+            $errText = ""
+            try { $errText = $errReader.Result } catch { }
+            if ($errText -and $errText.Trim()) {
+                Write-ExakitLog "WARN" "$FilePath exited $($process.ExitCode): $($errText.Trim())"
+            }
+            return $null
+        }
         return $reader.Result
     } catch {
         Write-ExakitLog "WARN" "$FilePath could not be run: $_"
@@ -4715,7 +4733,7 @@ function Get-ExakitMarketplaceAddonDescription {
     if (-not (Test-ExakitAboutCacheFresh $cache)) { Update-ExakitAboutCache $Id | Out-Null }
     if (Test-Path $cache) {
         $text = ""
-        try { $text = ((Get-Content -Path $cache -Encoding UTF8 -TotalCount 1) | Out-String).Trim() } catch { }
+        try { $text = ((Get-Content -Path $cache -Encoding UTF8 -TotalCount 1) | Out-String -Width 4096).Trim() } catch { }
         if ($text) { return $text }
     }
     $doc = Get-ExakitAddonDocument $Id

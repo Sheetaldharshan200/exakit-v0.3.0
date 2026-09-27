@@ -84,7 +84,7 @@ function Get-DashServerPackageVersion {
         $ErrorActionPreference = "Continue"
         $version = & $python -c "from importlib.metadata import version; print(version('dash-server'))" 2>$null
         if ($LASTEXITCODE -ne 0) { return $null }
-        return ($version | Out-String).Trim()
+        return ($version | Out-String -Width 4096).Trim()
     } catch {
         return $null
     } finally { $ErrorActionPreference = $prevEap }

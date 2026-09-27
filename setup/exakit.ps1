@@ -3174,7 +3174,14 @@ function Show-ExakitUsage {
 # component supports the flag. Twin of the bash pre-dispatch block.
 #
 # `sql` is excluded on purpose: its argument is arbitrary SQL text.
-if ($Command -and $Command -ne "sql" -and ($RestArgs -contains "--help" -or $RestArgs -contains "-h")) {
+#
+# So is help itself. The -File binder pushes a leading `--help` into $RestArgs
+# and leaves $Command at its "help" default, so `exakit --help --json` arrived
+# here looking like "the help command, asked for its own help page" and was
+# answered with the human page for `help` - swallowing the --json an agent
+# asked for. A help flag on the help command is the help command.
+$_helpSelf = @("help", "--help", "-h", "-?") -contains "$Command"
+if ($Command -and $Command -ne "sql" -and -not $_helpSelf -and ($RestArgs -contains "--help" -or $RestArgs -contains "-h")) {
     if (Test-ExakitHelpId $Command) {
         Show-ExakitHelpComponent -Id $Command | Out-Null
     } else {
@@ -3224,6 +3231,18 @@ try {
             "--help"    { $Command = "help";    $RestArgs = $rest }
             "-h"        { $Command = "help";    $RestArgs = $rest }
             "-?"        { $Command = "help";    $RestArgs = $rest }
+            # help's OWN options, left in $RestArgs for the help arm to read.
+            #
+            # This block cannot tell a $Command that defaulted to "help" from
+            # one the user typed, so `exakit help --json` - the documented
+            # agent contract, and what the bash CLI answers with a 37-command
+            # document - arrived here as an unknown top-level option and was
+            # refused outright. Same for --all, which every help screen
+            # advertises. They are options of the command, not of the CLI.
+            "--json"    { }
+            "-j"        { }
+            "--all"     { }
+            "-a"        { }
             default {
                 # An unknown COMMAND already exits 2 with the help screen; an
                 # unknown leading OPTION used to exit 0 with it, which is the

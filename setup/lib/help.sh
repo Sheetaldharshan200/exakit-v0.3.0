@@ -48,7 +48,11 @@ exakit_help_ids() {
 }
 
 exakit_help_is_id() {
-    exakit_help_ids 2>/dev/null | grep -qx "$1"
+    # -F and --: the topic is a literal name, never a pattern and never an
+    # option. Without them `exakit --help --json` reached here with the topic
+    # "--help", grep read it as a flag, and the user got grep's own usage
+    # block printed at them mid-help-screen.
+    exakit_help_ids 2>/dev/null | grep -qxF -- "$1"
 }
 
 # exakit_help_doc_local <id> - the document this kit shipped, or nothing.

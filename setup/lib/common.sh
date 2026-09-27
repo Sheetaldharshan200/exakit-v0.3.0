@@ -101,11 +101,25 @@ EXAKIT_KIT_REPO="${EXAKIT_KIT_REPO:-${EXAKIT_REPO:-krishna-exasol/update-path}}"
 # mid-stream transport failures that actually strand a large download, so it is
 # worth having where available and must be absent where not: an unknown flag
 # makes curl exit 2 and fail the download it was meant to save.
-if curl --help all 2>/dev/null | grep -q -- "--retry-all-errors"; then
-    EXAKIT_CURL_RETRY_ALL="--retry-all-errors"
-else
-    EXAKIT_CURL_RETRY_ALL=""
-fi
+#
+# LAZY, AND MEMOISED. A first cut of this probe ran at SOURCE time, which meant
+# every single exakit invocation paid for a curl subprocess before it did
+# anything - and, worse, that `exakit status --json` reached for curl at all.
+# A read-only state query must not touch the network stack even to ask a
+# question about it; tests/agent-audit.sh pins exactly that with a stub curl
+# that leaves a fingerprint when it is run. Answered once, on the first real
+# download, and remembered for the rest of the process.
+_exakit_curl_retry_all() {
+    if [ -z "${_EXAKIT_CURL_RETRY_ALL_CACHED:-}" ]; then
+        if curl --help all 2>/dev/null | grep -q -- "--retry-all-errors"; then
+            _EXAKIT_CURL_RETRY_ALL="--retry-all-errors"
+        else
+            _EXAKIT_CURL_RETRY_ALL=""
+        fi
+        _EXAKIT_CURL_RETRY_ALL_CACHED=1
+    fi
+    printf '%s' "$_EXAKIT_CURL_RETRY_ALL"
+}
 EXAKIT_VERSION_LOOKUP_CONNECT_TIMEOUT="${EXAKIT_VERSION_LOOKUP_CONNECT_TIMEOUT:-5}"
 EXAKIT_VERSION_LOOKUP_MAX_TIME="${EXAKIT_VERSION_LOOKUP_MAX_TIME:-12}"
 
@@ -1286,12 +1300,16 @@ exakit_ensure_uv() {
     # stdout, corrupting the one answer the contract promises is parseable.
     info "Installing the managed Python bootstrapper (uv)" >&2
     mkdir -p "$EXAKIT_BIN_DIR"
+    # Same protocol guards as the mcp.sh bootstrap, for the same reason: this
+    # script is EXECUTED, -L follows redirects, and a 302 to http:// would
+    # otherwise be fetched in the clear and piped into sh. wget spells it
+    # --https-only.
     if command -v curl >/dev/null 2>&1; then
         env UV_NO_MODIFY_PATH=1 INSTALLER_NO_MODIFY_PATH=1 sh -c \
-            'curl -LsSf https://astral.sh/uv/install.sh | sh' >> "${EXAKIT_LOG_FILE:-/dev/null}" 2>&1 || return 1
+            'curl -LsSf --proto "=https" --proto-redir "=https" https://astral.sh/uv/install.sh | sh' >> "${EXAKIT_LOG_FILE:-/dev/null}" 2>&1 || return 1
     elif command -v wget >/dev/null 2>&1; then
         env UV_NO_MODIFY_PATH=1 INSTALLER_NO_MODIFY_PATH=1 sh -c \
-            'wget -qO- https://astral.sh/uv/install.sh | sh' >> "${EXAKIT_LOG_FILE:-/dev/null}" 2>&1 || return 1
+            'wget -qO- --https-only https://astral.sh/uv/install.sh | sh' >> "${EXAKIT_LOG_FILE:-/dev/null}" 2>&1 || return 1
     else
         warn "Neither curl nor wget is available to install uv." >&2
         return 1
@@ -6494,7 +6512,7 @@ fetch() {
     # moving rather than one that is merely slow; -C - resumes instead of
     # restarting from byte zero; --retry-all-errors covers the transport errors
     # plain --retry does not (curl 7.71+, hence the capability probe).
-    curl -fL --proto '=https' --retry 3 $EXAKIT_CURL_RETRY_ALL --connect-timeout 15 \
+    curl -fL --proto '=https' --retry 3 $(_exakit_curl_retry_all) --connect-timeout 15 \
         --speed-limit 1024 --speed-time 60 -C - \
         -sS -o "$_dest" "$_url"
     _fetch_rc=$?
@@ -11169,7 +11187,19 @@ exakit_uninstall_run() {
     # value made the target depend on the current directory, and `--yes`
     # bypassed the only confirmation. Four cheap questions close that:
     # absolute, not the home directory itself, not a filesystem root, and
-    # carrying the manifest that proves the kit made it.
+    # recognisable as a directory this kit built.
+    #
+    # THE MANIFEST CANNOT BE A HARD REQUIREMENT, which a first cut of this
+    # guard made it. uninstall is the command people reach for precisely when
+    # an install is broken - interrupted before the manifest was written, or
+    # with a manifest that no longer parses - and a guard that refuses those
+    # leaves the user with no supported way to clean up. So the manifest
+    # proves the case, and where it is missing the directory still has to look
+    # like ours: one of the structural entries the kit creates, or nothing at
+    # all (rm -rf on an empty directory destroys nothing, and an empty
+    # directory is not /etc). A populated directory with none of our markers -
+    # the EXAKIT_HOME=/etc or EXAKIT_HOME=~/src mistake this exists to stop -
+    # is refused.
     _un_safe_target() {
         case "$1" in
             /*) : ;;
@@ -11178,7 +11208,17 @@ exakit_uninstall_run() {
         [ "$1" != "/" ] || return 1
         [ "$1" != "$HOME" ] || return 1
         [ "${1%/}" != "${HOME%/}" ] || return 1
-        [ -f "$1/manifest.json" ] || return 1
+        [ -d "$1" ] || return 1
+        [ -f "$1/manifest.json" ] && return 0
+        for _un_marker in manifest.json logs cache credentials kit mcp backups \
+                          libexec workflows migration .last-failure .install.lock; do
+            [ -e "$1/$_un_marker" ] && return 0
+        done
+        # Nothing of ours in it. Empty is still fine; anything else is not.
+        for _un_entry in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+            [ -e "$_un_entry" ] || [ -L "$_un_entry" ] || continue
+            return 1
+        done
         return 0
     }
     _rm() { # _rm <path> — remove a path unless dry-run
