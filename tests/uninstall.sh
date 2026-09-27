@@ -32,7 +32,14 @@ HOME="$SANDBOX/home"
 export HOME
 EXAKIT_HOME="$HOME/.exasol-starter-kit"
 EXAKIT_BIN_DIR="$HOME/.local/bin"
-export EXAKIT_HOME EXAKIT_BIN_DIR
+# THE FOURTH ONE, and it is the one that bites. The removal engine resolves
+# ${EXAKIT_EXAPUMP_CONFIG_DIR:-$HOME/.exapump} and rm -rf's it. Redirecting only
+# three left that variable at whatever the DEVELOPER had exported, so running
+# this suite on a machine that sets it deleted their real exapump profiles - and
+# reported a false FAIL on top. Redirecting HOME hid it by luck, not by design:
+# the fallback landed in the sandbox only while nobody had set the variable.
+EXAKIT_EXAPUMP_CONFIG_DIR="$HOME/.exapump"
+export EXAKIT_HOME EXAKIT_BIN_DIR EXAKIT_EXAPUMP_CONFIG_DIR
 
 # --- stub the externals the engine calls ---------------------------------
 info(){ :; }; warn(){ :; }; ok(){ :; }; die(){ echo "die: $*" >&2; exit 1; }

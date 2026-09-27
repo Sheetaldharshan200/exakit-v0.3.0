@@ -1092,7 +1092,34 @@ echo "round-3 residuals stay fixed:"
 RP_SH="$(cat "$ROOT/setup/lib/runtime-personal.sh")"
 has "a failed start reaps orphans and retries" "started after clearing an orphaned runner" "$RP_SH"
 lacks "the consent-bypass flag is gone" "_pdl_replace" "$RP_SH"
-has "no deploy path destroys without consent" "NO PATH DESTROYS WITHOUT THIS CONSENT" "$RP_SH"
+# ASSERTED AGAINST THE CODE, NOT AGAINST ITS COMMENT. The needle here used to
+# be the sentence "NO PATH DESTROYS WITHOUT THIS CONSENT", which appears in
+# this file exactly once - inside a `#` comment, three lines above the gate it
+# describes. Deleting the gate and keeping the comment left this check green,
+# which is the one scenario it exists to catch. So it now enumerates the
+# destroy sites and demands a consent gate above each, in the same function:
+# either the EXAKIT_REPLACE_DB question, or teardown's --data guard that makes
+# the caller ask for data removal by name. A push_rollback line registers an
+# undo rather than destroying, and a commented-out one destroys nothing.
+_rp_file="$ROOT/setup/lib/runtime-personal.sh"
+_rp_ungated=""
+for _rp_ln in $(grep -n 'destroy --remove' "$_rp_file" \
+                | grep -v 'push_rollback' \
+                | grep -v '^[0-9]*:[[:space:]]*#' | cut -d: -f1); do
+    _rp_head="$(sed -n "1,${_rp_ln}p" "$_rp_file")"
+    _rp_gate="$(printf '%s\n' "$_rp_head" | grep -n 'confirm_env EXAKIT_REPLACE_DB\|!= "--data"' | tail -1 | cut -d: -f1)"
+    _rp_fn="$(printf '%s\n' "$_rp_head" | grep -n '^[a-z_][a-z_0-9]*() {' | tail -1 | cut -d: -f1)"
+    if [ -z "$_rp_gate" ] || [ "${_rp_gate:-0}" -lt "${_rp_fn:-0}" ]; then
+        _rp_ungated="$_rp_ungated $_rp_ln"
+    fi
+done
+check "no deploy path destroys without consent" "none" "${_rp_ungated:-none}"
+# ...and the enumeration is not vacuously empty: if the grep above stops
+# matching (the launcher subcommand gets renamed, say), the loop body never
+# runs and the check above passes having examined nothing.
+_rp_sites="$(grep -c 'destroy --remove' "$_rp_file")"
+check "...and the destroy sites were actually found" "yes" \
+    "$([ "${_rp_sites:-0}" -ge 3 ] && echo yes || echo no)"
 # MAC-01: one PATH-persistence policy - the second writer delegates to the
 # Darwin-aware ensure_path_hint instead of preferring ~/.bashrc.
 has "the second PATH writer delegates to the one Darwin-aware policy" \
