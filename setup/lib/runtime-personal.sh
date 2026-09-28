@@ -920,11 +920,81 @@ personal_db_port_pids() {
 # 2.2 spelling meant that on 2.3 the kit called its OWN leftover runner a
 # foreign process, refused to touch it, and left the port held by something it
 # had itself started - with the deploy path's hard stop as the only outcome.
+# A matching daemon younger than this is presumed to be a healthy runner still
+# coming up, not an orphan. Exasol Personal's own start budget is about two
+# minutes; 180s leaves margin on a slow or loaded machine. Set to 0 to reap by
+# name alone, which is what this code used to do unconditionally.
+EXAKIT_PERSONAL_REAP_MIN_AGE="${EXAKIT_PERSONAL_REAP_MIN_AGE:-180}"
+
+# _personal_proc_age_seconds <pid> - how long that process has been alive.
+# `ps -o etime=` is the portable spelling ([[dd-]hh:]mm:ss); etimes is GNU-only
+# and absent on the macOS ps. awk does the parsing so a zero-padded field
+# ("08") is read as decimal rather than tripping shell octal arithmetic.
+_personal_proc_age_seconds() {
+    ps -p "$1" -o etime= 2>/dev/null | awk '
+        {
+            gsub(/ /, "", $0)
+            if ($0 == "") exit 1
+            d = 0
+            if (index($0, "-") > 0) {
+                d = substr($0, 1, index($0, "-") - 1) + 0
+                $0 = substr($0, index($0, "-") + 1)
+            }
+            n = split($0, p, ":")
+            if (n == 3)      { s = p[1] * 3600 + p[2] * 60 + p[3] }
+            else if (n == 2) { s = p[1] * 60 + p[2] }
+            else             { s = p[1] + 0 }
+            print d * 86400 + s
+            exit 0
+        }'
+}
+
+# personal_is_orphan_daemon <pid> - is this process ours AND abandoned?
+#
+# THE NAME ALONE WAS THE WHOLE TEST, AND A HEALTHY RUNNER MID-START HAS THAT
+# NAME. That made the worst path in the kit: personal_status answers `conflict`
+# for any port that is bound while the database does not yet answer SQL - which
+# is precisely a deployment's startup window - and cmd_start reads `conflict` as
+# "probably our own orphan" and calls the reaper, which escalates to
+# `pkill -9 -P` plus `kill -9`. So a second `exakit start` during startup (two
+# shells, a user who thinks nothing happened, an agent that retries) SIGKILLed
+# the starting runner. What that costs is recorded 900 lines away in setup/exakit:
+# a SIGKILLed runner leaves the launcher's workflow state `interrupted`, after
+# which every start fails identically forever, and the only documented cure is
+# `exakit repair-runtime` - which deletes the database. For someone with three
+# months of unbacked-up tables that is the difference between a pause and a loss.
+#
+# Two more questions before the kill, both cheap:
+#   age    - a process that started seconds ago is starting, not stranded.
+#   state  - the launcher's own word. A genuine orphan is one the launcher has
+#            let go of (stopped / deployment_failed / interrupted), or one it
+#            cannot speak for at all (empty). Anything else means it believes
+#            this deployment is live, and we do not get to overrule it.
+# Erring toward NOT reaping is the right bias: the cost of a missed reap is a
+# clear "port is held" message and a manual stop. The cost of a wrong reap is
+# the user's data.
 personal_is_orphan_daemon() {
     case "$(ps -p "$1" -o command= 2>/dev/null || true)" in
-        *mac-runner*__daemon__*) return 0 ;;
-        *exasol-local-runner*)   return 0 ;;
+        *mac-runner*__daemon__*) : ;;
+        *exasol-local-runner*)   : ;;
         *) return 1 ;;
+    esac
+    if [ "${EXAKIT_PERSONAL_REAP_MIN_AGE:-0}" -gt 0 ]; then
+        _iod_age="$(_personal_proc_age_seconds "$1" 2>/dev/null || true)"
+        if [ -n "$_iod_age" ] && [ "$_iod_age" -lt "$EXAKIT_PERSONAL_REAP_MIN_AGE" ]; then
+            # Guarded: this predicate is reachable with runtime-personal.sh
+            # sourced on its own, where common.sh's logger does not exist, and
+            # a decision this important must not depend on a log line.
+            command -v _exakit_log_file >/dev/null 2>&1 &&
+                _exakit_log_file "INFO  not reaping pid $1: ${_iod_age}s old, still within the start budget"
+            return 1
+        fi
+    fi
+    case "$(personal_launcher_state 2>/dev/null || true)" in
+        ''|stopped|deployment_failed|interrupted) return 0 ;;
+        *) command -v _exakit_log_file >/dev/null 2>&1 &&
+               _exakit_log_file "INFO  not reaping pid $1: the launcher still calls this deployment live"
+           return 1 ;;
     esac
 }
 
