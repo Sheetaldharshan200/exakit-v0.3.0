@@ -9131,7 +9131,7 @@ EXAKIT_MCP_STAMP_PY
             # rather than swallowed.
             _exakit_stamp_mcp_json "$_result_file" || cat "$_result_file"
         else
-            printf '{"installed": true, "status": "error", "remedy": "exakit logs setup", "error": "the MCP %s operation produced no result (see log)"}\n' "$_operation"
+            printf '{"installed": true, "status": "error", "remedy": "exakit logs setup", "error": "the MCP %s operation produced no result; what it printed is in: exakit logs setup"}\n' "$_operation"
             [ "$_operation_status" -eq 0 ] && _operation_status=1
         fi
         rm -f "$_result_file"

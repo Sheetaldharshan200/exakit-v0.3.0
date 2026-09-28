@@ -1994,7 +1994,12 @@ for _sl_f in "$ROOT"/setup/lib/*.sh "$ROOT"/setup/exakit "$ROOT"/setup/lib/*.ps1
     [ -f "$_sl_f" ] || continue
     # Only lines that RAISE something - a comment about the old wording is not
     # a message anyone sees.
-    _sl_hits="$(grep -nE '(die|warn|Fail|Warn2)[ (]"' "$_sl_f" 2>/dev/null \
+    # Raised messages AND the JSON payloads, which are built with printf and
+    # Write-Output rather than a raiser - the first version of this lint
+    # scanned only the raisers and missed a "(see log)" sitting in a --json
+    # `error` field, which is a worse place for it: the human at least has a
+    # screen, the parser has only what the field says.
+    _sl_hits="$(grep -nE '(die|warn|Fail|Warn2)[ (]"|"(error|reason|remedy_hint)": ' "$_sl_f" 2>/dev/null \
                 | grep '(see log)' \
                 | grep -v 'exakit ' | cut -d: -f1 | tr '\n' ',' )"
     [ -n "$(printf '%s' "$_sl_hits" | tr -d ',')" ] || continue
@@ -2216,6 +2221,60 @@ _sc_ps="$(cat "$ROOT/setup/lib/mcp.ps1")"
 has "the Windows resolver labels its answer too"   'Kind = "admin-fallback"' "$_sc_ps"
 has "...and its panel warns on the fallback"       'NOT the read-only user' "$_sc_ps"
 lacks "...and no longer defaults to mcp_readonly"  '$userShown = "mcp_readonly"' "$_sc_ps"
+
+echo
+echo "one shape for the five state queries, and a token for which machine this is:"
+# AGK-06: mcp-status was the only state query whose not-installed answer came
+# from _require_install, so it alone lacked `manifest` and `reason` - and a
+# parser reading `reason` for the explanation got a KeyError on exactly one of
+# the five, against a document promising "one shape covers all of them".
+_js_home="$WORK/json-shape-none"
+for _js_cmd in status info version mcp-status mcp-doctor; do
+    check "$_js_cmd --json carries the shared keys when nothing is installed" "all present" \
+        "$(EXAKIT_HOME="$_js_home" bash "$ROOT/setup/exakit" "$_js_cmd" --json 2>/dev/null | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print("not json"); raise SystemExit
+need = ("installed", "status", "remedy", "manifest", "reason")
+print("all present" if all(k in d for k in need) else "MISSING: %s" % [k for k in need if k not in d])' 2>/dev/null)"
+done
+
+# WSL-08: every WSL remedy asks for an action on ANOTHER operating system, and
+# nothing in the payload said the host was WSL - so an agent could not tell a
+# remedy it can run from one it must hand to the user.
+_js_status="$(bash "$ROOT/setup/exakit" status --json 2>/dev/null)"
+check "status --json names the platform" "yes" \
+    "$(printf '%s' "$_js_status" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print("no"); raise SystemExit
+print("yes" if d.get("platform") in ("macos", "linux", "wsl", "windows") else "no: %r" % d.get("platform"))' 2>/dev/null)"
+check "...and carries wsl_version (null off WSL)" "yes" \
+    "$(printf '%s' "$_js_status" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print("no"); raise SystemExit
+print("yes" if "wsl_version" in d else "no")' 2>/dev/null)"
+has "AGENTS.md documents the platform key" '`platform` (`macos`' "$(cat "$ROOT/AGENTS.md")"
+has "...and warns that a WSL remedy may not be yours to run" 'not every `remedies` value is runnable in your shell' \
+    "$(cat "$ROOT/AGENTS.md")"
+
+# DOC-11: two adjacent bullets gave two tokens for one state - the JSON says
+# `ahead`, the human table prints `none`, and the more specific bullet named
+# the one that can never appear in JSON.
+_js_agents="$(cat "$ROOT/AGENTS.md")"
+has "the ahead state is documented by its JSON token" 'reports that row'"'"'s `status` as **`ahead`**' "$_js_agents"
+# AGK-08: the outcome vocabulary is a THIRD contract and was undocumented.
+has "the action outcomes have their own documented vocabulary" '**Outcomes**' "$_js_agents"
+for _js_v in repaired declined failed; do
+    has "...including \`$_js_v\`" "\`$_js_v\`" "$(printf '%s' "$_js_agents" | grep -A2 '^\*\*Outcomes\*\*')"
+done
 
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]
