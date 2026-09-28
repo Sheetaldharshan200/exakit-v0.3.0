@@ -311,6 +311,16 @@ function Show-ExakitHomeNotice {
     if (-not $script:ExakitHomeNotice) { return }
     $notice = $script:ExakitHomeNotice
     $script:ExakitHomeNotice = ""
+    # STDERR WHEN A MACHINE IS ASKING. AGENTS.md promises that a --json answer
+    # is "one object on stdout and nothing else there", and this notice fires
+    # on exactly the machines the kit cares most about - a domain profile with
+    # a redirected home - so on those it could land ahead of the object and
+    # make it unparseable. It is a warning, and a warning belongs on stderr,
+    # where a person still sees it and no parser has to step over it.
+    if ($script:ExakitRefusalJson) {
+        [Console]::Error.WriteLine("  ! " + $notice)
+        return
+    }
     Warn2 $notice
 }
 
@@ -880,7 +890,12 @@ class ExakitFailException : System.Exception {
 # Exit 2, like the shell twin: your input was wrong, as distinct from the
 # command failing.
 function Deny-ExakitInput {
-    param([Parameter(Mandatory)][string]$Message, [string]$Remedy = $null)
+    # $Remedy is deliberately UNTYPED. Declared [string], an omitted remedy
+    # became "" rather than staying $null, so the object carried
+    # "remedy":"" where the shell twin carries "remedy": null - and a parser
+    # testing `if remedy:` would branch differently on the two platforms for
+    # the same refusal.
+    param([Parameter(Mandatory)][string]$Message, $Remedy = $null)
     if ($script:ExakitRefusalJson) {
         $payload = [ordered]@{ ok = $false; error = $Message; remedy = $Remedy; rejected = $true }
         Write-Output ($payload | ConvertTo-Json -Compress -Depth 4)

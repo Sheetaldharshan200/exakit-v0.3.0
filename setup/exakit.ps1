@@ -824,7 +824,14 @@ function Invoke-CmdAutostart {
     Assert-ExakitInstalled
     Initialize-ExakitLogging
     if ($Action) {
-        Fail "autostart takes no arguments - run 'exakit autostart' and answer the question."
+        # Deny, not Fail: this is bad input, and the shell twin answers it with
+        # reject() - exit 2. Through Fail it exited 1, which AGENTS.md reserves
+        # for a command that failed rather than a command that was misused, so
+        # an agent scripting `exakit autostart off` from a document could not
+        # even classify the refusal. Fail also recorded a .last-failure note,
+        # which `exakit status --json` then reported as an unfinished install
+        # step on a machine where nothing was wrong.
+        Deny-ExakitInput "autostart takes no arguments - run 'exakit autostart' and answer the question."
     }
     Show-ExakitAutostart
 

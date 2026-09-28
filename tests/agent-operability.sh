@@ -1283,8 +1283,18 @@ _ls_stub database_ready
 check "a launcher that says ready, with SQL answering, is running" "running" "$(_ls_probe personal_status)"
 # The runner the 2.3 launcher leaves behind must be recognised as OURS, or the
 # reaper calls the kit's own process foreign and refuses to clear the port.
-has "the reaper knows the 2.3 runner" '*exasol-local-runner*)   return 0 ;;' "$RP_SH"
-has "...and still knows the 2.2 one" '*mac-runner*__daemon__*) return 0 ;;' "$RP_SH"
+# Asserted on the NAME MATCH, not on what follows it. These used to pin the
+# whole line including its `return 0`, which broke the moment the predicate
+# grew two more questions to ask after the name (LIF-09: a healthy runner
+# mid-start carries the same name as a stranded one, so the name alone can no
+# longer decide a kill). What has to stay true is that both spellings are
+# recognised as OURS - otherwise the reaper calls the kit's own process foreign
+# and refuses to clear the port.
+_rp_orphan="$(sed -n '/^personal_is_orphan_daemon()/,/^}/p' "$ROOT/setup/lib/runtime-personal.sh")"
+has "the reaper knows the 2.3 runner" '*exasol-local-runner*' "$_rp_orphan"
+has "...and still knows the 2.2 one"  '*mac-runner*__daemon__*' "$_rp_orphan"
+# ...and anything that is neither is still refused outright.
+has "...and refuses anything else"    '*) return 1 ;;' "$_rp_orphan"
 has "a stopped deployment holding its port is cleared before the start" \
     'Clearing a leftover Exasol runner still holding port' "$RP_SH"
 
@@ -1923,6 +1933,48 @@ lacks "...and is not refused"                   'wsl --set-version' "$(_wsl_pf 2
 # have to pass through preflight_report to get here.
 has "the install gate refuses WSL 1 as well" 'WSL 1 is not supported' "$_pd_code"
 has "...naming the conversion command"       'wsl --set-version <distro> 2' "$_pd_code"
+
+echo
+echo "a refusal is the same refusal on both CLIs:"
+# DOC-01's second half. `exakit autostart off` is a command three documents
+# used to name and neither CLI has - but the shell refused it with reject()
+# (exit 2, "your input was wrong") while PowerShell used Fail (exit 1, "the
+# command failed", plus a .last-failure note that status --json then reported
+# as an unfinished install step on a machine where nothing was wrong). An agent
+# scripting it from a document could not even classify what came back.
+if command -v pwsh >/dev/null 2>&1; then
+    _rp_sh_rc="$(bash "$ROOT/setup/exakit" autostart off >/dev/null 2>&1; echo $?)"
+    _rp_ps_rc="$(pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" autostart off >/dev/null 2>&1; echo $?)"
+    check "bad input exits 2 on the shell CLI"      "2" "$_rp_sh_rc"
+    check "...and 2 on the PowerShell CLI too"      "2" "$_rp_ps_rc"
+    # And with --json, one object on stdout and NOTHING else there - which is
+    # what AGENTS.md promises. The Windows-home notice used to print ahead of
+    # the object on exactly the machines the kit cares most about (a domain
+    # profile with a redirected home), leaving it unparseable; it now goes to
+    # stderr when a machine is asking.
+    _rp_ps_json="$(pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" autostart off --json 2>/dev/null)"
+    check "the PowerShell refusal is one parseable object" "yes" \
+        "$(printf '%s' "$_rp_ps_json" | python3 -c 'import json,sys
+try:
+    d = json.load(sys.stdin)
+    print("yes" if d.get("rejected") and d.get("ok") is False else "no")
+except Exception:
+    print("no")' 2>/dev/null)"
+    # remedy is null, not "" - declared [string] it coerced to empty, and a
+    # parser testing `if remedy:` would branch differently on the two platforms
+    # for the same refusal.
+    check "...with remedy null, as on the shell side" "null null" \
+        "$(printf '%s|%s' \
+            "$(printf '%s' "$_rp_ps_json" | python3 -c 'import json,sys;print("null" if json.load(sys.stdin)["remedy"] is None else "notnull")' 2>/dev/null)" \
+            "$(bash "$ROOT/setup/exakit" autostart off --json 2>/dev/null | python3 -c 'import json,sys;print("null" if json.load(sys.stdin)["remedy"] is None else "notnull")' 2>/dev/null)" \
+          | tr '|' ' ')"
+else
+    echo "  (pwsh not available - PowerShell parity checks skipped)"
+fi
+has "the PowerShell refusal goes through Deny-ExakitInput" 'Deny-ExakitInput "autostart takes no arguments' \
+    "$(cat "$ROOT/setup/exakit.ps1")"
+has "the home notice is kept off a machine's stdout" '[Console]::Error.WriteLine' \
+    "$(sed -n '/^function Show-ExakitHomeNotice/,/^}/p' "$ROOT/setup/lib/exakit-common.ps1")"
 
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]
