@@ -14,6 +14,8 @@
 #                       on yes; without a terminal it is deferred unless --yes (or
 #                       EXAKIT_CONFIRM_RUNTIME_UPDATE=1) says otherwise
 #                       Personal major upgrades support --plan, --backup, --apply
+#                       (macOS, Linux and WSL only - the Windows CLI has no
+#                       staged route and says so if you pass one of them)
 #   info [--json]       print the connection details panel; --json prints the
 #                       install record (manifest.json) plus the state keys
 #                       installed / status / remedy / skills, nothing else
@@ -47,6 +49,10 @@
 #   mcp-doctor          check the configured MCP clients, repair what has
 #                       drifted, then re-check (there is no separate repair)
 #   mcp-status          show managed MCP state for the supported AI clients
+#   mcp-remove <client> [<client>...]
+#                       take the kit's managed MCP entries out of the named
+#                       clients and forget them, so mcp-doctor stops reporting
+#                       a client that is no longer on this machine
 #   skills [--json]     list the kit's AI skills and whether each one has
 #                       reached the agents' discovery folders
 #   skills-install      install the kit's AI skills for CLI agents

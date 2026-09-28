@@ -33,9 +33,24 @@
 #                         (Exasol Nano in Docker or Podman) into this database;
 #                         the kit's own sample data is left out and the
 #                         container is never removed
+#   sql '<statement>' [--file PATH] [--write] [--json]
+#                         run one SQL statement and translate the error into a
+#                         remedy; reads only unless --write. Uses the ADMIN
+#                         connection (the read-only boundary is the MCP user)
+#   repair-runtime [--yes] [--json]
+#                         rebuild the database from empty when it will not
+#                         start. DESTROYS every table in it; the bundled sample
+#                         datasets are reloaded afterwards, anything you loaded
+#                         is not. Declining exits 5 and changes nothing
 #   mcp-setup             permanently configure MCP in supported AI clients
 #   mcp-doctor [clients]  check MCP config, connectivity, and managed state
 #   mcp-status [clients]  show managed MCP state for the supported AI clients
+#   mcp-remove <client> [<client>...]
+#                         take the kit's managed MCP entries out of the named
+#                         clients and forget them, so mcp-doctor stops
+#                         reporting a client that is no longer on this machine
+#   skills [--json]       list the kit's AI skills and whether each one has
+#                         reached the agents' discovery folders
 #   skills-install        install the kit's AI skills for CLI agents
 #                         (~\.claude\skills, ~\.agents\skills)
 #   marketplace           browse optional add-ons (dash-server, ...) and install
@@ -43,11 +58,13 @@
 #                         through `exakit update` like every other component
 #   upgrade-kit2          add the Kit 2 trust assets (bash paths only for now)
 #   rollback-kit2         remove what upgrade-kit2 added (bash paths only for now)
-#   uninstall [-Yes] [-DryRun]
-#                         remove EVERYTHING the kit installed: database + all
-#                         data, MCP client configs, skills, exapump, the kit
-#                         home and the CLI binaries. -DryRun previews; -Yes
-#                         skips the typed confirmation
+#   uninstall [<addon-id>] [-Yes] [-DryRun]
+#                         with no add-on id: remove EVERYTHING the kit
+#                         installed - database + all data, MCP client configs,
+#                         skills, exapump, the kit home and the CLI binaries.
+#                         Name a marketplace add-on to remove just that one
+#                         (its service, binary and credential; nothing else).
+#                         -DryRun previews; -Yes skips the typed confirmation
 #   whats-new [version]   what changed in this kit version
 #   logs [target]         every log the kit can show; no target lists them
 #                         (-f follows, --lines N, --path prints the path)
@@ -3322,6 +3339,20 @@ try {
         # shim's path. "-v" is deliberately absent: see that block.
         "--version"    { Invoke-CmdVersion }
         "update"        {
+            # THE STAGED MAJOR-UPGRADE ROUTE IS NOT ON THIS PLATFORM, and the
+            # generic refusal made that look like a typo. The shell CLI
+            # implements --plan/--backup/--apply and its header advertised them
+            # with no platform qualifier, so a Windows user meeting a Personal
+            # MAJOR upgrade was pointed at a migration route and then told
+            # "Unknown option '--plan'" - a blocked upgrade and nothing to do
+            # about it. Naming the real route costs one arm and is the whole
+            # difference between stuck and moving.
+            foreach ($_upArg in @($RestArgs)) {
+                if (@("--plan", "--backup", "--apply") -contains "$_upArg") {
+                    Deny-ExakitInput ("$_upArg is part of the staged major-upgrade route, which the Windows CLI does not implement (it is macOS, Linux and WSL only). " +
+                        "To take a major Exasol Personal upgrade here, re-run the installer: irm https://www.exasol.com/install/starter-kit.ps1 | iex")
+                }
+            }
             Assert-ExakitKnownOptions -CommandName "update" -Allowed @("--yes", "-y", "-Yes") -Arguments $RestArgs
             # -y/--yes/-Yes answers the runtime offer, so it must not be mistaken
             # for the target when it is the only argument given.

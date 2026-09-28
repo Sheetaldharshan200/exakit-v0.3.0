@@ -69,7 +69,7 @@ Flags do not travel through a pipe, so choices are env vars. They work on all pl
 | `EXAKIT_REPLACE_DB=1` | macOS only: consent to **delete a stopped Exasol deployment and its data** and deploy fresh. Without it, `EXAKIT_REUSE_DB=0` (or answering no) stops the install with guidance instead of destroying anything. `exakit repair-runtime` sets it itself after asking its own destructive question |
 | `EXAKIT_PREFLIGHT=1` | Check machine requirements only, installs nothing. Both installers: `... \| EXAKIT_PREFLIGHT=1 sh`, or `$env:EXAKIT_PREFLIGHT = '1'` before `irm ... \| iex` |
 | `EXAKIT_DRY_RUN=1` | Download the kit for inspection, installs nothing |
-| `EXAKIT_LOCAL_KIT=/path/to/checkout` | Install from a local checkout instead of downloading. On WSL this is the only supported way to install from a Windows-side clone: pass the `/mnt/c/...` path |
+| `EXAKIT_LOCAL_KIT=/path/to/checkout` | Install from a local checkout instead of downloading — on every platform, including Windows (`$env:EXAKIT_LOCAL_KIT = 'C:\path\to\checkout'`), where the checkout must contain `setup\exakit.ps1` or the installer refuses it by name. On WSL this is the only supported way to install from a Windows-side clone: pass the `/mnt/c/...` path |
 | `EXAKIT_DB_PORT=8564` | Alternate DB port (Linux and Windows container path only). Set it once, for the install: the kit records it and every later `exakit start` reuses it |
 
 Version and update behaviour (all optional, sensible defaults):

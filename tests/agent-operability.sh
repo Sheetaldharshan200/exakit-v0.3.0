@@ -2108,5 +2108,67 @@ done
 has "the help document says what --force does to the tables" 'dropped and rebuilt' \
     "$(cat "$ROOT/setup/help/exakit.json")"
 
+echo
+echo "the two entry points describe what they actually implement:"
+# DOC-02. setup/exakit.ps1's header is the one place the Windows entry point
+# describes itself, and it listed 22 of the 25 commands it dispatches. Missing:
+# sql - which AGENTS.md tells every agent to reach for first - repair-runtime,
+# the only exit from an interrupted database, and skills. It also documented
+# `uninstall` as the everything form only, so a reader wanting to remove ONE
+# add-on on Windows was told the only route was the one that takes the database
+# with it. Checked as a property, against the dispatch, so the next command
+# added has to appear in the header too.
+_hd_missing() { # _hd_missing <file> <header-last-line> -> names not in the header
+    ROOT="$ROOT" F="$1" N="$2" python3 -c '
+import io, os, re, sys
+path = os.path.join(os.environ["ROOT"], os.environ["F"])
+src = io.open(path, encoding="utf-8").read()
+hdr = "\n".join(src.split("\n")[:int(os.environ["N"])])
+if path.endswith(".ps1"):
+    body = re.search(r"switch \(\$Command\) \{(.*?)\n    \}\n", src, re.S).group(1)
+    names = {m.group(1) for m in re.finditer(r"^\s{8}\"([a-z0-9-]+)\"", body, re.M)}
+    for m in re.finditer(r"^\s{8}\{ \$_ -in @\(([^)]*)\)", body, re.M):
+        names |= set(re.findall(r"\"([a-z0-9-]+)\"", m.group(1)))
+else:
+    body = re.search(r"\ncase \"\$\{1:-help\}\" in\n(.*?)\nesac\n", src, re.S).group(1)
+    names = {n for m in re.finditer(r"^    ([a-z0-9|.-]+)\)", body, re.M) for n in m.group(1).split("|")}
+    names = {n for n in names if n and n != "*"}
+print(" ".join(sorted(n for n in names if not n.startswith("-") and n not in hdr)))'
+}
+check "every command the Windows CLI dispatches is in its header" "" "$(_hd_missing setup/exakit.ps1 75)"
+check "...and the same holds for the shell CLI"                   "" "$(_hd_missing setup/exakit 84)"
+_hd_ps="$(sed -n '4,75p' "$ROOT/setup/exakit.ps1")"
+has "the Windows header documents the add-on uninstall" 'uninstall [<addon-id>]' "$_hd_ps"
+
+# DOC-03: the shell header advertised the staged major-upgrade route with no
+# platform qualifier, and Windows rejects all three of its options - so a
+# Windows user meeting a major upgrade was pointed at a route that does not
+# exist there and got "Unknown option '--plan'".
+has "the staged-upgrade claim names its platforms" 'macOS, Linux and WSL only' \
+    "$(sed -n '1,84p' "$ROOT/setup/exakit")"
+if command -v pwsh >/dev/null 2>&1; then
+    _hd_plan="$(pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" update runtime --plan 2>&1)"
+    has "...and Windows says so instead of 'unknown option'" 'does not implement' "$_hd_plan"
+    lacks "...without calling it a typo"                     "Unknown option '--plan'" "$_hd_plan"
+    _hd_rc="$(pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" update runtime --plan >/dev/null 2>&1; echo $?)"
+    check "...still exit 2, it is still bad input here" "2" "$_hd_rc"
+    # A genuinely unknown option must still read as one.
+    has "an ordinary unknown option is unchanged" "Unknown option '--bogus-zz'" \
+        "$(pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" update --bogus-zz 2>&1)"
+fi
+
+# DOC-06: EXAKIT_LOCAL_KIT sat in a table headed "They work on all platforms"
+# with zero references anywhere on the PowerShell side - not rejected, just
+# unread, so a Windows CI job setting it got a silent download from GitHub.
+_hd_ips="$(cat "$ROOT/install.ps1")"
+# The ASSIGNMENT, not the name. A bare search for EXAKIT_LOCAL_KIT matches the
+# comment above it too, so gutting the read left this green - the
+# comment-as-assertion shape this very audit has a finding class for. Caught by
+# mutating the fix, which is the only way that shape ever shows up.
+has "install.ps1 reads EXAKIT_LOCAL_KIT"        '$LocalKit = $env:EXAKIT_LOCAL_KIT' "$_hd_ips"
+has "...validates it looks like a checkout"     'does not look like a kit checkout' "$_hd_ips"
+has "...and copies it instead of downloading"   'Using local kit checkout' "$_hd_ips"
+has "AGENTS.md says it works on Windows too"    'including Windows' "$(cat "$ROOT/AGENTS.md")"
+
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]
