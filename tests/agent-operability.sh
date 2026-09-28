@@ -2014,5 +2014,49 @@ case "$_sl_targets" in
     *)       check "the target those messages name is a real one" "yes" "no: [$_sl_targets]" ;;
 esac
 
+echo
+echo "the --json shapes AGENTS.md documents are the shapes the CLIs emit:"
+# AGK-04/05. Two ways the machine contract had drifted from its own document.
+#
+# AGK-04: `mcp-status --bogus` answered 4 ("not installed") on a bare machine,
+# because its option validation sat AFTER the install check - the one command
+# of twelve that did. Whether the kit is installed does not change whether an
+# option exists, and AGENTS.md says bad input exits 2 for "an unknown option to
+# any command".
+_jc_home="$WORK/json-contract-none"
+for _jc_cmd in mcp-status status version info skills catalog logs; do
+    _jc_rc="$(EXAKIT_HOME="$_jc_home" bash "$ROOT/setup/exakit" "$_jc_cmd" --bogus-zz >/dev/null 2>&1; echo $?)"
+    check "bad input on '$_jc_cmd' exits 2 even with nothing installed" "2" "$_jc_rc"
+done
+# ...and the legitimate not-installed answer is still 4, not swallowed by the above.
+_jc_rc="$(EXAKIT_HOME="$_jc_home" bash "$ROOT/setup/exakit" mcp-status --json >/dev/null 2>&1; echo $?)"
+check "...while a real not-installed answer stays 4" "4" "$_jc_rc"
+
+# AGK-05: the paragraph forbade `status` on the document commands and then
+# listed `status` for skills, and described its shape as two keys when it has
+# five. A parser written to either half was wrong.
+_jc_doc="$(grep -o '`skills --json` is `{[^}]*}`' "$ROOT/AGENTS.md" | head -1)"
+_jc_keys="$(bash "$ROOT/setup/exakit" skills --json 2>/dev/null | python3 -c 'import json,sys
+print(" ".join(sorted(json.load(sys.stdin))))' 2>/dev/null)"
+for _jc_k in $_jc_keys; do
+    case "$_jc_doc" in
+        *"\"$_jc_k\""*) check "AGENTS.md documents skills --json's '$_jc_k'" "yes" "yes" ;;
+        *)                check "AGENTS.md documents skills --json's '$_jc_k'" "yes" "no" ;;
+    esac
+done
+lacks "...and no longer claims those commands carry no status" 'they carry none of those three keys' \
+    "$(cat "$ROOT/AGENTS.md")"
+# Every status skills can emit is one the Currency vocabulary lists.
+_jc_currency="$(grep -n '^\*\*Currency\*\*' "$ROOT/AGENTS.md" | cut -d: -f1 | head -1)"
+_jc_cline="$(sed -n "${_jc_currency}p" "$ROOT/AGENTS.md")"
+for _jc_v in current update_pending missing; do
+    case "$_jc_cline" in
+        *"\`$_jc_v\`"*) check "the Currency vocabulary lists '$_jc_v'" "yes" "yes" ;;
+        *)                check "the Currency vocabulary lists '$_jc_v'" "yes" "no" ;;
+    esac
+done
+_jc_emits="$(grep -o '_skj_status="[a-z_]*"' "$ROOT/setup/lib/common.sh" | sed 's/.*="//;s/"//' | sort -u | tr '\n' ' ')"
+check "...and those are exactly what the code emits" "current missing update_pending " "$_jc_emits"
+
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]

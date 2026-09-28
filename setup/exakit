@@ -1704,6 +1704,19 @@ cmd_mcp_status() {
     for _ms_pre in "$@"; do
         case "$_ms_pre" in --json|-j) _ms_json=1 ;; esac
     done
+    # AND THE REFUSAL COMES FIRST TOO, for the same reason the --json read does.
+    # This validation used to sit AFTER _require_install, so on a machine with
+    # nothing installed `exakit mcp-status --bogus` answered 4 ("not
+    # installed") for what is bad input - the one command out of twelve that
+    # did. AGENTS.md is unambiguous: bad input exits 2, for "an unknown option
+    # to any command", and whether the kit happens to be installed does not
+    # change whether the option exists.
+    for _ms_pre in "$@"; do
+        case "$_ms_pre" in
+            --json|-j) ;;
+            -*) reject "Unknown option '$_ms_pre' for mcp-status (supported: --json)." ;;
+        esac
+    done
     _require_install "$_ms_json"
     exakit_init_logging
     _ms_rest=""
