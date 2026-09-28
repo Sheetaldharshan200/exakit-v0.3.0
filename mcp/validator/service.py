@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 
 from mcp.adapters.base import AdapterInspection, ClientAdapter
 from mcp.adapters.registry import AdapterRegistry
+from mcp.runtime.filesystem import OWNER_ONLY_ACL, describe_protection
 from mcp.core.models import (
     ArtifactReference,
     DiscoveredClient,
@@ -464,25 +465,56 @@ class ValidatorService:
                     )
                 )
                 continue
-            mode = stat.S_IMODE(path.stat().st_mode)
-            if self._environment.os_name != "win32" and mode != 0o600:
+            # WINDOWS USED TO SHORT-CIRCUIT INTO THE PASS. The condition read
+            # `os_name != "win32" and mode != 0o600`, so on Windows it was
+            # always false and control fell to the else - recording
+            # "uses the expected local file mode" about a mode that means
+            # nothing there and an ACL nobody had looked at. These are the AI
+            # client configs that carry EXA_PASSWORD in plaintext, and
+            # mcp-doctor is the command the docs point at for exactly this
+            # question. The drift is not hypothetical either: the files belong
+            # to the CLIENTS, which rewrite them on their own schedule, and a
+            # rewrite that creates a new file re-inherits the parent ACL and
+            # discards the owner-only DACL protect_path applied.
+            #
+            # describe_protection is the read side of protect_path, and it has
+            # three answers rather than two, because "I could not look" is not
+            # the same as "it is fine".
+            posture = describe_protection(path)
+            if posture is None:
+                evidence.append(
+                    VerificationEvidence(
+                        stage="permission_posture",
+                        status="unverified",
+                        details=(
+                            "Could not read this file's permissions, so its posture is "
+                            "unknown - this is not a pass."
+                        ),
+                        subject=artifact.path,
+                    )
+                )
+            elif posture in {OWNER_ONLY_ACL, "0600"}:
+                evidence.append(
+                    VerificationEvidence(
+                        stage="permission_posture",
+                        status="pass",
+                        details=(
+                            "Managed config carries an owner-only ACL."
+                            if posture == OWNER_ONLY_ACL
+                            else "Managed config uses the expected local file mode."
+                        ),
+                        subject=artifact.path,
+                    )
+                )
+            else:
                 findings.append(
                     Finding(
                         code="permission_drift",
                         severity=Severity.WARNING,
                         message="Managed client configuration is not restricted to owner read/write.",
                         scope={"path": artifact.path, "client": artifact.client},
-                        evidence=[format(mode, "04o")],
+                        evidence=[posture],
                         recommended_action=REPAIR_ACTION,
-                    )
-                )
-            else:
-                evidence.append(
-                    VerificationEvidence(
-                        stage="permission_posture",
-                        status="pass",
-                        details="Managed config uses the expected local file mode.",
-                        subject=artifact.path,
                     )
                 )
         status = "pass_with_warnings" if findings else "pass"
