@@ -96,6 +96,30 @@ else
     # to be prose and exit 1, so a parser pointed at a relocated EXAKIT_HOME
     # got neither the status nor the remedy it was promised.
     _no_lib_remedy="re-run the installer (curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | sh)${EXAKIT_HOME:+; or point EXAKIT_HOME at an install that has kit/setup/lib}"
+    # AN INTERRUPTED UPDATE IS A DIFFERENT PROBLEM WITH A MUCH CHEAPER ANSWER,
+    # and this is the only code left able to say so. `exakit update` renames
+    # the kit aside before renaming the new one in; killed between the two, the
+    # machine has a kit.backup-<ts> and no kit, and every subcommand lands
+    # here. Telling that user to re-download and reinstall the kit would be
+    # both slower and more destructive than the single rename that fixes it.
+    #
+    # The marker is what the updater leaves; the directory scan is the fallback
+    # for a kit updated by a version of this file that did not write one.
+    _no_lib_home="${EXAKIT_HOME:-$HOME/.exasol-starter-kit}"
+    _no_lib_backup=""
+    if [ -f "$_no_lib_home/.update-in-progress" ]; then
+        _no_lib_backup="$(cat "$_no_lib_home/.update-in-progress" 2>/dev/null || true)"
+    fi
+    if [ -z "$_no_lib_backup" ] || [ ! -d "$_no_lib_backup" ]; then
+        _no_lib_backup=""
+        for _no_lib_cand in "$_no_lib_home"/kit.backup-*; do
+            [ -d "$_no_lib_cand/setup/lib" ] || continue
+            _no_lib_backup="$_no_lib_cand"
+        done
+    fi
+    if [ -n "$_no_lib_backup" ] && [ ! -d "$_no_lib_home/kit" ]; then
+        _no_lib_remedy="mv '$_no_lib_backup' '$_no_lib_home/kit'"
+    fi
     for _no_lib_arg in "$@"; do
         case "$_no_lib_arg" in
             --json|-j)
@@ -104,6 +128,14 @@ else
                 exit 4 ;;
         esac
     done
+    if [ -n "$_no_lib_backup" ] && [ ! -d "$_no_lib_home/kit" ]; then
+        echo "exakit: an update was interrupted before the new kit was put in place." >&2
+        echo "exakit: your previous kit copy is still here, and nothing else was touched - the database, its data and your credentials are untouched." >&2
+        echo "exakit: put it back with one command:" >&2
+        echo "  $_no_lib_remedy" >&2
+        echo "exakit: then run 'exakit update' again." >&2
+        exit 4
+    fi
     echo "exakit: cannot find the kit library (looked in $_script_dir/lib and ${EXAKIT_HOME:-$HOME/.exasol-starter-kit}/kit/setup/lib)" >&2
     echo "exakit: if EXAKIT_HOME is set, it must point at an install that has kit/setup/lib; otherwise re-run the installer." >&2
     exit 4

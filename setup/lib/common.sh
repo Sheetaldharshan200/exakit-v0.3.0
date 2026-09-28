@@ -5419,8 +5419,20 @@ exakit_update_self() {
     _repo="$EXAKIT_KIT_REPO"
     _kit_dir="$EXAKIT_HOME/kit"
     _tmp="$(mktemp "${TMPDIR:-/tmp}/exakit-kit.XXXXXX")"
-    _stage="$(mktemp -d "${TMPDIR:-/tmp}/exakit-kit-stage.XXXXXX")"
+    # THE STAGE LIVES BESIDE THE KIT, not in TMPDIR, so the swap below is a
+    # same-filesystem rename. It used to be a mktemp -d under ${TMPDIR:-/tmp},
+    # and on any machine where /tmp is tmpfs or EXAKIT_HOME is on another
+    # volume - which this kit itself recommends for WSL - `mv` across
+    # filesystems is copy-then-unlink. A failure part way through (ENOSPC is
+    # the realistic one) left the destination existing as a partial directory,
+    # which is what made the rollback below able to nest the backup inside it.
+    # A rename cannot fail part way.
+    mkdir -p "$EXAKIT_HOME" 2>/dev/null || true
+    _stage="$(mktemp -d "$EXAKIT_HOME/.kit-stage.XXXXXX")" ||
+        _stage="$(mktemp -d "${TMPDIR:-/tmp}/exakit-kit-stage.XXXXXX")"
     _backup="${_kit_dir}.backup-$(date +%Y%m%d-%H%M%S)"
+    # Named before the swap, cleared after it. See _exakit_update_marker.
+    _update_marker="$EXAKIT_HOME/.update-in-progress"
     info "Updating starter kit ${_current:-unknown} -> $_latest"
     # main first — that is what install.sh fetches, and kit script changes live on
     # main: a tag exists only where a release was cut. The tag URLs stay behind it
@@ -5467,8 +5479,33 @@ exakit_update_self() {
     elif [ "$_staged_version" != "$_latest" ] && exakit_version_newer "$_latest" "$_staged_version"; then
         warn "The downloaded kit is $_staged_version, not the advertised $_latest — the published manifest is a few minutes ahead of $_kit_ref. Recording $_staged_version."
     fi
+    # THE WINDOW WITH NO KIT IN IT. Between the two renames below there is no
+    # $EXAKIT_HOME/kit, and every exakit subcommand needs it to find
+    # setup/lib/*.sh. The only recovery used to be the `if !` arm, which runs
+    # for a non-zero exit and for nothing else - not Ctrl-C, not a closed
+    # laptop, not an OOM kill, not a power cut - and no code anywhere looked
+    # for a stranded kit.backup-* on a later run. So the one command users are
+    # told to run routinely could leave the machine with no tooling at all and
+    # nothing on screen saying the backup beside it was a restore point.
+    #
+    # Two answers, because they cover different failures. The trap covers the
+    # signal that actually happens (Ctrl-C). The marker covers the ones no
+    # process can handle - SIGKILL, power loss - by leaving the next run
+    # something to find; setup/exakit reads it in the branch that fires when
+    # the library is missing, which is the only code still able to run.
+    _exakit_update_restore() {
+        [ -d "$_backup" ] || return 0
+        [ -d "$_kit_dir" ] && rm -rf "$_kit_dir"
+        mv "$_backup" "$_kit_dir" 2>/dev/null || return 1
+        rm -f "$_update_marker" 2>/dev/null || true
+        return 0
+    }
     if [ -d "$_kit_dir" ]; then
+        printf '%s\n' "$_backup" > "$_update_marker" 2>/dev/null || true
+        trap '_exakit_update_restore; trap - INT TERM; exit 130' INT TERM
         mv "$_kit_dir" "$_backup" || {
+            rm -f "$_update_marker" 2>/dev/null || true
+            trap - INT TERM
             rm -rf "$_stage"
             die "Could not back up existing kit copy; update was not applied."
         }
@@ -5476,18 +5513,35 @@ exakit_update_self() {
     fi
     mkdir -p "$(dirname "$_kit_dir")"
     if ! mv "$_stage" "$_kit_dir"; then
-        [ -d "$_backup" ] && mv "$_backup" "$_kit_dir"
+        # rm -rf FIRST. Without it, a destination left behind as a partial
+        # directory by a failed cross-filesystem mv turned this "restore" into
+        # `mv backup kit/` - the good copy buried at kit/kit.backup-<ts>/ - and
+        # the message below still claimed it had been restored. The staging
+        # change above makes the partial directory unreachable in the first
+        # place; this makes the recovery correct regardless.
+        _exakit_update_restore
+        trap - INT TERM
         rm -rf "$_stage"
         die "Could not install the staged starter kit update; previous kit copy was restored."
     fi
     if [ -f "$_kit_dir/setup/exakit" ]; then
         mkdir -p "$EXAKIT_BIN_DIR"
-        install -m 755 "$_kit_dir/setup/exakit" "$EXAKIT_BIN_DIR/exakit" \
-            || die "Could not install the exakit command to $EXAKIT_BIN_DIR (is it writable? is the disk full?)."
+        install -m 755 "$_kit_dir/setup/exakit" "$EXAKIT_BIN_DIR/exakit" || {
+            # The kit directory is NEW and the binary is OLD at this point, so
+            # this is not a state to leave behind either.
+            _exakit_update_restore
+            trap - INT TERM
+            die "Could not install the exakit command to $EXAKIT_BIN_DIR (is it writable? is the disk full?)."
+        }
     else
-        [ -d "$_backup" ] && { rm -rf "$_kit_dir"; mv "$_backup" "$_kit_dir"; }
+        _exakit_update_restore
+        trap - INT TERM
         die "Updated kit did not contain setup/exakit after staging; previous kit copy was restored."
     fi
+    # Past every failure that would have wanted the backup: the kit directory
+    # and the binary now agree.
+    rm -f "$_update_marker" 2>/dev/null || true
+    trap - INT TERM
     manifest_set kit.source "${_repo}@${_kit_ref}"
     # Record the version too, not just where it came from. exakit_component_current
     # reads kit.version first, so without this the kit would report its old

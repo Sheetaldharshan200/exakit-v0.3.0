@@ -170,5 +170,71 @@ has "begin_step asks about drift"          'step_version_drift "$1"' "$_BS"
 has "...before it asks about the artifact" 'elif [ "$(step_artifact_state "$1")" = "missing" ]' "$_BS"
 
 echo
+echo "an interrupted update leaves something that can be finished:"
+# LIF-01/LIF-02. exakit_update_self renames the kit aside and then renames the
+# new one in. Between those two there is NO kit directory, and every subcommand
+# needs it to find setup/lib. The only recovery was an `if !` arm, which runs
+# for a non-zero exit and nothing else - not Ctrl-C, not a closed laptop, not
+# an OOM kill - and nothing anywhere looked for a stranded kit.backup-* later.
+# So the one command users are told to run routinely could leave a machine with
+# no tooling and the restore point sitting beside it, unmentioned.
+_ku_up="$(sed -n '/^exakit_update_self()/,/^}/p' "$ROOT/setup/lib/common.sh")"
+has "the stage is beside the kit, not in TMPDIR" 'mktemp -d "$EXAKIT_HOME/.kit-stage' "$_ku_up"
+has "a marker names the backup before the swap"  '> "$_update_marker"' "$_ku_up"
+has "...and a trap restores on Ctrl-C"           'trap ' "$_ku_up"
+has "...and it is cleared once the swap is done" 'rm -f "$_update_marker"' "$_ku_up"
+# LIF-02: the rollback must clear the destination first. Without it, a
+# destination left as a partial directory by a failed cross-filesystem mv turns
+# the "restore" into mv backup kit/ - the good copy buried one level down -
+# while the message still claims it was restored.
+# Asserted as the PROPERTY, not as a string: every move of the backup onto the
+# kit path must be guarded by a clear of that path first. A bare `lacks` on the
+# mv matches the correct use inside the restore helper too, and would fail on
+# the fix rather than on the defect.
+_ku_unguarded="$(printf '%s\n' "$_ku_up" | awk '
+    /mv "\$_backup" "\$_kit_dir"/ { if (prev !~ /rm -rf "\$_kit_dir"/) print NR }
+    { prev = $0 }')"
+check "no rollback nests the backup inside the kit" "" "$(printf '%s' "$_ku_unguarded" | tr '\n' ' ' | sed 's/ $//')"
+# ...and the guarded form is actually present, so the check above is not
+# vacuously passing on a function that no longer restores at all.
+_ku_restores="$(printf '%s\n' "$_ku_up" | grep -c 'mv "\$_backup" "\$_kit_dir"')"
+check "...and the restore itself still exists" "yes" \
+    "$([ "${_ku_restores:-0}" -ge 1 ] && echo yes || echo no)"
+
+# The loader is the ONLY code that still runs once kit/ is gone, so that is
+# where the recovery has to be. Driven for real: an installed exakit with no
+# lib/ beside it, pointed at a kit home in the interrupted state.
+_ku_w="$(mktemp -d)"; mkdir -p "$_ku_w/bin" "$_ku_w/home"
+cp "$ROOT/setup/exakit" "$_ku_w/bin/exakit"; chmod +x "$_ku_w/bin/exakit"
+mkdir -p "$_ku_w/home/kit.backup-20260101-000000/setup/lib"
+printf '%s
+' "$_ku_w/home/kit.backup-20260101-000000" > "$_ku_w/home/.update-in-progress"
+_ku_out="$(EXAKIT_HOME="$_ku_w/home" "$_ku_w/bin/exakit" status 2>&1)"
+has "the loader recognises it"        'an update was interrupted' "$_ku_out"
+has "...and says the data is intact"  'database, its data and your credentials are untouched' "$_ku_out"
+# The remedy has to be runnable AS WRITTEN - that is the agent contract, and it
+# is also the difference between a one-command fix and a reinstall.
+_ku_cmd="$(printf '%s' "$_ku_out" | grep -oE "mv '[^']*' '[^']*'" | head -1)"
+check "...and names a runnable restore" "yes" "$([ -n "$_ku_cmd" ] && echo yes || echo no)"
+eval "$_ku_cmd" 2>/dev/null
+check "...which actually restores the kit" "yes" \
+    "$([ -d "$_ku_w/home/kit/setup/lib" ] && echo yes || echo no)"
+# --json callers get it in the field they parse.
+mkdir -p "$_ku_w/home2"; cp -R "$_ku_w/home/kit" "$_ku_w/home2/kit.backup-20260101-000000"
+printf '%s
+' "$_ku_w/home2/kit.backup-20260101-000000" > "$_ku_w/home2/.update-in-progress"
+check "--json carries the same remedy" "yes" \
+    "$(EXAKIT_HOME="$_ku_w/home2" "$_ku_w/bin/exakit" status --json 2>/dev/null | python3 -c 'import json,sys
+try:
+    print("yes" if json.load(sys.stdin).get("remedy","").startswith("mv ") else "no")
+except Exception:
+    print("no")' 2>/dev/null)"
+# And none of this may fire on a machine that is simply not installed.
+mkdir -p "$_ku_w/home3"
+lacks "a plain not-installed machine is unaffected" 'an update was interrupted' \
+    "$(EXAKIT_HOME="$_ku_w/home3" "$_ku_w/bin/exakit" status 2>&1)"
+rm -rf "$_ku_w"
+
+echo
 echo "kit-upgrade.sh: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
