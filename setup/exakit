@@ -1575,7 +1575,16 @@ cmd_mcp_doctor() {
             # Same three keys as every other --json answer from a state query
             # (installed / status / remedy), so one parser handles all of them.
             # `database` is kept for callers written against the older shape.
-            printf '{"installed": true, "status": "database not running", "database": "not running", "remedy": "%s"}\n' \
+            #
+            # "stopped", THE SAME WORD `status --json` USES. AGENTS.md promises
+            # the five state queries "agree with each other on the status
+            # vocabulary", and this emitter and info's said "database not
+            # running" where status said "stopped" - one state, three emitters,
+            # two words, so `if d["status"] == "stopped"` was correct for one
+            # command and silently false for the other two. The sentence lives
+            # on in `database` and in the prose below, where it reads well;
+            # `status` is the machine field and now has one value per state.
+            printf '{"installed": true, "status": "stopped", "database": "not running", "remedy": "%s"}\n' \
                 "$(exakit_runtime_remedy)"
         else
             warn "The database is not running — fix that first: $(exakit_runtime_remedy)"
@@ -1829,7 +1838,11 @@ elif not rtype:
     doc["remedy"] = install_cmd
     doc["remedy_hint"] = "no runtime is recorded yet; the installer resumes at the unfinished step"
 else:
-    doc["status"] = "database not running"
+    # "stopped" - the same word status --json uses for this state. See the
+    # note in cmd_mcp_doctor: the status field is the machine's, and it has
+    # one value per state.
+    doc["status"] = "stopped"
+    doc["database"] = "not running"
     doc["remedy"] = "exakit start"
 skills_have = ((doc.get("components") or {}).get("skills") or {}).get("version")
 skills_want = sys.argv[3] or None
@@ -2190,6 +2203,24 @@ _exakit_refuse_unknown_options() {
     done
 }
 
+# EXAKIT_REFUSAL_JSON — did this caller ask for a machine answer?
+#
+# Set once, here, so that reject() and the unknown-command arm below can honour
+# --json on the paths that REFUSE, not only on the paths that succeed. `sql` is
+# excluded for the same reason it is excluded from the universal --help hook:
+# its argument is arbitrary SQL text, and a statement containing --json is a
+# query. It carries its own --json parsing and its own _sql_reject anyway.
+case "${1:-}" in
+    sql) : ;;
+    *)
+        for _rj_arg in "$@"; do
+            case "$_rj_arg" in
+                --json|-j) EXAKIT_REFUSAL_JSON=1; export EXAKIT_REFUSAL_JSON; break ;;
+            esac
+        done
+        ;;
+esac
+
 # State QUERIES are read-only by contract: no probe they run - however it
 # fails - may write the .last-failure note that status --json then reports as
 # an install failure forever. exakit_note_failure honours the flag, and every
@@ -2259,6 +2290,12 @@ case "${1:-help}" in
        # answer is its page - not "unknown command" followed by the whole menu.
        if exakit_help_is_id "${1}"; then
            exakit_help_render component "${1}"
+       elif [ "${EXAKIT_REFUSAL_JSON:-0}" = "1" ]; then
+           # One object on stdout, and the whole usage screen NOT dumped into
+           # the middle of it.
+           printf '{"ok": false, "error": "%s", "remedy": "exakit catalog --json", "rejected": true}\n' \
+               "$(_exakit_json_string "Unknown command '${1}'.")"
+           exit 2
        else
            echo "exakit: unknown command '${1}'" >&2
            usage >&2

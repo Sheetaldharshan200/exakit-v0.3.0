@@ -71,11 +71,36 @@ detect_wsl_drvfs_path() {
 
 # detect_arch — prints: arm64 | x86_64 | unsupported
 detect_arch() {
-    case "$(uname -m)" in
+    _da_m="$(uname -m)"
+    # UNDER ROSETTA 2, `uname -m` SAYS x86_64 - by design. A translated process
+    # is told it is Intel because that is what it is pretending to be, and
+    # nothing else in the kit asked a second question. So a kit installed from
+    # a Rosetta shell - an iTerm window duplicated with "Open using Rosetta", a
+    # terminal inside a translated IDE, anything launched from an Intel-only
+    # tool - fetched the INTEL build of Exasol Personal onto Apple Silicon and
+    # ran the whole database under emulation, with nothing on screen saying so.
+    #
+    # sysctl.proc_translated is the signal that separates the two. It is absent
+    # on a native arm64 process and absent on real Intel hardware, so "1" is
+    # the only answer that changes anything here, and the x86_64 guard keeps
+    # the probe off every other platform's path.
+    if [ "$_da_m" = "x86_64" ] && [ "$(uname -s)" = "Darwin" ] &&
+       [ "$(sysctl -n sysctl.proc_translated 2>/dev/null)" = "1" ]; then
+        _da_m="arm64"
+    fi
+    case "$_da_m" in
         arm64|aarch64) echo "arm64" ;;
         x86_64|amd64)  echo "x86_64" ;;
         *)             echo "unsupported" ;;
     esac
+}
+
+# detect_macos_translated — true when this very process is running under
+# Rosetta 2. Kept separate from detect_arch so that function stays a pure
+# answer to "what should we download"; this one is for telling the user.
+detect_macos_translated() {
+    [ "$(uname -s)" = "Darwin" ] || return 1
+    [ "$(sysctl -n sysctl.proc_translated 2>/dev/null)" = "1" ]
 }
 
 # detect_cpu_advertises_sve — true when a Linux aarch64 kernel advertises any
@@ -377,6 +402,9 @@ preflight_report() {
     else
         _pf_ok "Operating system: $_os"
     fi
+    if detect_macos_translated; then
+        _pf_note "This shell is running under Rosetta 2, so it reports itself as Intel. The kit has looked past that and will install the native arm64 build."
+    fi
     if [ "$_arch" = "unsupported" ]; then
         _pf_bad "CPU architecture: $(uname -m) is not supported (arm64 or x86_64 required)"
     else
@@ -433,7 +461,22 @@ preflight_report() {
     # needs nothing installed first. WSL takes the Linux checks: the launcher
     # has no WSL concept on that path, only the Linux one, and a WSL2 distro
     # satisfies it with a podman of its own.
-    if [ "$_os" = "linux" ] || [ "$_os" = "wsl" ]; then
+    # WSL 1 HAS NO LINUX KERNEL, so it has no cgroups, no user namespaces, and
+    # no container runtime that can work. detect_wsl_version's own comment says
+    # "this gates a hard refusal" - and nothing anywhere called it for that.
+    # Its one caller discards the value and uses it as a boolean "am I in WSL".
+    #
+    # Unrefused, a WSL 1 distro is classified `wsl`, routed to setup-linux.sh,
+    # and told to install Podman INSIDE the distro. On Debian/Ubuntu `apt-get
+    # install podman` succeeds, so this report goes green, and because
+    # EXAKIT_INSTALL_PODMAN defaults to on the installer then runs that install
+    # with sudo, unprompted. The failure surfaces a layer down as a raw Podman
+    # error about cgroups or newuidmap - after a several-minute download and a
+    # package install the user never needed. The one thing that would have said
+    # so in a sentence, at the front, was written and never wired up.
+    if [ "$_os" = "wsl" ] && [ "$(detect_wsl_version 2>/dev/null)" = "1" ]; then
+        _pf_bad "WSL 1: Exasol Personal needs a real Linux kernel to run containers, and WSL 1 does not have one (it translates syscalls to the NT kernel). Convert this distro from PowerShell: wsl --set-version $(cat /etc/hostname 2>/dev/null || echo '<distro>') 2   then re-run the installer."
+    elif [ "$_os" = "linux" ] || [ "$_os" = "wsl" ]; then
         if command -v podman >/dev/null 2>&1; then
             _pf_ok "Podman: available (the Exasol Personal deployment runs through it)"
             # Rootless Podman answers `podman info` happily and then fails at

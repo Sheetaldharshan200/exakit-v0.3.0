@@ -170,10 +170,24 @@ def commands_of(doc, include_hidden=False):
         return entries
     return [entry for entry in entries if not entry.get("hidden")]
 
-def without_hidden(doc):
-    """A copy of a document with its hidden commands removed, for JSON dumps."""
+def with_hidden_marked(doc):
+    """A copy of a document keeping its hidden commands, each carrying
+    "hidden": true.
+
+    THE JSON SURFACES MARK; THE SCREENS OMIT. AGENTS.md says of catalog --json:
+    "every supported command (a handful of internal upgrade paths are marked
+    hidden and are not for you to call)" - but the dumps deleted the entries
+    outright, so no row carried a hidden key and three dispatchable commands
+    were simply absent. That is not a cosmetic gap: `exakit skills --json`
+    answers a machine with {"status": "missing", "next": "exakit
+    skills-install"}, and catalog --json denied that command existed. An agent
+    holding both documents had to conclude one of them was lying.
+
+    The human surfaces are unchanged - these commands exist for repair, not for
+    discovery, and still do not belong on the overview or in --all."""
     copy = dict(doc)
-    copy["commands"] = commands_of(doc)
+    copy["commands"] = [dict(e, hidden=bool(e.get("hidden")))
+                        for e in commands_of(doc, include_hidden=True)]
     return copy
 
 # Every binary the kit documents. A command whose first word is one of these is
@@ -459,13 +473,14 @@ def render_command(name):
     return 1
 
 # ----------------------------------------------------------------- catalog --
-def catalog_rows():
+def catalog_rows(include_hidden=False):
     rows = []
     for key in sorted(docs):
         doc = docs[key]
         tool = "exakit" if key == "exakit" else key
-        for entry in commands_of(doc):
+        for entry in commands_of(doc, include_hidden=include_hidden):
             command = entry.get("command", "")
+            hidden = bool(entry.get("hidden"))
             # A component document may list a command that belongs to another
             # tool (exakit start on a runtime page); keep the tool it names.
             parts = command.split()
@@ -473,12 +488,12 @@ def catalog_rows():
                 rows.append({"tool": parts[0], "command": " ".join(parts[1:]),
                              "options": entry.get("options", ""),
                              "description": entry.get("summary") or entry.get("description", ""),
-                             "source": key})
+                             "source": key, "hidden": hidden})
             else:
                 rows.append({"tool": tool, "command": command,
                              "options": entry.get("options", ""),
                              "description": entry.get("summary") or entry.get("description", ""),
-                             "source": key})
+                             "source": key, "hidden": hidden})
     # Dedupe on (tool, command) WITHOUT options. Keying on options too let the
     # same command through twice whenever two documents spelled its options
     # differently: exakit.json lists `status [--json | -j]` while
@@ -549,14 +564,14 @@ def render_catalog(search):
 def render_json(which):
     # Shape kept compatible with the original `exakit catalog --json`: one
     # object carrying a "commands" array of tool/command/options/description.
-    rows = catalog_rows()
+    rows = catalog_rows(include_hidden=True)
     for row in rows:
         row["invocation"] = ("%s %s" % (row["tool"], row["command"])).strip()
     if which in ("", "all"):
         payload = {"schema_version": 1, "search": None, "count": len(rows),
-                   "commands": rows, "documents": {k: without_hidden(d) for k, d in docs.items()}}
+                   "commands": rows, "documents": {k: with_hidden_marked(d) for k, d in docs.items()}}
     elif which in docs:
-        payload = without_hidden(docs[which])
+        payload = with_hidden_marked(docs[which])
     else:
         needle = which.lower()
         hit = [r for r in rows if needle in

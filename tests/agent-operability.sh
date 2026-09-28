@@ -1764,5 +1764,165 @@ check "ExecStart quotes an argument with a space" '"/Volumes/Data Disk/exasol" s
     "$(bash -c '. "'"$ROOT"'/setup/lib/common.sh" >/dev/null 2>&1; _exakit_autostart_argv_line "/Volumes/Data Disk/exasol
 start"')"
 
+echo
+echo "the machine contract holds on the paths that REFUSE, not only those that answer:"
+# AGK-03. AGENTS.md: "Where a command takes --json ... the answer is one object
+# on stdout and nothing else there." Every refusal path ignored it - prose to
+# stderr, zero bytes on stdout - so an agent that had committed to a parser got
+# nothing to parse and the reason on a stream it was not reading. The kit
+# already had the right pattern in exactly one place (the loader's no-library
+# branch), applied nowhere else.
+_rj() { bash "$ROOT/setup/exakit" "$@" 2>/dev/null; }
+_rj_ok() { # _rj_ok <args...> -> "object" | "empty" | "not-json"
+    _rjo="$(_rj "$@")"
+    [ -n "$_rjo" ] || { printf 'empty'; return; }
+    printf '%s' "$_rjo" | python3 -c 'import json,sys
+try:
+    d = json.load(sys.stdin)
+    print("object" if isinstance(d, dict) and d.get("ok") is False and d.get("rejected") else "not-json")
+except Exception:
+    print("not-json")' 2>/dev/null
+}
+check "a bad option on a --json command answers an object" "object" "$(_rj_ok status --bogus-zz --json)"
+check "an unknown command with --json answers an object"   "object" "$(_rj_ok definitely-not-a-command --json)"
+check "...and does not dump the usage screen into it"      "object" "$(_rj_ok skills --bogus-zz --json)"
+# The exit code is the other half of the contract, and it says "your input was
+# wrong" rather than "the command failed".
+_rj status --bogus-zz --json >/dev/null 2>&1; check "a refusal still exits 2" "2" "$?"
+# Without --json the human path is untouched: nothing on stdout.
+check "no --json means nothing on stdout" "empty" "$(_rj_ok status --bogus-zz)"
+# sql keeps its own parsing: its argument is arbitrary SQL, and a statement
+# containing --json is a query, not a request for a machine answer.
+has "sql still parses --json itself" '_sql_json' "$(cat "$ROOT/setup/exakit")"
+
+echo
+echo "hidden commands are MARKED for machines, not deleted:"
+# AGK-02. AGENTS.md describes catalog --json as "every supported command (a
+# handful of internal upgrade paths are marked hidden)". The dumps deleted the
+# entries instead, so no row carried a hidden key and three dispatchable
+# commands were absent - including skills-install, which `exakit skills --json`
+# hands a machine as its "next". An agent holding both documents had to
+# conclude one of them was lying.
+_cat="$(bash "$ROOT/setup/exakit" catalog --json 2>/dev/null)"
+check "every catalog row carries a hidden key" "yes" \
+    "$(printf '%s' "$_cat" | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+print("yes" if d["commands"] and all("hidden" in r for r in d["commands"]) else "no")' 2>/dev/null)"
+check "the repair commands are present and marked" "exakit rollback-kit2,exakit skills-install,exakit upgrade-kit2" \
+    "$(printf '%s' "$_cat" | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+print(",".join(sorted(r["invocation"] for r in d["commands"] if r.get("hidden"))))' 2>/dev/null)"
+# ...and the command the kit tells a machine to run is one the catalog admits exists.
+has "skills --json still names skills-install as a next" 'exakit skills-install' \
+    "$(cat "$ROOT/setup/lib/common.sh")"
+check "...and the catalog now admits it exists" "yes" \
+    "$(printf '%s' "$_cat" | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+print("yes" if any(r["invocation"] == "exakit skills-install" for r in d["commands"]) else "no")' 2>/dev/null)"
+# The SCREENS stay clean - these exist for repair, not for discovery.
+check "the overview does not advertise them" "0" \
+    "$(bash "$ROOT/setup/exakit" help 2>/dev/null | grep -c 'skills-install')"
+check "--all does not advertise them either" "0" \
+    "$(bash "$ROOT/setup/exakit" help --all 2>/dev/null | grep -c 'skills-install')"
+
+echo
+echo "what the kit thinks this CPU is:"
+# MAC-04. detect_arch read `uname -m` and asked nothing else. Under Rosetta 2 a
+# translated process is TOLD it is x86_64 - that is the point of the
+# translation - so a kit installed from a Rosetta shell (an iTerm window
+# duplicated with "Open using Rosetta", a terminal inside a translated IDE)
+# fetched the Intel build of Exasol Personal onto Apple Silicon and ran the
+# database under emulation, silently.
+_ar_probe() { # _ar_probe <uname -m> <uname -s> <proc_translated or "">
+    ROOT="$ROOT" M="$1" S="$2" T="$3" bash -c '
+        . "$ROOT/setup/lib/detect.sh" >/dev/null 2>&1
+        uname() { case "$1" in -m) printf "%s\n" "$M" ;; -s) printf "%s\n" "$S" ;; esac; }
+        sysctl() { [ -n "$T" ] || return 1; printf "%s\n" "$T"; }
+        detect_arch'
+}
+check "a native arm64 Mac"              "arm64"       "$(_ar_probe arm64 Darwin 0)"
+check "a Rosetta shell is seen through" "arm64"       "$(_ar_probe x86_64 Darwin 1)"
+check "a genuine Intel Mac stays Intel" "x86_64"      "$(_ar_probe x86_64 Darwin "")"
+check "Linux x86_64 is untouched"       "x86_64"      "$(_ar_probe x86_64 Linux "")"
+check "Linux aarch64 is untouched"      "arm64"       "$(_ar_probe aarch64 Linux "")"
+check "an unknown CPU is still refused" "unsupported" "$(_ar_probe riscv64 Linux "")"
+
+echo
+echo "the five state queries use ONE word per state:"
+# AGK-07. AGENTS.md: the state queries "agree with each other on ... the status
+# vocabulary". They did not. status --json said "stopped"; info --json and
+# mcp-doctor --json each said "database not running" - a value in no vocabulary
+# AGENTS.md defined - so `d["status"] == "stopped"` was correct for one command
+# and silently false for the other two, which is exactly the class of bug the
+# shared shape exists to prevent.
+#
+# Asserted on the EMITTERS, because the live machine can only be in one state
+# at a time and this suite must not stop a running database to see the other.
+_sv_src="$(cat "$ROOT/setup/exakit")"
+_sv_ps="$(cat "$ROOT/setup/exakit.ps1")"
+lacks "no shell emitter invents a status word" '"status": "database not running"' "$_sv_src"
+lacks "...nor does the Python info block"      'doc["status"] = "database not running"' "$_sv_src"
+lacks "...nor either PowerShell twin"          'status = "database not running"' "$_sv_ps"
+lacks "...including its info emitter"          '$statusText = "database not running"' "$_sv_ps"
+# The sentence is still available to callers that want it, under its own key.
+has "the older shape is kept under its own key" '"database": "not running"' "$_sv_src"
+has "...on the Windows side too"               'database = "not running"'  "$_sv_ps"
+# And every word a state query can emit is one AGENTS.md lists.
+_sv_doc="$(sed -n '/^\*\*Liveness\*\*/p' "$ROOT/AGENTS.md")"
+has "AGENTS.md lists the word they all use" '`stopped`' "$_sv_doc"
+lacks "...and no longer lists the private one" '`database not running`' "$_sv_doc"
+
+echo
+echo "the one place the kit escalates to root says so accurately:"
+# SEC-02. README.md described the Podman install as consent-gated - "it asks
+# first" - while the code's own comment says the opposite ("NOT ASKED FOR ANY
+# MORE ... a y/n whose only sensible answer is yes"). A reader expecting a y/n
+# and looking away instead got a sudo timestamp and `sh -c "<package install>"`.
+# The code's reasoning is sound; the documents were describing a different kit.
+_pd_readme="$(cat "$ROOT/README.md")"
+_pd_quick="$(cat "$ROOT/quickstarts/linux.md")"
+_pd_code="$(cat "$ROOT/setup/lib/runtime-personal.sh")"
+# Scoped to the PODMAN row. "it asks first" also appears in the README about
+# `exakit update` stopping the database for a runtime update - which is true
+# (common.sh:5845, and the opt-in is `exakit update --yes`), so a whole-file
+# search for that phrase would fail on a correct sentence.
+_pd_podman_row="$(grep -n 'Podman (rootless is fine)' "$ROOT/README.md")"
+lacks "README does not promise a prompt that is not there" 'it asks first' "$_pd_podman_row"
+lacks "...nor does the Linux quickstart"                   'offers to install it for you' "$_pd_quick"
+has "README says what actually happens"                    'without stopping to ask' "$_pd_readme"
+has "...and names the way out"                             'EXAKIT_INSTALL_PODMAN=0' "$_pd_readme"
+has "...the quickstart names it too"                       'EXAKIT_INSTALL_PODMAN=0' "$_pd_quick"
+has "the opt-out is real code, not just documentation"     'EXAKIT_INSTALL_PODMAN:-' "$_pd_code"
+# The prompt has to size the request: a reusable sudo timestamp running a root
+# shell, not "one command".
+lacks "the sudo prompt no longer says 'one command'" 'for this one command as administrator' "$_pd_code"
+has "...it says what sudo actually grants"           'for the rest of its usual timeout' "$_pd_code"
+
+echo
+echo "WSL 1 is refused at the front, as detect_wsl_version says it is:"
+# WSL-03. detect_wsl_version's comment says "this gates a hard refusal" and
+# nothing called it for that - its one caller discarded the value and used it
+# as a boolean. So a WSL 1 distro (no Linux kernel, no cgroups, no user
+# namespaces) was classified `wsl`, routed to setup-linux.sh, and told to
+# install Podman inside itself. On Debian/Ubuntu that apt-get SUCCEEDS, so the
+# preflight went green and the installer then ran a sudo package install
+# unprompted - with the real failure arriving minutes later as a raw cgroups
+# error naming neither Podman nor the kernel.
+_wsl_pf() { # _wsl_pf <version> -> the preflight lines that mention WSL 1 or Podman
+    ROOT="$ROOT" V="$1" bash -c '
+        . "$ROOT/setup/lib/detect.sh" >/dev/null 2>&1
+        detect_os() { echo wsl; }
+        detect_wsl_version() { printf "%s\n" "$V"; }
+        preflight_report 2>&1 | sed "s/\x1b\[[0-9;]*m//g"'
+}
+has "WSL 1 is refused, and told how to convert" 'wsl --set-version' "$(_wsl_pf 1)"
+lacks "...and is not sent to install Podman"    'Podman: available' "$(_wsl_pf 1)"
+has "WSL 2 still takes the Linux checks"        'Podman' "$(_wsl_pf 2)"
+lacks "...and is not refused"                   'wsl --set-version' "$(_wsl_pf 2)"
+# The install gate refuses too, not only the preflight: an install does not
+# have to pass through preflight_report to get here.
+has "the install gate refuses WSL 1 as well" 'WSL 1 is not supported' "$_pd_code"
+has "...naming the conversion command"       'wsl --set-version <distro> 2' "$_pd_code"
+
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]

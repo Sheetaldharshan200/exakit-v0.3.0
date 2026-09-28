@@ -323,16 +323,37 @@ exapump_install_glibc_shim() {
 # The exapump release binary requires a newer glibc than this system has, so
 # it runs inside a container with host networking. The real binary lives at
 # the path baked in below; re-running the installer regenerates this wrapper.
-# Files are visible to exapump only under $HOME and /tmp.
+# Files are visible to exapump under $HOME, /tmp, and the directory you run it
+# from. THE LAST ONE MATTERS: this wrapper used to mount only the first two and
+# silently relocate the working directory to $HOME when you were anywhere else,
+# so `exapump upload sales.csv` from /srv/data resolved against $HOME/sales.csv
+# - reporting the wrong directory when nothing was there, and loading a
+# DIFFERENT FILE and calling it a success when something was. That is the
+# population this shim exists for: it is only generated on glibc < 2.38
+# (RHEL/Rocky/Alma 8-9, Debian 11-12, Amazon Linux 2023), which is servers,
+# where data lives under /srv, /data or an NFS mount far more often than under
+# $HOME. Mounting the current directory costs nothing and removes both shapes.
 if [ -t 0 ] && [ -t 1 ]; then _exakit_tty="-it"; else _exakit_tty="-i"; fi
+_exakit_v=""; _exakit_vp=""
 case "$PWD" in
-    "$HOME"*|/tmp*) _exakit_wd="$PWD" ;;
-    *)              _exakit_wd="$HOME" ;;
+    "$HOME"*|/tmp*)
+        # Already inside a mount; mounting it again would nest.
+        _exakit_wd="$PWD" ;;
+    *)
+        if [ -d "$PWD" ]; then
+            _exakit_wd="$PWD"; _exakit_v="-v"; _exakit_vp="$PWD:$PWD"
+        else
+            # No current directory to mount (deleted under us). Say so rather
+            # than quietly resolving relative paths somewhere else.
+            echo "exapump: the current directory does not exist; relative paths will resolve against $HOME" >&2
+            _exakit_wd="$HOME"
+        fi ;;
 esac
 exec @RUNTIME@ run --rm $_exakit_tty --network host @USERNS@ \
     -u "$(id -u):$(id -g)" \
     -e HOME="$HOME" \
     -v "$HOME:$HOME" -v /tmp:/tmp \
+    ${_exakit_v:+"$_exakit_v"} ${_exakit_vp:+"$_exakit_vp"} \
     -w "$_exakit_wd" \
     @IMAGE@ \
     "@REAL@" "$@"

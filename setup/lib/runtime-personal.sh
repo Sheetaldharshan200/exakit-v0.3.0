@@ -87,7 +87,7 @@ personal_heal_rootless_podman() {
 
     # A terminal may be asked; a scripted run must have said so in advance.
     if [ -n "$(_exakit_prompt_tty)" ]; then
-        confirm_env EXAKIT_PODMAN_SELFHEAL "Let the kit $_phr_what? It runs one sudo command and will ask for your password" y || {
+        confirm_env EXAKIT_PODMAN_SELFHEAL "Let the kit $_phr_what? It runs a command as administrator and will ask for your password" y || {
             info "Not changed. To do it yourself:  sudo $_phr_fix"
             return 0
         }
@@ -276,7 +276,14 @@ personal_install_podman() {
             exakit_note_failure "Podman needs an administrator password and this run has no terminal to ask for one"
             return 1
         fi
-        info "Your password, for this one command as administrator:"
+        # "this one command" UNDERSTATED IT. What is obtained is a sudo
+        # timestamp, reusable for the rest of its timeout, and what is run
+        # under it is `sh -c "<package manager install>"` - a root shell
+        # running the distro's own maintainer scripts. That is the ordinary
+        # way to install a package and it is fine; describing it as one
+        # command was what was not fine, because the reader sizing the request
+        # was sizing the wrong thing.
+        info "Your password, to install Podman as administrator (this grants sudo for the rest of its usual timeout):"
         if ! sudo -v; then
             info "Not installed. To do it yourself:  ${_pin_sudo}$_pin_cmd"
             exakit_note_failure "The administrator password for the Podman install was not given"
@@ -328,6 +335,22 @@ personal_check_requirements() {
     case "$_pcr_os" in
         macos) : ;;
         linux|wsl)
+            # ...WSL 2. WSL 1 is not Linux to anyone: it translates syscalls to
+            # the NT kernel, so it has no cgroups, no user namespaces, and no
+            # container runtime that can work. detect_wsl_version exists to
+            # gate exactly this refusal - its own comment says so - and until
+            # now nothing called it for that. Unrefused, a WSL 1 distro reached
+            # the Podman branch below, `apt-get install podman` SUCCEEDED, and
+            # the failure surfaced minutes later as a raw cgroups error, after
+            # a sudo package install the user never needed.
+            if [ "$_pcr_os" = wsl ] && [ "$(detect_wsl_version 2>/dev/null)" = "1" ]; then
+                error "This is a WSL 1 distro. Exasol Personal runs the database in a container, and WSL 1 has no Linux kernel to run one with."
+                info "Convert this distro to WSL 2, from PowerShell on the Windows side:"
+                info "  wsl --list --verbose          (find this distro's name and see its version)"
+                info "  wsl --set-version <distro> 2  (converts it; your files are kept)"
+                info "Then reopen the distro and re-run the installer: $(exakit_install_command)"
+                die "WSL 1 is not supported: Exasol Personal needs a real Linux kernel."
+            fi
             # WSL IS LINUX TO THE LAUNCHER, AND THAT IS THE WHOLE STORY. A WSL2
             # distro is an AMD64 Linux with a real kernel, the launcher ships a
             # Linux build, and its Linux local runtime asks for exactly one

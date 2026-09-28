@@ -869,6 +869,42 @@ class ExakitFailException : System.Exception {
     ExakitFailException([string]$Msg) : base($Msg) {}
 }
 
+# Deny-ExakitInput <message> [remedy] - refuse the caller's input, honouring
+# --json. Twin of reject() in common.sh, and it exists for the same reason: a
+# refusal owes the same contract as an answer. AGENTS.md promises that where a
+# command takes --json "the answer is one object on stdout and nothing else
+# there", and every refusal path used to print prose to the host and leave
+# stdout empty - so an agent that had committed to a parser got nothing to
+# parse and a reason on a stream it was not reading.
+#
+# Exit 2, like the shell twin: your input was wrong, as distinct from the
+# command failing.
+function Deny-ExakitInput {
+    param([Parameter(Mandatory)][string]$Message, [string]$Remedy = $null)
+    if ($script:ExakitRefusalJson) {
+        $payload = [ordered]@{ ok = $false; error = $Message; remedy = $Remedy; rejected = $true }
+        Write-Output ($payload | ConvertTo-Json -Compress -Depth 4)
+        if (Get-Command Write-ExakitLog -ErrorAction SilentlyContinue) { Write-ExakitLog "REJECT" $Message }
+        exit 2
+    }
+    # EXIT 2, NOT Fail's 1. Bad input is not an install failure, which is the
+    # same argument reject()'s comment in common.sh makes: Fail records a
+    # .last-failure note that `exakit status --json` then reports as a step of
+    # your install that did not finish, and leaves it hanging off an otherwise
+    # healthy machine. It also exits 1, so `exakit status --bogus` answered 1
+    # on Windows where the shell CLI answers 2 - two different codes for the
+    # same refusal, which is exactly what an agent branches on.
+    Stop-ExakitAnimation
+    if (Get-Command Write-ExakitLog -ErrorAction SilentlyContinue) { Write-ExakitLog "REJECT" $Message }
+    Write-Host ""
+    if ($script:UiFancy) {
+        Write-Host ("  {0}{1} {2}{3}{4}" -f $script:UiErr, $script:UiCross, $script:UiBold, $Message, $script:UiReset)
+    } else {
+        Write-Host ("  {0} {1}" -f $script:UiCross, $Message) -ForegroundColor Red
+    }
+    exit 2
+}
+
 function Fail([string]$Msg) {
     # Whatever is animating has to stop BEFORE the card is printed, or the message
     # is written into a frame that is still being repainted and the next redraw

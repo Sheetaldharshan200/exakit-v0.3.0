@@ -963,7 +963,28 @@ exakit_clear_runtime_failure_note() {
 # type something else, and recording it left a stale "failure" hanging off an
 # otherwise healthy machine until something else overwrote it. Exit 2, the same
 # code an unknown subcommand uses, because both mean "your input was wrong".
+# _exakit_json_string <text> — the text as a JSON string BODY (no quotes), with
+# the two characters that can break out of one escaped, and control characters
+# folded to spaces. Enough for a refusal message, which is prose the kit wrote.
+_exakit_json_string() {
+    printf '%s' "$*" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n\r\t' '   '
+}
+
 reject() {
+    # A REFUSAL OWES THE SAME CONTRACT AS AN ANSWER. AGENTS.md promises that
+    # where a command takes --json "the answer is one object on stdout and
+    # nothing else there" - but every refusal path printed prose to stderr and
+    # left stdout empty, so an agent that had committed to a parser got zero
+    # bytes and an exit code, with the reason on a stream it was not reading.
+    # The kit already had the right pattern in exactly one place: the loader's
+    # no-library branch scans for --json and answers with an object before
+    # exiting 4.
+    if [ "${EXAKIT_REFUSAL_JSON:-0}" = "1" ]; then
+        printf '{"ok": false, "error": "%s", "remedy": null, "rejected": true}\n' \
+            "$(_exakit_json_string "$*")"
+        _exakit_log_file "REJECT $*"
+        exit 2
+    fi
     printf '\n  %s%s %s%s%s\n' "${UI_ERR:-}" "${UI_CROSS:-[x]}" "${UI_BOLD:-}" "$*" "${UI_RESET:-}" >&2
     _exakit_log_file "REJECT $*"
     exit 2
@@ -10031,6 +10052,15 @@ _EXAKIT_CONN_EOF
     _exapump="$(manifest_get components.exapump.path 2>/dev/null)"
     if [ -n "$_exapump" ]; then
         ui_panel_line "exapump:      $(ui_tilde "$_exapump") (profile: $(manifest_get components.exapump.profile 2>/dev/null))"
+        # THE ONE FACT THAT EXPLAINS EVERY CONFUSING exapump ERROR on these
+        # distros, and it was recorded in the manifest and shown nowhere. On
+        # glibc < 2.38 the release binary cannot run, so the kit generates a
+        # container wrapper - which means exapump sees a subset of the
+        # filesystem. A path outside what is mounted is simply not there, and
+        # until now nothing told the user that a container was involved at all.
+        if [ "$(manifest_get components.exapump.glibc_shim 2>/dev/null)" = "true" ]; then
+            ui_panel_line "              runs in a container shim; sees files under ~, /tmp and your current directory"
+        fi
     fi
 
     # Stdio MCP configs live inside each AI client's own config file, not in

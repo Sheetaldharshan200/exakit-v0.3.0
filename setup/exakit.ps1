@@ -2787,7 +2787,7 @@ function Invoke-CmdLogs {
             { $_ -in @("--lines", "-n", "-Lines") }   { $i++; $lines = [int]$LogArgs[$i] }
             default {
                 if ($LogArgs[$i].StartsWith("-")) {
-                    Fail "Unknown option '$($LogArgs[$i])' for logs (supported: -f/--follow, --lines N, --path, --json)."
+                    Deny-ExakitInput "Unknown option '$($LogArgs[$i])' for logs (supported: -f/--follow, --lines N, --path, --json)."
                 }
                 if ($target) { Fail "Only one log target at a time (got '$target' and '$($LogArgs[$i])')." }
                 $target = $LogArgs[$i]
@@ -2816,7 +2816,7 @@ function Invoke-CmdDataLoad {
         if ($Argument -eq "-Force" -or $Argument -eq "--force") {
             $ForceFlag = $Argument
         } elseif ($Argument.StartsWith("-")) {
-            Fail "Unknown option '$Argument' for data-load (pass -Force, or a file or folder path)."
+            Deny-ExakitInput "Unknown option '$Argument' for data-load (pass -Force, or a file or folder path)."
         } else {
             $loadPath = Get-ExakitNormalizedPath $Argument
             if (-not (Test-Path $loadPath)) { Fail "No such file or folder: $Argument" }
@@ -2968,7 +2968,9 @@ function Invoke-CmdInfoJson {
         # ("steps_completed": "launcher"); hand parsers the array they were promised.
         if ($doc.PSObject.Properties["steps_completed"]) { $doc.steps_completed = @($doc.steps_completed | Where-Object { $null -ne $_ }) }
         $doc | Add-Member -NotePropertyName "installed" -NotePropertyValue $true -Force
-        $statusText = "database not running"
+        # "stopped" - one word per state across all five queries; see the note
+        # in the shell twin's cmd_mcp_doctor.
+        $statusText = "stopped"
         $remedyText = "exakit start"
         $remedyHint = $null
         if ($running) { $statusText = "running"; $remedyText = $null }
@@ -2993,6 +2995,11 @@ function Invoke-CmdInfoJson {
             $remedyHint = "the installer is still running (step: $installStep) - poll the remedy until status is running"
         }
         $doc | Add-Member -NotePropertyName "status" -NotePropertyValue $statusText -Force
+        # Kept for callers written against the older shape, the same way the
+        # shell twin keeps it.
+        if ($statusText -eq "stopped") {
+            $doc | Add-Member -NotePropertyName "database" -NotePropertyValue "not running" -Force
+        }
         $doc | Add-Member -NotePropertyName "remedy" -NotePropertyValue $remedyText -Force
         if ($remedyHint) { $doc | Add-Member -NotePropertyName "remedy_hint" -NotePropertyValue $remedyHint -Force }
         # The skill set's verdict, from the manifest and the cached versions
@@ -3173,6 +3180,13 @@ function Show-ExakitUsage {
 # source of truth `exakit catalog` renders - so every subcommand AND every
 # component supports the flag. Twin of the bash pre-dispatch block.
 #
+# Did this caller ask for a machine answer? Set once, so the paths that REFUSE
+# can honour --json and not only the paths that succeed. `sql` is excluded for
+# the same reason it is excluded from the help hook below: its argument is
+# arbitrary SQL, and a statement containing --json is a query.
+$script:ExakitRefusalJson = ($Command -ne "sql") -and
+    ((@($RestArgs) -contains "--json") -or (@($RestArgs) -contains "-j"))
+
 # `sql` is excluded on purpose: its argument is arbitrary SQL text.
 #
 # So is help itself. The -File binder pushes a leading `--help` into $RestArgs
@@ -3199,9 +3213,12 @@ try {
         param([string]$CommandName, [string[]]$Allowed, [string[]]$Arguments)
         foreach ($a in @($Arguments)) {
             if ("$a" -like "-*" -and ($Allowed -notcontains "$a")) {
+                if ($Allowed.Count -gt 0) { $msg = "Unknown option '$a' for $CommandName (supported: $($Allowed -join ' '))." }
+                else { $msg = "Unknown option '$a' for $CommandName (it takes none)." }
+                # --json gets one object on stdout; everyone else gets the card.
+                if ($script:ExakitRefusalJson) { Deny-ExakitInput $msg }
                 Write-Host ""
-                if ($Allowed.Count -gt 0) { Write-Host "  [x] Unknown option '$a' for $CommandName (supported: $($Allowed -join ' '))." }
-                else { Write-Host "  [x] Unknown option '$a' for $CommandName (it takes none)." }
+                Write-Host "  [x] $msg"
                 exit 2
             }
         }
@@ -3247,7 +3264,7 @@ try {
                 # An unknown COMMAND already exits 2 with the help screen; an
                 # unknown leading OPTION used to exit 0 with it, which is the
                 # one shape a caller cannot detect.
-                Fail "Unknown option '$leading' (there is no top-level option by that name). Run 'exakit help' for the command list, or 'exakit version' for versions."
+                Deny-ExakitInput "Unknown option '$leading' (there is no top-level option by that name). Run 'exakit help' for the command list, or 'exakit version' for versions."
             }
         }
     }
@@ -3259,13 +3276,13 @@ try {
         "status"       {
             $statusJson = ($RestArgs -contains "--json" -or $RestArgs -contains "-j")
             $statusUnknown = @($RestArgs | Where-Object { $_ -notin @("--json", "-j") })
-            if ($statusUnknown.Count -gt 0) { Fail "Unknown option '$($statusUnknown[0])' for status (supported: --json)." }
+            if ($statusUnknown.Count -gt 0) { Deny-ExakitInput "Unknown option '$($statusUnknown[0])' for status (supported: --json)." }
             Invoke-CmdStatus -Json:$statusJson
         }
         "version"      {
             $versionJson = ($RestArgs -contains "--json" -or $RestArgs -contains "-j")
             $versionUnknown = @($RestArgs | Where-Object { $_ -notin @("--json", "-j") })
-            if ($versionUnknown.Count -gt 0) { Fail "Unknown option '$($versionUnknown[0])' for version (supported: --json)." }
+            if ($versionUnknown.Count -gt 0) { Deny-ExakitInput "Unknown option '$($versionUnknown[0])' for version (supported: --json)." }
             if ($versionJson) { $script:JsonOutput = $true }
             Invoke-CmdVersion -Json:$versionJson
         }
@@ -3421,7 +3438,8 @@ try {
             if (-not $doctorUp) {
                 if ($doctorJson) {
                     # The same three keys every --json state answer carries.
-                    [ordered]@{ installed = $true; status = "database not running"; remedy = "exakit start"; database = "not running" } | ConvertTo-Json
+                    # "stopped", matching status --json and the shell twin.
+                    [ordered]@{ installed = $true; status = "stopped"; remedy = "exakit start"; database = "not running" } | ConvertTo-Json
                 } else {
                     Warn2 "The database is not running - fix that first: exakit start"
                     Info "MCP diagnostics need a live database (the read-only user and its grants are checked against it)."
@@ -3445,7 +3463,7 @@ try {
             # here "--json" was read as a client name.
             $mcpStatusJson = ($RestArgs -contains "--json" -or $RestArgs -contains "-j")
             $mcpStatusArgs = @($RestArgs | Where-Object { $_ -notin @("--json", "-j") })
-            foreach ($a in $mcpStatusArgs) { if ($a -like "-*") { Fail "Unknown option '$a' for mcp-status (supported: --json)." } }
+            foreach ($a in $mcpStatusArgs) { if ($a -like "-*") { Deny-ExakitInput "Unknown option '$a' for mcp-status (supported: --json)." } }
             if ($mcpStatusJson) { $env:EXAKIT_MCP_RESULT_JSON = "1"; $script:JsonOutput = $true }
             Invoke-CmdMcpOperation -Operation "status" -OpArgs $mcpStatusArgs
         }
@@ -3488,6 +3506,11 @@ try {
                 -Json:($RestArgs -contains "--json" -or $RestArgs -contains "-j")
         }
         default {
+            # One object on stdout for a machine, and the whole usage screen
+            # NOT dumped into the middle of it.
+            if ($script:ExakitRefusalJson) {
+                Deny-ExakitInput "Unknown command '$Command'." "exakit catalog --json"
+            }
             Write-Host "exakit: unknown command '$Command'" -ForegroundColor Red
             Show-ExakitUsage
             exit 2
