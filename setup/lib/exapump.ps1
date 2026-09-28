@@ -700,7 +700,7 @@ function Invoke-ExapumpSqlFile {
         # "Connection refused" arrives WITH "exakit start" instead of leaving the
         # reader to map one to the other.
         Show-ExakitDbErrorRemedy $result.Output
-        Fail "SQL file failed: $Path (see log)"
+        Fail "The SQL in $(Split-Path -Leaf $Path) did not run. The database's own message: exakit logs setup. Check the database is up with: exakit status"
     }
     if (-not $script:ExakitUploadQuiet) { Ok "$Description done" }
     return $true
@@ -825,7 +825,7 @@ function Invoke-ExapumpUpload {
         # same words, on both paths. Twin of exapump_upload in exapump.sh.
         $uploadWhy = Get-ExakitUploadFailureReason -Output $result.Output
         if ($uploadWhy) { Fail "Could not load $(Split-Path $Path -Leaf) into $Target - $uploadWhy" }
-        Fail "Upload failed: $Path -> $Target (see log)"
+        Fail "Could not load $(Split-Path -Leaf $Path) into $Target. What exapump said: exakit logs setup. Check the database is up with: exakit status"
     }
     if (-not $script:ExakitUploadQuiet) { Ok "$(Split-Path $Path -Leaf) loaded" }
     # A CRLF file whose last column is text LOADS - with a carriage return on
@@ -2511,7 +2511,7 @@ function Invoke-ExakitDatasetDirLoad {
             -Phase "$Id - loading $($csvFiles.Count) data $unit"
         Invoke-ExapumpUploadMany -Files $uploadFiles -Id $Id | Out-Null
         if ($script:ExakitUploadFailures.Count -gt 0) {
-            Fail "Upload failed: $($script:ExakitUploadFailures -join '; ') (see log)"
+            Fail "Could not load $($script:ExakitUploadFailures -join '; '). The reason: exakit logs setup. Retry this step with: exakit update"
         }
         $doneWeight += $bytes
     }

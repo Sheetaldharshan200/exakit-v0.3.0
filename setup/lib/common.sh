@@ -6342,7 +6342,7 @@ run_rollback() {
         "$EXAKIT_ROLLBACK_FILE" | while IFS= read -r cmd; do
         _exakit_log_file "UNDO  $cmd"
         sh -c "$cmd" >> "${EXAKIT_LOG_FILE:-/dev/null}" 2>&1 || \
-            warn "Rollback command failed (see log): $cmd"
+            warn "A rollback step did not complete: $cmd — what it printed: exakit logs setup"
     done
     : > "$EXAKIT_ROLLBACK_FILE"
     ok "Rollback finished"
@@ -7975,7 +7975,7 @@ exakit_run_mcp_setup_cli() {
         # screen before anyone could read it. die() stops the animation for the
         # same reason.
         command -v ui_animation_stop >/dev/null 2>&1 && ui_animation_stop
-        warn "AI client setup failed (see log)."
+        warn "Could not write the MCP entry for this AI client. What failed: exakit logs setup. Retry with: exakit mcp-setup"
         return 1
     fi
     return 0
@@ -8068,7 +8068,7 @@ exakit_run_mcp_operation_cli() {
         ) > "$_output_file" 2>> "${EXAKIT_LOG_FILE:-/dev/null}"; then
             _exakit_log_mcp_result_failure "$_output_file"
             _exakit_mcp_reported "$_output_file" && return 2
-            warn "MCP $_operation failed (see log)."
+            warn "MCP $_operation did not complete. The reason: exakit logs setup. Retry with: exakit mcp-setup"
             return 1
         fi
         return 0
@@ -8090,7 +8090,7 @@ exakit_run_mcp_operation_cli() {
         # Return 2 so the caller can keep a non-zero exit for scripts without
         # contradicting the report it just printed.
         _exakit_mcp_reported "$_output_file" && return 2
-        warn "MCP $_operation failed (see log)."
+        warn "MCP $_operation did not complete. The reason: exakit logs setup. Retry with: exakit mcp-setup"
         return 1
     fi
     return 0
@@ -8191,7 +8191,7 @@ for action in doc.get("next_actions", []):
 
 print("\n".join(lines))
 PY
-)" || { warn "Could not render the MCP setup summary (see log)."; return 0; }
+)" || { warn "Could not draw the MCP summary; the setup itself is unaffected. See: exakit logs setup, or list the clients with: exakit mcp-status"; return 0; }
     while IFS='|' read -r _sum_kind _sum_text; do
         [ -n "$_sum_text" ] || continue
         case "$_sum_kind" in

@@ -313,7 +313,7 @@ exapump_install_glibc_shim() {
     chmod 755 "$_shim_real"
 
     run_logged "$_shim_runtime" pull "$EXAKIT_EXAPUMP_SHIM_IMAGE" \
-        || die "Could not pull $EXAKIT_EXAPUMP_SHIM_IMAGE with $_shim_runtime (see log). Check network access and re-run."
+        || die "Could not pull $EXAKIT_EXAPUMP_SHIM_IMAGE with $_shim_runtime. What it printed: exakit logs setup. Check network access and re-run."
 
     # $HOME/$PWD/id expand at RUN time (quoted heredoc); the runtime, image,
     # and real-binary path are baked in below with a safe substitution.
@@ -609,7 +609,7 @@ exapump_run_sql_file() {
     [ "${EXAKIT_UPLOAD_QUIET:-0}" = 1 ] || info "Running ${2:-$(basename "$1")}"
     if ! run_logged "$(exapump_cli)" sql -p "$EXAKIT_EXAPUMP_PROFILE" < "$1"; then
         [ -n "${EXAKIT_LOG_FILE:-}" ] && exakit_explain_db_error "$(tail -8 "$EXAKIT_LOG_FILE" 2>/dev/null)"
-        die "SQL file failed: $1 (see log)"
+        die "The SQL in $(basename "$1") did not run. The database's own message: exakit logs setup. Check the database is up with: exakit status"
     fi
     [ "${EXAKIT_UPLOAD_QUIET:-0}" = 1 ] || ok "${2:-$(basename "$1")} done"
 }
@@ -731,7 +731,7 @@ exapump_upload() {
         if [ -n "$_upl_why" ]; then
             die "Could not load $(basename "$1") into $2 — $_upl_why"
         fi
-        die "Upload failed: $1 -> $2 (see log)"
+        die "Could not load $(basename "$1") into $2. What exapump said: exakit logs setup. Check the database is up with: exakit status"
     fi
     [ "${EXAKIT_UPLOAD_QUIET:-0}" = 1 ] || ok "$(basename "$1") loaded"
     # A CRLF file whose last column is text LOADS - and every value in that
@@ -2408,7 +2408,7 @@ exakit_load_dataset_dir() {
         exapump_upload_many "$_ld_schema" $_ld_csvs
         EXAKIT_PROGRESS_STATE=""
         [ -z "$EXAKIT_UPLOAD_FAILED" ] || \
-            die "Upload failed: $EXAKIT_UPLOAD_FAILED (see log)"
+            die "Could not load $EXAKIT_UPLOAD_FAILED. The reason: exakit logs setup. Retry this step with: exakit update"
         _ld_done_w=$(( _ld_done_w + _ld_bytes ))
     fi
 

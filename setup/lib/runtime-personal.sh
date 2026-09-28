@@ -1992,7 +1992,7 @@ personal_teardown() {
         # default. run_logged sends its output to the log, so that prompt is
         # invisible and the install just hangs forever waiting for input. The
         # user has already confirmed at the exakit uninstall level.
-        run_logged "$(personal_cli)" destroy --remove --auto-approve || warn "Destroy reported errors (see log)"
+        run_logged "$(personal_cli)" destroy --remove --auto-approve || warn "The launcher reported errors while destroying the deployment. What it said: exakit logs setup"
     else
         info "No active deployment found"
     fi

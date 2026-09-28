@@ -1303,7 +1303,7 @@ function Install-ExakitUv {
         # identical). Behavior intentionally unchanged here pending that fix.
         Invoke-Expression (Invoke-RestMethod -Uri "https://astral.sh/uv/install.ps1") *>> $script:LogFile
     } catch {
-        Fail "uv installation failed (see log): $_"
+        Fail "The uv installer did not finish, and the MCP server runs through uv. What it printed: $_ - more in: exakit logs setup"
     }
     $bin = Get-ExakitUvBin
     if (-not $bin) {

@@ -623,7 +623,7 @@ function Test-JsonTables {
         $ErrorActionPreference = $prevEap
     }
     if ($importCode -ne 0) {
-        Warn2 "JSON Tables is installed but cannot be imported from $($script:JsonTablesVenv) (see log). Recorded validated=false."
+        Warn2 "JSON Tables is installed but cannot be imported from $($script:JsonTablesVenv). Why: exakit logs setup. Recorded validated=false; retry with: exakit update"
         Set-ExakitManifestValue "components.json_tables.validated" $false
         return
     }

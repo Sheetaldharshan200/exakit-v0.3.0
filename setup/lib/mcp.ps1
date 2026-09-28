@@ -932,7 +932,7 @@ function Invoke-McpSetupCli {
         # screen before anyone could read it. Fail() stops the animation for the
         # same reason.
         Stop-ExakitAnimation
-        Warn2 "AI client setup failed (see log)."
+        Warn2 "Could not write the MCP entry for this AI client. What failed: exakit logs setup. Retry with: exakit mcp-setup"
         return $null
     }
     return $result.Output
@@ -962,7 +962,7 @@ function Invoke-McpOperationCli {
         # nothing repaired, and the log's own advice was "run exakit mcp-doctor".
         # Twin of _exakit_mcp_reported in common.sh.
         if (Test-McpResultReported -Text $result.Output) { return $result.Output }
-        Warn2 "MCP $Operation failed (see log)."
+        Warn2 "MCP $Operation did not complete. The reason: exakit logs setup. Retry with: exakit mcp-setup"
         return $null
     }
     return $result.Output

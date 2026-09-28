@@ -69,7 +69,8 @@ mcp_uv_install() {
     fi
     info "Installing uv (Python tool runner used by the MCP server)"
     if command -v brew >/dev/null 2>&1; then
-        run_logged brew install uv || die "brew install uv failed (see log)"
+        run_logged brew install uv ||
+            die "Homebrew could not install uv, which the MCP server runs through. What brew said: exakit logs setup. Then install it yourself and re-run:  brew install uv"
     else
         # TODO(security): this pipes a remote installer straight into a shell,
         # unlike the kit's own artifacts which are SHA256-verified. It can't be
@@ -87,7 +88,7 @@ mcp_uv_install() {
         # --proto '=https'; the script that is executed carried neither.
         curl -LsSf --proto '=https' --proto-redir '=https' --retry 3 \
             https://astral.sh/uv/install.sh | run_logged sh || \
-            die "uv installation failed (see log)"
+            die "The uv installer did not finish, and the MCP server runs through uv. What it printed: exakit logs setup. Then install it yourself and re-run:  curl -LsSf https://astral.sh/uv/install.sh | sh"
         # The uv installer defaults to ~/.local/bin
         case ":$PATH:" in
             *":$HOME/.local/bin:"*) ;;
@@ -661,7 +662,7 @@ mcp_validate_http() {
         ok "HTTP mode answers on port $EXAKIT_MCP_HTTP_PORT"
         manifest_set components.mcp_server.http_validated true
     else
-        warn "HTTP mode did not answer on port $EXAKIT_MCP_HTTP_PORT (see log)"
+        warn "The HTTP MCP server did not answer on port $EXAKIT_MCP_HTTP_PORT. What it printed: exakit logs setup. Check nothing else holds that port, then retry with: exakit mcp-setup"
         manifest_set components.mcp_server.http_validated false
     fi
     # uvx spawns the actual server as a child process — kill both, bounded.

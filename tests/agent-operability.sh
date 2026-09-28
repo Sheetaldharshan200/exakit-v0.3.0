@@ -1976,5 +1976,43 @@ has "the PowerShell refusal goes through Deny-ExakitInput" 'Deny-ExakitInput "au
 has "the home notice is kept off a machine's stdout" '[Console]::Error.WriteLine' \
     "$(sed -n '/^function Show-ExakitHomeNotice/,/^}/p' "$ROOT/setup/lib/exakit-common.ps1")"
 
+echo
+echo "an error message that ends the run says what to do next:"
+# NEW-03. QUICKSTART.md promises "Every error message names its remedy", and
+# the fatal ones said "(see log)" - which names a file the reader has no path
+# to, no way to open, and no idea which of `exakit logs`' three targets holds.
+# The repo already knew: two comments beside genuinely good translators say at
+# length that sending the reader into another program to look for an answer
+# THIS RUN IS HOLDING is the wrong shape. The standard existed and was applied
+# twice.
+#
+# The rule enforced here is narrow and checkable: a message may point at the
+# log, but it must name the command that opens it. "log" on its own is not a
+# remedy; "exakit logs setup" is.
+_sl_bad=""
+for _sl_f in "$ROOT"/setup/lib/*.sh "$ROOT"/setup/exakit "$ROOT"/setup/lib/*.ps1 "$ROOT"/setup/exakit.ps1; do
+    [ -f "$_sl_f" ] || continue
+    # Only lines that RAISE something - a comment about the old wording is not
+    # a message anyone sees.
+    _sl_hits="$(grep -nE '(die|warn|Fail|Warn2)[ (]"' "$_sl_f" 2>/dev/null \
+                | grep '(see log)' \
+                | grep -v 'exakit ' | cut -d: -f1 | tr '\n' ',' )"
+    [ -n "$(printf '%s' "$_sl_hits" | tr -d ',')" ] || continue
+    _sl_bad="$_sl_bad ${_sl_f##*/}:${_sl_hits%,}"
+done
+check "no raised message points at 'the log' without naming the command" "" "${_sl_bad# }"
+# ...and the check is not vacuous: the raisers it scans are really there.
+_sl_raisers="$(grep -chE '(die|warn|Fail|Warn2)[ (]"' "$ROOT"/setup/lib/common.sh)"
+check "...and it scanned real raisers" "yes" \
+    "$([ "${_sl_raisers:-0}" -gt 50 ] && echo yes || echo no)"
+# The messages that replaced them name a target that actually exists.
+_sl_targets="$(bash "$ROOT/setup/exakit" logs --json 2>/dev/null | python3 -c 'import json,sys
+try: print(" ".join(t.get("target","") for t in json.load(sys.stdin)["targets"]))
+except Exception: print("")' 2>/dev/null)"
+case "$_sl_targets" in
+    *setup*) check "the target those messages name is a real one" "yes" "yes" ;;
+    *)       check "the target those messages name is a real one" "yes" "no: [$_sl_targets]" ;;
+esac
+
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]
