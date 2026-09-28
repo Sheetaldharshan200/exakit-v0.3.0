@@ -940,8 +940,14 @@ function Invoke-CmdRepairRuntime {
     } else {
         Warn2 "This rebuilds your database from empty. Every table in it is deleted and cannot be recovered."
         Info "The bundled sample datasets are reloaded afterwards. Anything you loaded yourself is not."
+        # A format the kit can load back - see the note on the shell twin.
+        # `exakit sql --json` emits an {"ok","rows","row_count"} envelope that
+        # nothing here ingests, so the one rescue instruction printed before a
+        # command that destroys the database produced a file its owner could
+        # not restore from.
         Info "If the database still answers, copy out anything you want to keep first, one table at a time:"
-        Info "  exakit sql --json 'SELECT * FROM <SCHEMA>.<TABLE>' > table.json"
+        Info "  exapump sql -p $($script:ExapumpProfile) -f csv 'SELECT * FROM <SCHEMA>.<TABLE>' > table.csv"
+        Info "  ...and load it back afterwards with: exakit data-load table.csv"
     }
     if (-not $confirmed) {
         if (-not (Confirm-ExakitPrompt "Delete everything in the database and rebuild it empty?" $false)) {

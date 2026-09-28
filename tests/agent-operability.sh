@@ -2058,5 +2058,55 @@ done
 _jc_emits="$(grep -o '_skj_status="[a-z_]*"' "$ROOT/setup/lib/common.sh" | sed 's/.*="//;s/"//' | sort -u | tr '\n' ' ')"
 check "...and those are exactly what the code emits" "current missing update_pending " "$_jc_emits"
 
+echo
+echo "destructive commands say what they destroy, and declining is not success:"
+# AGK-12. AGENTS.md defines exit 5 as "a command you did not confirm".
+# repair-runtime implements it; the add-on removal thirty lines away answered
+# 0, which means "done" to anything reading the code. An agent removing an
+# add-on without a terminal - so confirm() takes its default of no - was told
+# the removal succeeded while the add-on was still there.
+_dc_w="$WORK/destructive"; rm -rf "$_dc_w"; mkdir -p "$_dc_w/kit/dash-server-venv/bin" "$_dc_w/bin"
+printf '{"components":{"dash_server":{"version":"0.1.0","validated":true}},"runtime":{"type":"personal"}}\n' \
+    > "$_dc_w/kit/manifest.json"
+# dash_server_installed_version wants the manifest record AND a venv that
+# answers, so the record alone cannot fake an install - which is deliberate.
+printf '#!/bin/sh\necho 0.1.0\n' > "$_dc_w/kit/dash-server-venv/bin/python"
+chmod +x "$_dc_w/kit/dash-server-venv/bin/python"
+_dc_run() { EXAKIT_HOME="$_dc_w/kit" EXAKIT_BIN_DIR="$_dc_w/bin" \
+    bash "$ROOT/setup/exakit" uninstall "$@" </dev/null >/dev/null 2>&1; echo $?; }
+check "declining an add-on removal exits 5, not 0" "5" "$(_dc_run dash-server)"
+check "...a dry run still exits 0"                 "0" "$(_dc_run dash-server --dry-run)"
+check "...an unknown target still exits 2"         "2" "$(_dc_run not-a-thing)"
+
+# LIF-05: --yes is what AGENTS.md documents for automation, so it is the path
+# an agent takes when a user says "uninstall the kit" - and it printed one warn
+# line and destroyed, leaving no record of WHAT went.
+_dc_yes="$(sed -n '/if \[ "\$_uni_yes" = 1 \]; then/,/^    fi/p' "$ROOT/setup/exakit")"
+has "a --yes uninstall prints the plan first" 'exakit_uninstall_run 1' "$_dc_yes"
+has "...and says there is no export step"     'no export step' "$_dc_yes"
+has "...and still performs the removal"       'exakit_uninstall_run 0' "$_dc_yes"
+
+# LIF-12: the rescue line printed before repair-runtime named `exakit sql
+# --json`, whose {"ok","rows","row_count"} envelope nothing in the kit ingests
+# - so the one instruction given before a command that destroys the database
+# produced a file its owner could not restore from.
+for _dc_f in setup/exakit setup/exakit.ps1; do
+    _dc_src="$(sed -n '/copy out anything you want to keep/,+3p' "$ROOT/$_dc_f")"
+    lacks "$_dc_f no longer advises an unloadable format" "sql --json 'SELECT" "$_dc_src"
+    has   "$_dc_f names a format the kit can load back"   "-f csv" "$_dc_src"
+    has   "...and the command that loads it"              "exakit data-load" "$_dc_src"
+done
+
+# NEW-10: --force is the one destructive verb in the kit with no gate at all,
+# and every place it was suggested called it "reload" - which sounds additive.
+# The schema scripts are CREATE OR REPLACE TABLE, and the kit teaches people to
+# work in exactly those schemas.
+for _dc_f in README.md setup/exakit setup/lib/exapump.sh setup/help/exakit.json; do
+    _dc_hits="$(grep -o '\-\-force[^."]\{0,40\}' "$ROOT/$_dc_f" 2>/dev/null | grep -ci 'reload' || true)"
+    check "$_dc_f no longer calls --force a reload" "0" "${_dc_hits:-0}"
+done
+has "the help document says what --force does to the tables" 'dropped and rebuilt' \
+    "$(cat "$ROOT/setup/help/exakit.json")"
+
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]

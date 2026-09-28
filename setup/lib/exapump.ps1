@@ -835,7 +835,10 @@ function Invoke-ExapumpUpload {
         # same words, on both paths. Twin of exapump_upload in exapump.sh.
         $uploadWhy = Get-ExakitUploadFailureReason -Output $result.Output
         if ($uploadWhy) { Fail "Could not load $(Split-Path $Path -Leaf) into $Target - $uploadWhy" }
-        Fail "Could not load $(Split-Path -Leaf $Path) into $Target. What exapump said: exakit logs setup. Check the database is up with: exakit status"
+        # "Upload failed:" on purpose - the "Could not load X into Y" form on
+        # the line above is reserved for the branch that HAS the reason and
+        # appends it. Same distinction as the shell twin.
+        Fail "Upload failed: $Path -> $Target. What exapump said is in the log: exakit logs setup. Check the database is up with: exakit status"
     }
     if (-not $script:ExakitUploadQuiet) { Ok "$(Split-Path $Path -Leaf) loaded" }
     # A CRLF file whose last column is text LOADS - with a carriage return on
