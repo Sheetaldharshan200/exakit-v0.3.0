@@ -2170,5 +2170,52 @@ has "...validates it looks like a checkout"     'does not look like a kit checko
 has "...and copies it instead of downloading"   'Using local kit checkout' "$_hd_ips"
 has "AGENTS.md says it works on Windows too"    'including Windows' "$(cat "$ROOT/AGENTS.md")"
 
+echo
+echo "the AI client's credential cannot pass itself off as the read-only one:"
+# SEC-09. mcp_credentials falls back to the ADMIN account when the manifest has
+# no recorded read-only connection - a degraded state (a partially restored kit
+# home, a hand edit, a crossing from an older layout), not the default path.
+# The fallback is wanted: it is what lets a half-provisioned kit be repaired.
+# What was not wanted is that it was INDISTINGUISHABLE from the real thing, so
+# every caller took it at face value and the one line a user would check went
+# on printing "(read-only)" about a full-privilege session - inverting the
+# kit's central safety claim in the one direction that matters, open.
+_sc_kind() { # _sc_kind <recorded|missing> -> user and kind
+    ROOT="$ROOT" MODE="$1" bash -c '
+        . "$ROOT/setup/lib/common.sh" >/dev/null 2>&1
+        . "$ROOT/setup/lib/mcp.sh" >/dev/null 2>&1
+        if [ "$MODE" = recorded ]; then
+            manifest_get() { case "$1" in
+                components.mcp_server.connection.user) echo mcp_readonly ;;
+                components.mcp_server.connection.password_file) echo /tmp/ro ;;
+            esac; }
+        else
+            manifest_get() { case "$1" in
+                runtime.user) echo sys ;;
+                runtime.password_file) echo /tmp/admin ;;
+            esac; }
+        fi
+        mcp_credentials | cut -f1,3 | tr "\t" " "' 2>/dev/null
+}
+check "a recorded read-only credential is labelled readonly" "mcp_readonly readonly" "$(_sc_kind recorded)"
+check "...and the admin fallback says which it is"           "sys admin-fallback"    "$(_sc_kind missing)"
+# The panel must read the resolver, not the manifest key directly - otherwise
+# it cannot tell the two apart at all.
+_sc_panel="$(sed -n '/_mcp_creds="\$(mcp_credentials/,+3p' "$ROOT/setup/lib/common.sh")"
+has "the ready panel resolves through mcp_credentials" 'cut -f3' "$_sc_panel"
+# CODE ONLY. The comment above the fix quotes the old expression to explain
+# what was wrong with it, so a whole-file search matches the explanation and
+# fails on the fixed file. Comment lines are stripped first - the same trap
+# that QAT-02 exists for, met a third time in this branch.
+lacks "...and no longer defaults the name to mcp_readonly" '${_mcp_user:-mcp_readonly}' \
+    "$(grep -v '^[[:space:]]*#' "$ROOT/setup/lib/common.sh")"
+has "...and warns when the resolution fell back"      'this is the ADMIN account' \
+    "$(cat "$ROOT/setup/lib/common.sh")"
+# The Windows twin had the identical silent fallback.
+_sc_ps="$(cat "$ROOT/setup/lib/mcp.ps1")"
+has "the Windows resolver labels its answer too"   'Kind = "admin-fallback"' "$_sc_ps"
+has "...and its panel warns on the fallback"       'NOT the read-only user' "$_sc_ps"
+lacks "...and no longer defaults to mcp_readonly"  '$userShown = "mcp_readonly"' "$_sc_ps"
+
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]

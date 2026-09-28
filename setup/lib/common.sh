@@ -8257,7 +8257,19 @@ EOF
 exakit_print_mcp_ready_panel() {
     _mode="${1:-}"
     _dsn="$(manifest_get runtime.dsn 2>/dev/null || true)"
-    _mcp_user="$(manifest_get components.mcp_server.connection.user 2>/dev/null || true)"
+    # THROUGH THE RESOLVER, not a direct manifest read. Reading
+    # connection.user here meant this panel could not tell "the read-only user
+    # is recorded" from "there is none and the client is about to be handed the
+    # admin account" - the two cases whose difference the line below exists to
+    # report. mcp_credentials answers both at once; its third field is which.
+    if command -v mcp_credentials >/dev/null 2>&1; then
+        _mcp_creds="$(mcp_credentials 2>/dev/null || true)"
+        _mcp_user="$(printf '%s' "$_mcp_creds" | cut -f1)"
+        _mcp_user_kind="$(printf '%s' "$_mcp_creds" | cut -f3)"
+    else
+        _mcp_user="$(manifest_get components.mcp_server.connection.user 2>/dev/null || true)"
+        _mcp_user_kind="readonly"
+    fi
     _mcp_package="$(manifest_get components.mcp_server.package 2>/dev/null || printf '%s' "$EXAKIT_MCP_PACKAGE")"
     _mcp_version="$(manifest_get components.mcp_server.version 2>/dev/null || printf '%s' "$EXAKIT_MCP_VERSION")"
     _mcp_command="$(manifest_get components.mcp_server.command 2>/dev/null || true)"
@@ -8272,7 +8284,17 @@ exakit_print_mcp_ready_panel() {
     _exakit_log_file "DATA  MCP command: $_mcp_command $_mcp_package@$_mcp_version"
     _exakit_log_file "DATA  MCP managed state: $EXAKIT_MCP_DIR"
     _exakit_log_file "DATA  MCP TLS: ${_tls:-unknown}"
-    ok "MCP server 'exasol' — ${_dsn:-unknown} as ${_mcp_user:-mcp_readonly} (read-only), started by your AI client on demand"
+    # THE USER THAT WAS RESOLVED, not a default that assumes the good case.
+    # `${_mcp_user:-mcp_readonly}` printed the reassurance even when the
+    # resolution had fallen back to the admin account, which is precisely when
+    # the reader needed to know it had.
+    if [ "${_mcp_user_kind:-readonly}" = "admin-fallback" ]; then
+        warn "MCP server 'exasol' — ${_dsn:-unknown} as ${_mcp_user:-unknown} — this is the ADMIN account, NOT the read-only user."
+        info "No read-only MCP credential is recorded, so writes from your AI client would NOT be rejected by the database."
+        info "Fix it with: exakit mcp-setup"
+    else
+        ok "MCP server 'exasol' — ${_dsn:-unknown} as ${_mcp_user:-unknown} (read-only), started by your AI client on demand"
+    fi
     # Put the prompt straight onto the clipboard so the first interaction is a
     # paste, not a retype. Best-effort: silent when no clipboard tool exists.
     #
