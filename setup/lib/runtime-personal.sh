@@ -173,7 +173,11 @@ _personal_podman_install_cmd_auto() {
     [ -n "$_ppica_cmd" ] || return 1
     case "$_ppica_cmd" in
         apt-get*)
-            printf 'DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 %s -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold </dev/null\n' \
+            # `apt-get update` first: a fresh Ubuntu image or container ships
+            # with empty package lists, and the install then fails with
+            # "Unable to locate package podman". Run inside the same `sh -c` so
+            # sudo covers both halves. The printed command stays the short one.
+            printf 'DEBIAN_FRONTEND=noninteractive apt-get update -qq </dev/null && DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 %s -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold </dev/null\n' \
                 "$_ppica_cmd"
             ;;
         *)
@@ -1314,6 +1318,14 @@ _personal_podman_answers() {
 # the step to record. Not installed is 0: that is a different failure, already
 # named by personal_install_podman.
 personal_podman_running() {
+    # Linux and WSL only, like personal_install_podman above. The macOS launcher
+    # brings its own container runtime, so a Podman Desktop the user installed
+    # and left stopped has nothing to do with the deployment - checking it
+    # skipped the database step on a Mac that could deploy.
+    case "$(detect_os)" in
+        linux|wsl) : ;;
+        *) return 0 ;;
+    esac
     command -v podman >/dev/null 2>&1 || return 0
     _personal_podman_answers && return 0
     # ONE REPAIR, THEN ASK AGAIN. Much the commonest reason a rootless podman

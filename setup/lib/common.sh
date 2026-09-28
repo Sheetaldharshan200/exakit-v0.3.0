@@ -153,8 +153,13 @@ EXAKIT_VERSIONS_URL="${EXAKIT_VERSIONS_URL:-https://raw.githubusercontent.com/${
 # on purpose: manifest_get is not defined yet and requires python3 fatally,
 # while a kit source is three fields of one line - and a machine with no
 # python3, or no manifest, simply keeps the default.
+# The macOS Command Line Tools stub (see _exakit_python3_is_xcode_stub, which is
+# not defined yet) is ruled out inline: running it pops the developer-tools
+# dialog, and this runs on every exakit command.
 if [ -z "$_EXAKIT_KIT_REPO_FROM_ENV" ] && [ -f "$EXAKIT_MANIFEST" ] && \
-   command -v python3 >/dev/null 2>&1; then
+   command -v python3 >/dev/null 2>&1 && \
+   ! { [ "$(command -v python3)" = /usr/bin/python3 ] && [ -x /usr/bin/xcode-select ] && \
+       ! /usr/bin/xcode-select -p >/dev/null 2>&1; }; then
     _ekr_src="$(python3 - "$EXAKIT_MANIFEST" <<'EXAKIT_KIT_SRC_PY' 2>/dev/null
 import json, sys
 try:
@@ -1259,6 +1264,35 @@ require_python3() {
 EXAKIT_MIN_PYTHON="3.11"
 _EXAKIT_SYSTEM_PY_OK=""
 
+# _exakit_python3_is_xcode_stub — is the python3 on PATH the macOS placeholder
+# rather than an interpreter?
+#
+# On a Mac without the Xcode Command Line Tools, /usr/bin/python3 is a small
+# xcrun shim: it satisfies `command -v`, and running it fails (and pops the
+# "install developer tools" dialog). It is decided WITHOUT running it: the shim
+# only works when a developer directory exists, and `xcode-select -p` answers
+# that without a dialog. Anything that is not /usr/bin/python3 on a Mac is
+# never the stub, and costs no process at all.
+_exakit_python3_is_xcode_stub() {
+    case "$(command -v python3 2>/dev/null)" in
+        /usr/bin/python3) : ;;
+        *) return 1 ;;
+    esac
+    [ -x /usr/bin/xcode-select ] || return 1
+    ! /usr/bin/xcode-select -p >/dev/null 2>&1
+}
+
+# _exakit_python3_present — a python3 on PATH that can actually run (no
+# version floor). The gate for run_python_any: `command -v python3` alone
+# accepted the macOS stub, so on a Mac without the Command Line Tools every
+# manifest read failed after a successful install and `exakit status --json`
+# printed nothing.
+_exakit_python3_present() {
+    [ "${EXAKIT_DISABLE_SYSTEM_PYTHON:-0}" != "1" ] || return 1
+    command -v python3 >/dev/null 2>&1 || return 1
+    ! _exakit_python3_is_xcode_stub
+}
+
 # A system python3 is usable only when it exists AND meets the version floor;
 # anything less is treated exactly like an absent interpreter, so the
 # uv-managed runtime takes over automatically. The probe spawns an interpreter,
@@ -1266,6 +1300,11 @@ _EXAKIT_SYSTEM_PY_OK=""
 _exakit_has_system_python3() {
     [ "${EXAKIT_DISABLE_SYSTEM_PYTHON:-0}" != "1" ] || return 1
     command -v python3 >/dev/null 2>&1 || return 1
+    # The stub is known without running it (running it pops a dialog).
+    if [ -z "$_EXAKIT_SYSTEM_PY_OK" ] && _exakit_python3_is_xcode_stub; then
+        _EXAKIT_SYSTEM_PY_OK="no"
+        _exakit_log_file "INFO  /usr/bin/python3 is the Xcode Command Line Tools stub, not a real interpreter — using the uv-managed Python runtime instead"
+    fi
     if [ -z "$_EXAKIT_SYSTEM_PY_OK" ]; then
         # Keep the probe's stderr: it is the difference between an interpreter
         # that is too old and one that is not an interpreter at all.
@@ -1374,7 +1413,7 @@ exakit_can_run_python() {
 # Anything that needs only the standard library runs here instead.
 # Twin of the guard above: a stub that satisfies `command -v` must not be run.
 run_python_any() {
-    if _exakit_has_system_python3; then
+    if _exakit_python3_present; then
         python3 "$@"
         return $?
     fi
@@ -1389,11 +1428,15 @@ run_python_any() {
 # `command -v python3` therefore answered "yes, Python is available" and then
 # produced nothing: `exakit status --json` emitted ZERO BYTES with exit 3, which
 # AGENTS.md documents as "not running, or still installing", so an agent polling
-# that loop never terminated. _exakit_has_system_python3 (above) already answers
-# this correctly by EXECUTING a probe and keeping its stderr; these two are the
-# weaker twin of it and now defer to it.
+# that loop never terminated. _exakit_python3_present (above) answers
+# this correctly instead: it rejects the stub WITHOUT imposing
+# EXAKIT_MIN_PYTHON, which is the whole point of the "_any" pair - work that
+# needs only the standard library must not be pushed onto the uv-managed
+# runtime merely because the system interpreter is 3.9.
 exakit_can_run_python_any() {
-    _exakit_has_system_python3 && return 0
+    if _exakit_python3_present; then
+        return 0
+    fi
     exakit_can_run_python
 }
 
@@ -8616,7 +8659,12 @@ exakit_ensure_runtime_running() {
             fi
             if [ "$_err_deploy" = "deploy" ]; then
                 info "Self-heal: no database deployment found — deploying one"
-                personal_deploy_local
+                # Its result counts: personal_deploy_local returns non-zero when
+                # it could not deploy (no usable Podman on Linux, a refused
+                # install), having already said why. Returning 0 regardless made
+                # `exakit start` exit 0 with no database behind it.
+                personal_deploy_local || \
+                    die "No database could be deployed (the reason is above). Once it is fixed, re-run the installer: $(exakit_install_command)"
                 return 0
             fi
             die "No database found. Start one with: exakit start (or re-run the installer)"
@@ -11291,8 +11339,6 @@ EXAKIT_UM_PANEL_EOF
     case " $_um_picked " in
         *" database "*|*" everything "*)
             warn "The database selection deletes ALL local database data."
-            # BEFORE the typed gate, never after it.
-            _exakit_shared_engine_db_warning || true
             ;;
     esac
     _um_tty="$(_exakit_prompt_tty)"
@@ -11452,9 +11498,8 @@ exakit_uninstall_run() {
     _type="$(manifest_get runtime.type 2>/dev/null || true)"
     if [ -n "$_type" ]; then
         # Named BEFORE the removal, not only in the record line after it: on
-        # `--yes` there is no gate to read, so this line and the shared-engine
-        # warning below it are the last chance to recognise the container as one
-        # the other side of a Windows+WSL machine is also using.
+        # `--yes` there is no gate to read, so this line is the last chance to
+        # see what is about to be deleted.
         _step "local Exasol $_type deployment and ALL its data"
         if [ "$_dry" != "1" ]; then
             case "$_type" in

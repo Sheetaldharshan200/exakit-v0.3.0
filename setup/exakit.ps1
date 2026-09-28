@@ -2794,7 +2794,7 @@ function Invoke-CmdLogs {
             { $_ -in @("--lines", "-n", "-Lines") }   { $i++; $lines = [int]$LogArgs[$i] }
             default {
                 if ($LogArgs[$i].StartsWith("-")) {
-                    Deny-ExakitInput "Unknown option '$($LogArgs[$i])' for logs (supported: -f/--follow, --lines N, --path, --json)."
+                    Stop-ExakitBadOption "Unknown option '$($LogArgs[$i])' for logs (supported: -f/--follow, --lines N, --path, --json)."
                 }
                 if ($target) { Fail "Only one log target at a time (got '$target' and '$($LogArgs[$i])')." }
                 $target = $LogArgs[$i]
@@ -2823,7 +2823,7 @@ function Invoke-CmdDataLoad {
         if ($Argument -eq "-Force" -or $Argument -eq "--force") {
             $ForceFlag = $Argument
         } elseif ($Argument.StartsWith("-")) {
-            Deny-ExakitInput "Unknown option '$Argument' for data-load (pass -Force, or a file or folder path)."
+            Stop-ExakitBadOption "Unknown option '$Argument' for data-load (pass -Force, or a file or folder path)."
         } else {
             $loadPath = Get-ExakitNormalizedPath $Argument
             if (-not (Test-Path $loadPath)) { Fail "No such file or folder: $Argument" }
@@ -3167,6 +3167,24 @@ function Invoke-CmdSql {
     exit 0
 }
 
+# Stop-ExakitBadOption <message> - refuse an unknown option as BAD INPUT: exit 2,
+# the code AGENTS.md documents and the bash twin returns. These arms used Fail,
+# which exits 1 and records a failure note, so an agent reading the exit code
+# saw a broken kit where there was only a typo. Same output as
+# Assert-ExakitKnownOptions.
+function Stop-ExakitBadOption([string]$Msg) {
+    # Delegates rather than duplicating. This function and Deny-ExakitInput
+    # were written independently for the same defect - a bad option answered
+    # with Fail's exit 1, where the shell CLI answers reject()'s 2 - and kept
+    # side by side they would drift, which is the failure mode this repo has
+    # been bitten by often enough to have a name for. Deny-ExakitInput is the
+    # one with the fuller behaviour: it also honours --json, so a refusal
+    # reaches an agent as one object on stdout rather than prose on a stream it
+    # is not reading. The name is kept because it reads well at the call sites
+    # that use it, and because keeping it costs nothing once it is a delegate.
+    Deny-ExakitInput $Msg
+}
+
 function Show-ExakitUsage {
     param([string]$Topic = "", [switch]$All, [switch]$Json)
     # Every help screen comes from setup/help/*.json - see help.ps1. Twin of
@@ -3271,7 +3289,7 @@ try {
                 # An unknown COMMAND already exits 2 with the help screen; an
                 # unknown leading OPTION used to exit 0 with it, which is the
                 # one shape a caller cannot detect.
-                Deny-ExakitInput "Unknown option '$leading' (there is no top-level option by that name). Run 'exakit help' for the command list, or 'exakit version' for versions."
+                Stop-ExakitBadOption "Unknown option '$leading' (there is no top-level option by that name). Run 'exakit help' for the command list, or 'exakit version' for versions."
             }
         }
     }
@@ -3283,13 +3301,13 @@ try {
         "status"       {
             $statusJson = ($RestArgs -contains "--json" -or $RestArgs -contains "-j")
             $statusUnknown = @($RestArgs | Where-Object { $_ -notin @("--json", "-j") })
-            if ($statusUnknown.Count -gt 0) { Deny-ExakitInput "Unknown option '$($statusUnknown[0])' for status (supported: --json)." }
+            if ($statusUnknown.Count -gt 0) { Stop-ExakitBadOption "Unknown option '$($statusUnknown[0])' for status (supported: --json)." }
             Invoke-CmdStatus -Json:$statusJson
         }
         "version"      {
             $versionJson = ($RestArgs -contains "--json" -or $RestArgs -contains "-j")
             $versionUnknown = @($RestArgs | Where-Object { $_ -notin @("--json", "-j") })
-            if ($versionUnknown.Count -gt 0) { Deny-ExakitInput "Unknown option '$($versionUnknown[0])' for version (supported: --json)." }
+            if ($versionUnknown.Count -gt 0) { Stop-ExakitBadOption "Unknown option '$($versionUnknown[0])' for version (supported: --json)." }
             if ($versionJson) { $script:JsonOutput = $true }
             Invoke-CmdVersion -Json:$versionJson
         }
@@ -3470,7 +3488,7 @@ try {
             # here "--json" was read as a client name.
             $mcpStatusJson = ($RestArgs -contains "--json" -or $RestArgs -contains "-j")
             $mcpStatusArgs = @($RestArgs | Where-Object { $_ -notin @("--json", "-j") })
-            foreach ($a in $mcpStatusArgs) { if ($a -like "-*") { Deny-ExakitInput "Unknown option '$a' for mcp-status (supported: --json)." } }
+            foreach ($a in $mcpStatusArgs) { if ($a -like "-*") { Stop-ExakitBadOption "Unknown option '$a' for mcp-status (supported: --json)." } }
             if ($mcpStatusJson) { $env:EXAKIT_MCP_RESULT_JSON = "1"; $script:JsonOutput = $true }
             Invoke-CmdMcpOperation -Operation "status" -OpArgs $mcpStatusArgs
         }
