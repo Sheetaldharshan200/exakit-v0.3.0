@@ -213,7 +213,7 @@ function Install-Mcp {
             $primeOut = $early.Output
             $primeCode = $early.ExitCode
         } else {
-            $primeOut = & (Get-UvxPath) "$($script:McpPackage)@$($script:McpVersion)" "--help" 2>&1 | Out-String
+            $primeOut = & (Get-UvxPath) "$($script:McpPackage)@$($script:McpVersion)" "--help" 2>&1 | Out-String -Width 4096
             $primeCode = $LASTEXITCODE
         }
     } catch {
@@ -472,11 +472,34 @@ function Invoke-ExapumpAdminSql {
         # Windows. Do not let PowerShell convert that into a terminating
         # exception before Test-ExapumpSucceeded can evaluate the output.
         $ErrorActionPreference = "Continue"
-        # $Sql carries quoted identifiers; 5.1 would drop the quotes. See
-        # ConvertTo-ExakitNativeArgs.
-        $sqlArg = @(ConvertTo-ExakitNativeArgs @($Sql))[0]
-        $out = @(& $bin sql -p $Profile $sqlArg 2>&1) -join "`n"
-        $code = $LASTEXITCODE
+        # STDIN, NOT ARGV - the twin of _exakit_run_exapump_sql in common.sh,
+        # whose comment spells out why: two of the statements that come through
+        # here are CREATE/ALTER USER ... IDENTIFIED BY <password>, and an argv
+        # is readable by anything running as this user.
+        #
+        # On Windows that is worse than on unix, not better. A command line is
+        # readable through Win32_Process by any process in the session, is
+        # captured by EDR agents, and where "Include command line in process
+        # creation events" is on - a common enterprise baseline - it is written
+        # permanently into Security event 4688 and forwarded to the SIEM.
+        # PowerShell script-block logging catches it as well. So the read-only
+        # database password was being recorded durably outside the ACL'd
+        # credential file the rest of this kit works to protect.
+        #
+        # exapump's own help documents the stdin path: "[SQL]  SQL statement to
+        # execute (reads from stdin if omitted or if '-' is given)". Sending it
+        # this way also retires the ConvertTo-ExakitNativeArgs quoting dance -
+        # nothing goes through the 5.1 command-line rules any more, so quoted
+        # identifiers arrive intact by construction rather than by escaping.
+        $previousOutputEncoding = $OutputEncoding
+        try {
+            # No BOM: exapump parses the first bytes as SQL.
+            $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+            $out = @($Sql | & $bin sql -p $Profile 2>&1) -join "`n"
+            $code = $LASTEXITCODE
+        } finally {
+            $OutputEncoding = $previousOutputEncoding
+        }
         return @{ Output = $out; ExitCode = $code; Success = (Test-ExapumpSucceeded -ExitCode $code -Output $out) }
     } catch {
         # A native command's stderr write can surface here as an exception
@@ -665,8 +688,17 @@ function Set-McpReadonlyAccess {
         # every exit path - success, a thrown Fail, or any other exception - so no
         # individual step has to remember to clean it up.
         try {
+            # Created empty and locked first. GetTempPath() honours %TMP%, so on
+            # a machine where TEMP is redirected to a share or a folder-
+            # redirected profile the inherited ACL is not owner-only - and both
+            # the ADMIN and the read-only password are about to be written into
+            # this file. Set-ExapumpTomlSection protects its own staging file
+            # too; this covers the destination name itself.
+            New-Item -ItemType File -Path $tempConfig -Force | Out-Null
+            Protect-ExakitFile $tempConfig
             Set-ExapumpTomlSection -ConfigPath $tempConfig -Profile "admin" -Host_ $dbHost -Port $dbPort -User $runtimeUser -Password $adminPassword
             Set-ExapumpTomlSection -ConfigPath $tempConfig -Profile "mcp_readonly" -Host_ $dbHost -Port $dbPort -User $readonlyUser -Password $readonlyPassword -Schema $defaultSchemaUc
+            Protect-ExakitFile $tempConfig
 
             # Verify the TOML config was created and is readable
             if (-not (Test-Path $tempConfig)) {
@@ -861,13 +893,13 @@ function Invoke-McpModule {
         # code through. Same fix as Invoke-Exapump / Invoke-ExapumpAdminSql.
         $ErrorActionPreference = "Continue"
         if (Test-ExakitSystemPythonForMcp) {
-            $out = & python -m mcp @ModuleArgs 2>&1 | Out-String
+            $out = & python -m mcp @ModuleArgs 2>&1 | Out-String -Width 4096
         } else {
             # Fall back to the managed uv Python (pinned to 3.12), which is
             # guaranteed to satisfy the 3.11+ requirement. uv is already a
             # hard dependency here (the MCP server itself runs via uvx).
             $uv = Install-ExakitUv
-            $out = & $uv run --python $script:ManagedPythonVersion --no-project python -m mcp @ModuleArgs 2>&1 | Out-String
+            $out = & $uv run --python $script:ManagedPythonVersion --no-project python -m mcp @ModuleArgs 2>&1 | Out-String -Width 4096
         }
         return @{ Output = $out; ExitCode = $LASTEXITCODE }
     } catch {
@@ -900,7 +932,7 @@ function Invoke-McpSetupCli {
         # screen before anyone could read it. Fail() stops the animation for the
         # same reason.
         Stop-ExakitAnimation
-        Warn2 "AI client setup failed (see log)."
+        Warn2 "Could not write the MCP entry for this AI client. What failed: exakit logs setup. Retry with: exakit mcp-setup"
         return $null
     }
     return $result.Output
@@ -930,7 +962,7 @@ function Invoke-McpOperationCli {
         # nothing repaired, and the log's own advice was "run exakit mcp-doctor".
         # Twin of _exakit_mcp_reported in common.sh.
         if (Test-McpResultReported -Text $result.Output) { return $result.Output }
-        Warn2 "MCP $Operation failed (see log)."
+        Warn2 "MCP $Operation did not complete. The reason: exakit logs setup. Retry with: exakit mcp-setup"
         return $null
     }
     return $result.Output
@@ -1188,8 +1220,10 @@ function Show-McpOperationSummary {
             $state = if ($stateLabels.ContainsKey($entry.state)) { $stateLabels[$entry.state] } else { $entry.state }
             $note = ""
             if ($entry.state -eq "configured") {
-                $note = "$($entry.path)"
-                if ($note.StartsWith($HOME)) { $note = "~" + $note.Substring($HOME.Length) }
+                # One shortener for the kit, not a third hand-rolled copy of
+                # it: Get-ExakitTilde knows about %USERPROFILE% and compares
+                # ordinally, which this line did neither of.
+                $note = Get-ExakitTilde "$($entry.path)"
             } elseif ($entry.state -eq "not_set_up") {
                 $note = "run: exakit mcp-setup"
             }

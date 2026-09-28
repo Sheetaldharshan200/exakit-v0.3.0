@@ -824,7 +824,14 @@ function Invoke-CmdAutostart {
     Assert-ExakitInstalled
     Initialize-ExakitLogging
     if ($Action) {
-        Fail "autostart takes no arguments - run 'exakit autostart' and answer the question."
+        # Deny, not Fail: this is bad input, and the shell twin answers it with
+        # reject() - exit 2. Through Fail it exited 1, which AGENTS.md reserves
+        # for a command that failed rather than a command that was misused, so
+        # an agent scripting `exakit autostart off` from a document could not
+        # even classify the refusal. Fail also recorded a .last-failure note,
+        # which `exakit status --json` then reported as an unfinished install
+        # step on a machine where nothing was wrong.
+        Deny-ExakitInput "autostart takes no arguments - run 'exakit autostart' and answer the question."
     }
     Show-ExakitAutostart
 
@@ -1962,7 +1969,7 @@ function Invoke-CmdVersion {
         }
         $statusWord = "current"
         $remedy = $null
-        if ($pending -gt 0) { $statusWord = "updates_pending"; $remedy = "exakit update" }
+        if ($pending -gt 0) { $statusWord = "update_pending"; $remedy = "exakit update" }
         [ordered]@{
             installed       = $true
             status          = $statusWord
@@ -2968,7 +2975,9 @@ function Invoke-CmdInfoJson {
         # ("steps_completed": "launcher"); hand parsers the array they were promised.
         if ($doc.PSObject.Properties["steps_completed"]) { $doc.steps_completed = @($doc.steps_completed | Where-Object { $null -ne $_ }) }
         $doc | Add-Member -NotePropertyName "installed" -NotePropertyValue $true -Force
-        $statusText = "database not running"
+        # "stopped" - one word per state across all five queries; see the note
+        # in the shell twin's cmd_mcp_doctor.
+        $statusText = "stopped"
         $remedyText = "exakit start"
         $remedyHint = $null
         if ($running) { $statusText = "running"; $remedyText = $null }
@@ -2993,6 +3002,11 @@ function Invoke-CmdInfoJson {
             $remedyHint = "the installer is still running (step: $installStep) - poll the remedy until status is running"
         }
         $doc | Add-Member -NotePropertyName "status" -NotePropertyValue $statusText -Force
+        # Kept for callers written against the older shape, the same way the
+        # shell twin keeps it.
+        if ($statusText -eq "stopped") {
+            $doc | Add-Member -NotePropertyName "database" -NotePropertyValue "not running" -Force
+        }
         $doc | Add-Member -NotePropertyName "remedy" -NotePropertyValue $remedyText -Force
         if ($remedyHint) { $doc | Add-Member -NotePropertyName "remedy_hint" -NotePropertyValue $remedyHint -Force }
         # The skill set's verdict, from the manifest and the cached versions
@@ -3159,9 +3173,16 @@ function Invoke-CmdSql {
 # saw a broken kit where there was only a typo. Same output as
 # Assert-ExakitKnownOptions.
 function Stop-ExakitBadOption([string]$Msg) {
-    Write-Host ""
-    Write-Host "  [x] $Msg"
-    exit 2
+    # Delegates rather than duplicating. This function and Deny-ExakitInput
+    # were written independently for the same defect - a bad option answered
+    # with Fail's exit 1, where the shell CLI answers reject()'s 2 - and kept
+    # side by side they would drift, which is the failure mode this repo has
+    # been bitten by often enough to have a name for. Deny-ExakitInput is the
+    # one with the fuller behaviour: it also honours --json, so a refusal
+    # reaches an agent as one object on stdout rather than prose on a stream it
+    # is not reading. The name is kept because it reads well at the call sites
+    # that use it, and because keeping it costs nothing once it is a delegate.
+    Deny-ExakitInput $Msg
 }
 
 function Show-ExakitUsage {
@@ -3184,8 +3205,22 @@ function Show-ExakitUsage {
 # source of truth `exakit catalog` renders - so every subcommand AND every
 # component supports the flag. Twin of the bash pre-dispatch block.
 #
+# Did this caller ask for a machine answer? Set once, so the paths that REFUSE
+# can honour --json and not only the paths that succeed. `sql` is excluded for
+# the same reason it is excluded from the help hook below: its argument is
+# arbitrary SQL, and a statement containing --json is a query.
+$script:ExakitRefusalJson = ($Command -ne "sql") -and
+    ((@($RestArgs) -contains "--json") -or (@($RestArgs) -contains "-j"))
+
 # `sql` is excluded on purpose: its argument is arbitrary SQL text.
-if ($Command -and $Command -ne "sql" -and ($RestArgs -contains "--help" -or $RestArgs -contains "-h")) {
+#
+# So is help itself. The -File binder pushes a leading `--help` into $RestArgs
+# and leaves $Command at its "help" default, so `exakit --help --json` arrived
+# here looking like "the help command, asked for its own help page" and was
+# answered with the human page for `help` - swallowing the --json an agent
+# asked for. A help flag on the help command is the help command.
+$_helpSelf = @("help", "--help", "-h", "-?") -contains "$Command"
+if ($Command -and $Command -ne "sql" -and -not $_helpSelf -and ($RestArgs -contains "--help" -or $RestArgs -contains "-h")) {
     if (Test-ExakitHelpId $Command) {
         Show-ExakitHelpComponent -Id $Command | Out-Null
     } else {
@@ -3203,9 +3238,12 @@ try {
         param([string]$CommandName, [string[]]$Allowed, [string[]]$Arguments)
         foreach ($a in @($Arguments)) {
             if ("$a" -like "-*" -and ($Allowed -notcontains "$a")) {
+                if ($Allowed.Count -gt 0) { $msg = "Unknown option '$a' for $CommandName (supported: $($Allowed -join ' '))." }
+                else { $msg = "Unknown option '$a' for $CommandName (it takes none)." }
+                # --json gets one object on stdout; everyone else gets the card.
+                if ($script:ExakitRefusalJson) { Deny-ExakitInput $msg }
                 Write-Host ""
-                if ($Allowed.Count -gt 0) { Write-Host "  [x] Unknown option '$a' for $CommandName (supported: $($Allowed -join ' '))." }
-                else { Write-Host "  [x] Unknown option '$a' for $CommandName (it takes none)." }
+                Write-Host "  [x] $msg"
                 exit 2
             }
         }
@@ -3235,6 +3273,18 @@ try {
             "--help"    { $Command = "help";    $RestArgs = $rest }
             "-h"        { $Command = "help";    $RestArgs = $rest }
             "-?"        { $Command = "help";    $RestArgs = $rest }
+            # help's OWN options, left in $RestArgs for the help arm to read.
+            #
+            # This block cannot tell a $Command that defaulted to "help" from
+            # one the user typed, so `exakit help --json` - the documented
+            # agent contract, and what the bash CLI answers with a 37-command
+            # document - arrived here as an unknown top-level option and was
+            # refused outright. Same for --all, which every help screen
+            # advertises. They are options of the command, not of the CLI.
+            "--json"    { }
+            "-j"        { }
+            "--all"     { }
+            "-a"        { }
             default {
                 # An unknown COMMAND already exits 2 with the help screen; an
                 # unknown leading OPTION used to exit 0 with it, which is the
@@ -3413,7 +3463,8 @@ try {
             if (-not $doctorUp) {
                 if ($doctorJson) {
                     # The same three keys every --json state answer carries.
-                    [ordered]@{ installed = $true; status = "database not running"; remedy = "exakit start"; database = "not running" } | ConvertTo-Json
+                    # "stopped", matching status --json and the shell twin.
+                    [ordered]@{ installed = $true; status = "stopped"; remedy = "exakit start"; database = "not running" } | ConvertTo-Json
                 } else {
                     Warn2 "The database is not running - fix that first: exakit start"
                     Info "MCP diagnostics need a live database (the read-only user and its grants are checked against it)."
@@ -3480,6 +3531,11 @@ try {
                 -Json:($RestArgs -contains "--json" -or $RestArgs -contains "-j")
         }
         default {
+            # One object on stdout for a machine, and the whole usage screen
+            # NOT dumped into the middle of it.
+            if ($script:ExakitRefusalJson) {
+                Deny-ExakitInput "Unknown command '$Command'." "exakit catalog --json"
+            }
             Write-Host "exakit: unknown command '$Command'" -ForegroundColor Red
             Show-ExakitUsage
             exit 2

@@ -727,7 +727,7 @@ json_tables_validate() {
     [ -x "$_jtv_python" ] || return 0
 
     if ! ( "$_jtv_python" -c 'import exasol_json_tables' && : ) >/dev/null 2>&1; then
-        warn "JSON Tables is installed but cannot be imported from $EXAKIT_JSON_TABLES_VENV (see log). Recorded validated=false."
+        warn "JSON Tables is installed but cannot be imported from $EXAKIT_JSON_TABLES_VENV. Why: exakit logs setup. Recorded validated=false; retry with: exakit update"
         manifest_set components.json_tables.validated false
         return 0
     fi

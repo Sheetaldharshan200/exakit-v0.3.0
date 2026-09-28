@@ -97,6 +97,29 @@ EXAKIT_EXAPUMP_REPO="exasol-labs/exapump"
 # outrank an answer the caller gave in the environment.
 _EXAKIT_KIT_REPO_FROM_ENV="${EXAKIT_KIT_REPO:-${EXAKIT_REPO:-}}"
 EXAKIT_KIT_REPO="${EXAKIT_KIT_REPO:-${EXAKIT_REPO:-krishna-exasol/update-path}}"
+# --retry-all-errors landed in curl 7.71. Without it plain --retry ignores the
+# mid-stream transport failures that actually strand a large download, so it is
+# worth having where available and must be absent where not: an unknown flag
+# makes curl exit 2 and fail the download it was meant to save.
+#
+# LAZY, AND MEMOISED. A first cut of this probe ran at SOURCE time, which meant
+# every single exakit invocation paid for a curl subprocess before it did
+# anything - and, worse, that `exakit status --json` reached for curl at all.
+# A read-only state query must not touch the network stack even to ask a
+# question about it; tests/agent-audit.sh pins exactly that with a stub curl
+# that leaves a fingerprint when it is run. Answered once, on the first real
+# download, and remembered for the rest of the process.
+_exakit_curl_retry_all() {
+    if [ -z "${_EXAKIT_CURL_RETRY_ALL_CACHED:-}" ]; then
+        if curl --help all 2>/dev/null | grep -q -- "--retry-all-errors"; then
+            _EXAKIT_CURL_RETRY_ALL="--retry-all-errors"
+        else
+            _EXAKIT_CURL_RETRY_ALL=""
+        fi
+        _EXAKIT_CURL_RETRY_ALL_CACHED=1
+    fi
+    printf '%s' "$_EXAKIT_CURL_RETRY_ALL"
+}
 EXAKIT_VERSION_LOOKUP_CONNECT_TIMEOUT="${EXAKIT_VERSION_LOOKUP_CONNECT_TIMEOUT:-5}"
 EXAKIT_VERSION_LOOKUP_MAX_TIME="${EXAKIT_VERSION_LOOKUP_MAX_TIME:-12}"
 
@@ -945,7 +968,28 @@ exakit_clear_runtime_failure_note() {
 # type something else, and recording it left a stale "failure" hanging off an
 # otherwise healthy machine until something else overwrote it. Exit 2, the same
 # code an unknown subcommand uses, because both mean "your input was wrong".
+# _exakit_json_string <text> — the text as a JSON string BODY (no quotes), with
+# the two characters that can break out of one escaped, and control characters
+# folded to spaces. Enough for a refusal message, which is prose the kit wrote.
+_exakit_json_string() {
+    printf '%s' "$*" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n\r\t' '   '
+}
+
 reject() {
+    # A REFUSAL OWES THE SAME CONTRACT AS AN ANSWER. AGENTS.md promises that
+    # where a command takes --json "the answer is one object on stdout and
+    # nothing else there" - but every refusal path printed prose to stderr and
+    # left stdout empty, so an agent that had committed to a parser got zero
+    # bytes and an exit code, with the reason on a stream it was not reading.
+    # The kit already had the right pattern in exactly one place: the loader's
+    # no-library branch scans for --json and answers with an object before
+    # exiting 4.
+    if [ "${EXAKIT_REFUSAL_JSON:-0}" = "1" ]; then
+        printf '{"ok": false, "error": "%s", "remedy": null, "rejected": true}\n' \
+            "$(_exakit_json_string "$*")"
+        _exakit_log_file "REJECT $*"
+        exit 2
+    fi
     printf '\n  %s%s %s%s%s\n' "${UI_ERR:-}" "${UI_CROSS:-[x]}" "${UI_BOLD:-}" "$*" "${UI_RESET:-}" >&2
     _exakit_log_file "REJECT $*"
     exit 2
@@ -1316,12 +1360,16 @@ exakit_ensure_uv() {
     # stdout, corrupting the one answer the contract promises is parseable.
     info "Installing the managed Python bootstrapper (uv)" >&2
     mkdir -p "$EXAKIT_BIN_DIR"
+    # Same protocol guards as the mcp.sh bootstrap, for the same reason: this
+    # script is EXECUTED, -L follows redirects, and a 302 to http:// would
+    # otherwise be fetched in the clear and piped into sh. wget spells it
+    # --https-only.
     if command -v curl >/dev/null 2>&1; then
         env UV_NO_MODIFY_PATH=1 INSTALLER_NO_MODIFY_PATH=1 sh -c \
-            'curl -LsSf https://astral.sh/uv/install.sh | sh' >> "${EXAKIT_LOG_FILE:-/dev/null}" 2>&1 || return 1
+            'curl -LsSf --proto "=https" --proto-redir "=https" https://astral.sh/uv/install.sh | sh' >> "${EXAKIT_LOG_FILE:-/dev/null}" 2>&1 || return 1
     elif command -v wget >/dev/null 2>&1; then
         env UV_NO_MODIFY_PATH=1 INSTALLER_NO_MODIFY_PATH=1 sh -c \
-            'wget -qO- https://astral.sh/uv/install.sh | sh' >> "${EXAKIT_LOG_FILE:-/dev/null}" 2>&1 || return 1
+            'wget -qO- --https-only https://astral.sh/uv/install.sh | sh' >> "${EXAKIT_LOG_FILE:-/dev/null}" 2>&1 || return 1
     else
         warn "Neither curl nor wget is available to install uv." >&2
         return 1
@@ -1363,6 +1411,7 @@ exakit_can_run_python() {
 # moved to stderr — splicing its progress lines into the very value it was
 # computing, which is how `runtime.type` came back as a multi-line blob.
 # Anything that needs only the standard library runs here instead.
+# Twin of the guard above: a stub that satisfies `command -v` must not be run.
 run_python_any() {
     if _exakit_python3_present; then
         python3 "$@"
@@ -1373,6 +1422,17 @@ run_python_any() {
 
 # Is there any Python 3 at all? Never installs one from a read-only query
 # (exakit_ensure_uv enforces that); callers degrade instead of failing.
+# A STUB SATISFIES `command -v`. On a Mac without the Xcode Command Line Tools -
+# or with them present but the licence unaccepted - /usr/bin/python3 is a 118 KB
+# shim that exists, is executable, and fails on every invocation. Guarding on
+# `command -v python3` therefore answered "yes, Python is available" and then
+# produced nothing: `exakit status --json` emitted ZERO BYTES with exit 3, which
+# AGENTS.md documents as "not running, or still installing", so an agent polling
+# that loop never terminated. _exakit_python3_present (above) answers
+# this correctly instead: it rejects the stub WITHOUT imposing
+# EXAKIT_MIN_PYTHON, which is the whole point of the "_any" pair - work that
+# needs only the standard library must not be pushed onto the uv-managed
+# runtime merely because the system interpreter is 3.9.
 exakit_can_run_python_any() {
     if _exakit_python3_present; then
         return 0
@@ -5234,7 +5294,7 @@ with open(sys.argv[1], encoding="utf-8") as handle:
 pending = int(sys.argv[2] or 0)
 print(json.dumps({
     "installed": True,
-    "status": "updates_pending" if pending > 0 else "current",
+    "status": "update_pending" if pending > 0 else "current",
     "remedy": "exakit update" if pending > 0 else None,
     "pending": pending,
     "kit": {"version": sys.argv[3], "installed_at": sys.argv[4] or None},
@@ -5402,8 +5462,20 @@ exakit_update_self() {
     _repo="$EXAKIT_KIT_REPO"
     _kit_dir="$EXAKIT_HOME/kit"
     _tmp="$(mktemp "${TMPDIR:-/tmp}/exakit-kit.XXXXXX")"
-    _stage="$(mktemp -d "${TMPDIR:-/tmp}/exakit-kit-stage.XXXXXX")"
+    # THE STAGE LIVES BESIDE THE KIT, not in TMPDIR, so the swap below is a
+    # same-filesystem rename. It used to be a mktemp -d under ${TMPDIR:-/tmp},
+    # and on any machine where /tmp is tmpfs or EXAKIT_HOME is on another
+    # volume - which this kit itself recommends for WSL - `mv` across
+    # filesystems is copy-then-unlink. A failure part way through (ENOSPC is
+    # the realistic one) left the destination existing as a partial directory,
+    # which is what made the rollback below able to nest the backup inside it.
+    # A rename cannot fail part way.
+    mkdir -p "$EXAKIT_HOME" 2>/dev/null || true
+    _stage="$(mktemp -d "$EXAKIT_HOME/.kit-stage.XXXXXX")" ||
+        _stage="$(mktemp -d "${TMPDIR:-/tmp}/exakit-kit-stage.XXXXXX")"
     _backup="${_kit_dir}.backup-$(date +%Y%m%d-%H%M%S)"
+    # Named before the swap, cleared after it. See _exakit_update_marker.
+    _update_marker="$EXAKIT_HOME/.update-in-progress"
     info "Updating starter kit ${_current:-unknown} -> $_latest"
     # main first — that is what install.sh fetches, and kit script changes live on
     # main: a tag exists only where a release was cut. The tag URLs stay behind it
@@ -5450,8 +5522,33 @@ exakit_update_self() {
     elif [ "$_staged_version" != "$_latest" ] && exakit_version_newer "$_latest" "$_staged_version"; then
         warn "The downloaded kit is $_staged_version, not the advertised $_latest — the published manifest is a few minutes ahead of $_kit_ref. Recording $_staged_version."
     fi
+    # THE WINDOW WITH NO KIT IN IT. Between the two renames below there is no
+    # $EXAKIT_HOME/kit, and every exakit subcommand needs it to find
+    # setup/lib/*.sh. The only recovery used to be the `if !` arm, which runs
+    # for a non-zero exit and for nothing else - not Ctrl-C, not a closed
+    # laptop, not an OOM kill, not a power cut - and no code anywhere looked
+    # for a stranded kit.backup-* on a later run. So the one command users are
+    # told to run routinely could leave the machine with no tooling at all and
+    # nothing on screen saying the backup beside it was a restore point.
+    #
+    # Two answers, because they cover different failures. The trap covers the
+    # signal that actually happens (Ctrl-C). The marker covers the ones no
+    # process can handle - SIGKILL, power loss - by leaving the next run
+    # something to find; setup/exakit reads it in the branch that fires when
+    # the library is missing, which is the only code still able to run.
+    _exakit_update_restore() {
+        [ -d "$_backup" ] || return 0
+        [ -d "$_kit_dir" ] && rm -rf "$_kit_dir"
+        mv "$_backup" "$_kit_dir" 2>/dev/null || return 1
+        rm -f "$_update_marker" 2>/dev/null || true
+        return 0
+    }
     if [ -d "$_kit_dir" ]; then
+        printf '%s\n' "$_backup" > "$_update_marker" 2>/dev/null || true
+        trap '_exakit_update_restore; trap - INT TERM; exit 130' INT TERM
         mv "$_kit_dir" "$_backup" || {
+            rm -f "$_update_marker" 2>/dev/null || true
+            trap - INT TERM
             rm -rf "$_stage"
             die "Could not back up existing kit copy; update was not applied."
         }
@@ -5459,18 +5556,35 @@ exakit_update_self() {
     fi
     mkdir -p "$(dirname "$_kit_dir")"
     if ! mv "$_stage" "$_kit_dir"; then
-        [ -d "$_backup" ] && mv "$_backup" "$_kit_dir"
+        # rm -rf FIRST. Without it, a destination left behind as a partial
+        # directory by a failed cross-filesystem mv turned this "restore" into
+        # `mv backup kit/` - the good copy buried at kit/kit.backup-<ts>/ - and
+        # the message below still claimed it had been restored. The staging
+        # change above makes the partial directory unreachable in the first
+        # place; this makes the recovery correct regardless.
+        _exakit_update_restore
+        trap - INT TERM
         rm -rf "$_stage"
         die "Could not install the staged starter kit update; previous kit copy was restored."
     fi
     if [ -f "$_kit_dir/setup/exakit" ]; then
         mkdir -p "$EXAKIT_BIN_DIR"
-        install -m 755 "$_kit_dir/setup/exakit" "$EXAKIT_BIN_DIR/exakit" \
-            || die "Could not install the exakit command to $EXAKIT_BIN_DIR (is it writable? is the disk full?)."
+        install -m 755 "$_kit_dir/setup/exakit" "$EXAKIT_BIN_DIR/exakit" || {
+            # The kit directory is NEW and the binary is OLD at this point, so
+            # this is not a state to leave behind either.
+            _exakit_update_restore
+            trap - INT TERM
+            die "Could not install the exakit command to $EXAKIT_BIN_DIR (is it writable? is the disk full?)."
+        }
     else
-        [ -d "$_backup" ] && { rm -rf "$_kit_dir"; mv "$_backup" "$_kit_dir"; }
+        _exakit_update_restore
+        trap - INT TERM
         die "Updated kit did not contain setup/exakit after staging; previous kit copy was restored."
     fi
+    # Past every failure that would have wanted the backup: the kit directory
+    # and the binary now agree.
+    rm -f "$_update_marker" 2>/dev/null || true
+    trap - INT TERM
     manifest_set kit.source "${_repo}@${_kit_ref}"
     # Record the version too, not just where it came from. exakit_component_current
     # reads kit.version first, so without this the kit would report its old
@@ -6271,7 +6385,7 @@ run_rollback() {
         "$EXAKIT_ROLLBACK_FILE" | while IFS= read -r cmd; do
         _exakit_log_file "UNDO  $cmd"
         sh -c "$cmd" >> "${EXAKIT_LOG_FILE:-/dev/null}" 2>&1 || \
-            warn "Rollback command failed (see log): $cmd"
+            warn "A rollback step did not complete: $cmd — what it printed: exakit logs setup"
     done
     : > "$EXAKIT_ROLLBACK_FILE"
     ok "Rollback finished"
@@ -6508,7 +6622,16 @@ fetch() {
     mkdir -p "$(dirname "$_dest")"
     _exakit_log_file "GET   $_url -> $_dest"
     ui_spin_begin "${EXAKIT_ACTIVE_LABEL:-downloading $(basename "$_dest")}"
-    curl -fL --proto '=https' --retry 3 --connect-timeout 15 \
+    # BOUNDED, AND RESUMABLE. --connect-timeout only caps the handshake: a server
+    # that accepts and then stalls held this forever, times four with --retry,
+    # and the spinner no-ops without a TTY so there was no progress signal
+    # either. Seen for real as curl exit 92 on a 189 MB asset after 423s.
+    # --speed-limit/--speed-time abandons a transfer that has genuinely stopped
+    # moving rather than one that is merely slow; -C - resumes instead of
+    # restarting from byte zero; --retry-all-errors covers the transport errors
+    # plain --retry does not (curl 7.71+, hence the capability probe).
+    curl -fL --proto '=https' --retry 3 $(_exakit_curl_retry_all) --connect-timeout 15 \
+        --speed-limit 1024 --speed-time 60 -C - \
         -sS -o "$_dest" "$_url"
     _fetch_rc=$?
     ui_spin_end
@@ -7895,7 +8018,7 @@ exakit_run_mcp_setup_cli() {
         # screen before anyone could read it. die() stops the animation for the
         # same reason.
         command -v ui_animation_stop >/dev/null 2>&1 && ui_animation_stop
-        warn "AI client setup failed (see log)."
+        warn "Could not write the MCP entry for this AI client. What failed: exakit logs setup. Retry with: exakit mcp-setup"
         return 1
     fi
     return 0
@@ -7988,7 +8111,7 @@ exakit_run_mcp_operation_cli() {
         ) > "$_output_file" 2>> "${EXAKIT_LOG_FILE:-/dev/null}"; then
             _exakit_log_mcp_result_failure "$_output_file"
             _exakit_mcp_reported "$_output_file" && return 2
-            warn "MCP $_operation failed (see log)."
+            warn "MCP $_operation did not complete. The reason: exakit logs setup. Retry with: exakit mcp-setup"
             return 1
         fi
         return 0
@@ -8010,7 +8133,7 @@ exakit_run_mcp_operation_cli() {
         # Return 2 so the caller can keep a non-zero exit for scripts without
         # contradicting the report it just printed.
         _exakit_mcp_reported "$_output_file" && return 2
-        warn "MCP $_operation failed (see log)."
+        warn "MCP $_operation did not complete. The reason: exakit logs setup. Retry with: exakit mcp-setup"
         return 1
     fi
     return 0
@@ -8111,7 +8234,7 @@ for action in doc.get("next_actions", []):
 
 print("\n".join(lines))
 PY
-)" || { warn "Could not render the MCP setup summary (see log)."; return 0; }
+)" || { warn "Could not draw the MCP summary; the setup itself is unaffected. See: exakit logs setup, or list the clients with: exakit mcp-status"; return 0; }
     while IFS='|' read -r _sum_kind _sum_text; do
         [ -n "$_sum_text" ] || continue
         case "$_sum_kind" in
@@ -10031,6 +10154,15 @@ _EXAKIT_CONN_EOF
     _exapump="$(manifest_get components.exapump.path 2>/dev/null)"
     if [ -n "$_exapump" ]; then
         ui_panel_line "exapump:      $(ui_tilde "$_exapump") (profile: $(manifest_get components.exapump.profile 2>/dev/null))"
+        # THE ONE FACT THAT EXPLAINS EVERY CONFUSING exapump ERROR on these
+        # distros, and it was recorded in the manifest and shown nowhere. On
+        # glibc < 2.38 the release binary cannot run, so the kit generates a
+        # container wrapper - which means exapump sees a subset of the
+        # filesystem. A path outside what is mounted is simply not there, and
+        # until now nothing told the user that a container was involved at all.
+        if [ "$(manifest_get components.exapump.glibc_shim 2>/dev/null)" = "true" ]; then
+            ui_panel_line "              runs in a container shim; sees files under ~, /tmp and your current directory"
+        fi
     fi
 
     # Stdio MCP configs live inside each AI client's own config file, not in
@@ -10679,12 +10811,22 @@ exakit_service_stop() {
 
 # _exakit_service_autostart_command <id> — the command a boot entry runs, or
 # nothing when the service needs no entry.
+#
+# ONE ARGUMENT PER LINE. It used to be one space-joined line, which is not a
+# format that can express an argv: the macOS arm split it with an unquoted
+# `for arg in $cmd`, so a kit under a path with a space in it wrote a plist
+# whose first ProgramArguments entry was "/Volumes/Data" and whose second was
+# "Disk/exasol/bin/exasol" - two arguments, neither of them a program - and the
+# same expansion globbed any path containing a wildcard character. launchd then
+# refused the entry at every login while `exakit autostart` had already
+# reported success. A newline is the one delimiter none of these arguments can
+# contain.
 _exakit_service_autostart_command() {
     if [ "$1" = "database" ]; then
         case "$(exakit_installation_runtime_type 2>/dev/null || true)" in
             personal)
                 _sac_cli="$(personal_cli 2>/dev/null || true)"
-                [ -n "$_sac_cli" ] && printf '%s start\n' "$_sac_cli"
+                [ -n "$_sac_cli" ] && printf '%s\nstart\n' "$_sac_cli"
                 ;;
         esac
         return 0
@@ -10695,6 +10837,63 @@ _exakit_service_autostart_command() {
 }
 
 _exakit_autostart_label() { printf '%s.%s\n' "$EXAKIT_AUTOSTART_PREFIX" "$1"; }
+
+# _exakit_service_autostart_kind <id> — "handoff" when the boot command starts
+# something and returns, "longrunning" when systemd should supervise the
+# process it spawns. THE SERVICE SAYS WHICH; the unit writer used to guess, by
+# testing whether the command line began with "podman start".
+#
+# The guess was wrong for the one service every Linux install registers. The
+# database's boot command is "$(personal_cli) start" — ~/.local/bin/exasol
+# start — which never matched, so the database got Type=simple with
+# Restart=on-failure. Two bites followed. A clean start exits 0, so after boot
+# `systemctl --user status` reported inactive (dead) while the database was up
+# and fine. And a start that failed at boot for a transient reason (rootless
+# Podman not up yet, storage not mounted) was retried at systemd's 100 ms
+# default, tripping DefaultStartLimitBurst within about half a second — after
+# which systemd gives up permanently, and the box comes up with no database
+# while `exakit autostart` still calls the entry registered.
+_exakit_service_autostart_kind() {
+    if [ "$1" = "database" ]; then
+        printf 'handoff\n'
+        return 0
+    fi
+    _sak_fn="$(_exakit_addon_fn "$1" autostart_kind)"
+    if command -v "$_sak_fn" >/dev/null 2>&1; then
+        "$_sak_fn"
+        return 0
+    fi
+    # dash-server and exasol-scheduler both run their process in the
+    # foreground, which is what systemd supervises. That is the safe default:
+    # a long-running service wrongly called a handoff is never restarted.
+    printf 'longrunning\n'
+}
+
+# _exakit_xml_escape <text> — text safe to place between XML tags. A plist is
+# XML, and the paths that go into one are user-controlled: a single & or < in a
+# directory name produced a document launchd could not parse, which failed the
+# same silent way the word-splitting did. & first, or the escapes get escaped.
+_exakit_xml_escape() {
+    printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
+
+# _exakit_autostart_argv_line <newline-delimited argv> — the same arguments as
+# one systemd ExecStart line. systemd does its own splitting, so an argument
+# carrying a space has to arrive quoted or it arrives as two.
+_exakit_autostart_argv_line() {
+    _aal_out=""
+    while IFS= read -r _aal_arg; do
+        [ -n "$_aal_arg" ] || continue
+        case "$_aal_arg" in
+            *[[:space:]]*|*'"'*|*\\*)
+                _aal_arg="\"$(printf '%s' "$_aal_arg" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')\"" ;;
+        esac
+        _aal_out="${_aal_out:+$_aal_out }$_aal_arg"
+    done <<EOF_ARGV
+$1
+EOF_ARGV
+    printf '%s' "$_aal_out"
+}
 
 # _exakit_autostart_register <id> — write the platform's boot entry. Returns 1
 # (with an explanation) when the platform has no supervisor to register with.
@@ -10716,8 +10915,9 @@ _exakit_autostart_register() {
                 printf '<plist version="1.0">\n<dict>\n'
                 printf '  <key>Label</key><string>%s</string>\n' "$_ar_label"
                 printf '  <key>ProgramArguments</key>\n  <array>\n'
-                for _ar_arg in $_ar_cmd; do
-                    printf '    <string>%s</string>\n' "$_ar_arg"
+                printf '%s\n' "$_ar_cmd" | while IFS= read -r _ar_arg; do
+                    [ -n "$_ar_arg" ] || continue
+                    printf '    <string>%s</string>\n' "$(_exakit_xml_escape "$_ar_arg")"
                 done
                 printf '  </array>\n'
                 printf '  <key>RunAtLoad</key><true/>\n'
@@ -10732,7 +10932,15 @@ _exakit_autostart_register() {
             # Load it now so the entry is live without a logout, and so a
             # rewritten plist replaces the old registration.
             launchctl unload "$_ar_plist" >/dev/null 2>&1
-            launchctl load "$_ar_plist" >/dev/null 2>&1
+            # THE EXIT STATUS IS THE WHOLE POINT. Discarded, a plist launchd
+            # refuses to load was followed by an "OK ... starts at login" line,
+            # so the one failure mode this code has reported as success.
+            if ! launchctl load "$_ar_plist" >/dev/null 2>&1; then
+                warn "$_ar_id: the login entry was written, but launchd refused to load it."
+                info "Nothing will start at login until that is fixed. See what launchd makes of it with: launchctl load $_ar_plist"
+                _exakit_log_file "ERROR $_ar_id: launchctl load refused $_ar_plist"
+                return 1
+            fi
             # The plist path is not something to act on: `exakit autostart`
             # turns this off and `exakit status` reports it. Printed per SERVICE
             # it was also one line each, so a kit with add-ons announced the same
@@ -10767,17 +10975,25 @@ _exakit_autostart_register() {
             fi
             mkdir -p "$EXAKIT_SYSTEMD_USER_DIR" || { warn "Could not create $EXAKIT_SYSTEMD_USER_DIR"; return 1; }
             _ar_unit="$EXAKIT_SYSTEMD_USER_DIR/$_ar_label.service"
-            # A `podman start` trigger exits the moment the container is up:
-            # under Type=simple that reads as the service dying, and
-            # Restart=on-failure would loop it at boot. oneshot+RemainAfterExit
-            # is the honest shape for a starter that hands off.
-            case "$_ar_cmd" in
-                "podman start"*) _ar_svc='Type=oneshot\nRemainAfterExit=yes' ;;
-                *)               _ar_svc='Type=simple\nRestart=on-failure' ;;
+            # Joined back into one line, because ExecStart is one line - but
+            # joined with quoting, so an argument with a space in it survives
+            # systemd's own splitting instead of arriving as two.
+            _ar_exec="$(_exakit_autostart_argv_line "$_ar_cmd")"
+            # A starter that hands off exits the moment the thing it started is
+            # up: under Type=simple that reads as the service dying.
+            # oneshot+RemainAfterExit is the honest shape for it.
+            #
+            # RestartSec=5 on the other arm regardless. systemd's default is
+            # 100 ms, which burns DefaultStartLimitBurst in half a second and
+            # then stops trying for good - so a service that fails once at boot
+            # for a transient reason never comes back at all.
+            case "$(_exakit_service_autostart_kind "$_ar_id")" in
+                handoff) _ar_svc='Type=oneshot\nRemainAfterExit=yes' ;;
+                *)       _ar_svc='Type=simple\nRestart=on-failure\nRestartSec=5' ;;
             esac
             {
                 printf '[Unit]\nDescription=Exasol Starter Kit: %s\n\n' "$_ar_id"
-                printf "[Service]\n${_ar_svc}\nExecStart=%s\n\n" "$_ar_cmd"
+                printf "[Service]\n${_ar_svc}\nExecStart=%s\n\n" "$_ar_exec"
                 printf '[Install]\nWantedBy=default.target\n'
             } > "$_ar_unit" || { warn "Could not write $_ar_unit"; return 1; }
             systemctl --user daemon-reload >/dev/null 2>&1
@@ -10830,7 +11046,24 @@ _exakit_autostart_unregister() {
 _exakit_autostart_registered() {
     _arg_label="$(_exakit_autostart_label "$1")"
     [ -f "$EXAKIT_LAUNCHAGENT_DIR/$_arg_label.plist" ] && return 0
-    [ -f "$EXAKIT_SYSTEMD_USER_DIR/$_arg_label.service" ] && return 0
+    if [ -f "$EXAKIT_SYSTEMD_USER_DIR/$_arg_label.service" ]; then
+        # A FILE ON DISK IS NOT A REGISTRATION. `systemctl --user enable` can
+        # fail after the unit is written - no linger, a read-only wants
+        # directory - and this probe answering "yes" on file existence alone is
+        # what let `exakit autostart` and `exakit status` both report a boot
+        # entry that systemd would never run.
+        #
+        # Only a POSITIVE refusal downgrades the answer. is-enabled has many
+        # non-zero shapes (static, linked, indirect) and cannot be consulted at
+        # all where there is no user bus, and treating any of those as "not
+        # registered" would be a worse lie in the other direction.
+        if command -v systemctl >/dev/null 2>&1; then
+            case "$(systemctl --user is-enabled "$_arg_label.service" 2>/dev/null)" in
+                disabled|masked) return 1 ;;
+            esac
+        fi
+        return 0
+    fi
     return 1
 }
 
@@ -11174,6 +11407,51 @@ exakit_uninstall_run() {
     _step() { # _step <message>  — narrate the action (or the plan line)
         if [ "$_dry" = "1" ]; then info "  will remove: $1"; else info "$1"; fi
     }
+    # _un_safe_target <path> — is this a path this command may delete?
+    #
+    # EXAKIT_HOME IS TAKEN FROM THE ENVIRONMENT AND WAS NEVER CHECKED. It is
+    # spelled `${EXAKIT_HOME:-$HOME/.exasol-starter-kit}` at the top of this
+    # file, so whatever the caller exported is what `rm -rf` was handed — and
+    # the kit's OWN WSL remedy tells people to set it and keep it exported, so
+    # the users most likely to have it set permanently are the ones an
+    # `exakit uninstall` would point wherever it happened to say. A relative
+    # value made the target depend on the current directory, and `--yes`
+    # bypassed the only confirmation. Four cheap questions close that:
+    # absolute, not the home directory itself, not a filesystem root, and
+    # recognisable as a directory this kit built.
+    #
+    # THE MANIFEST CANNOT BE A HARD REQUIREMENT, which a first cut of this
+    # guard made it. uninstall is the command people reach for precisely when
+    # an install is broken - interrupted before the manifest was written, or
+    # with a manifest that no longer parses - and a guard that refuses those
+    # leaves the user with no supported way to clean up. So the manifest
+    # proves the case, and where it is missing the directory still has to look
+    # like ours: one of the structural entries the kit creates, or nothing at
+    # all (rm -rf on an empty directory destroys nothing, and an empty
+    # directory is not /etc). A populated directory with none of our markers -
+    # the EXAKIT_HOME=/etc or EXAKIT_HOME=~/src mistake this exists to stop -
+    # is refused.
+    _un_safe_target() {
+        case "$1" in
+            /*) : ;;
+            *)  return 1 ;;
+        esac
+        [ "$1" != "/" ] || return 1
+        [ "$1" != "$HOME" ] || return 1
+        [ "${1%/}" != "${HOME%/}" ] || return 1
+        [ -d "$1" ] || return 1
+        [ -f "$1/manifest.json" ] && return 0
+        for _un_marker in manifest.json logs cache credentials kit mcp backups \
+                          libexec workflows migration .last-failure .install.lock; do
+            [ -e "$1/$_un_marker" ] && return 0
+        done
+        # Nothing of ours in it. Empty is still fine; anything else is not.
+        for _un_entry in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+            [ -e "$_un_entry" ] || [ -L "$_un_entry" ] || continue
+            return 1
+        done
+        return 0
+    }
     _rm() { # _rm <path> — remove a path unless dry-run
         [ "$_dry" = "1" ] || rm -rf "$1"
     }
@@ -11293,6 +11571,12 @@ exakit_uninstall_run() {
             if mv "$EXAKIT_HOME/backups" "$_un_keep" 2>/dev/null; then
                 info "AI client config snapshots kept at $_un_keep (delete it when you are sure)"
             fi
+        fi
+        if ! _un_safe_target "$EXAKIT_HOME"; then
+            error "Refusing to remove $EXAKIT_HOME: it is not an absolute path to a kit home the kit created."
+            info "EXAKIT_HOME must be an absolute path holding the kit's manifest.json, and cannot be your home directory."
+            info "Nothing was removed. Check EXAKIT_HOME, or unset it to use the default ~/.exasol-starter-kit."
+            die "Unsafe EXAKIT_HOME: $EXAKIT_HOME"
         fi
         _step "kit home $EXAKIT_HOME (credentials, logs, manifest, snapshots, pyexasol venv, add-ons)"
         _rm "$EXAKIT_HOME"

@@ -938,7 +938,8 @@ dash_server_stop() {
 # already bootstraps the database profile, so this is simply it.
 dash_server_autostart_command() {
     _dash_server_resolve_port
-    printf '%s --host 127.0.0.1 --port %s\n' "$EXAKIT_DASH_SERVER_BIN" "$EXAKIT_DASH_SERVER_PORT"
+    # One argument per line - see _exakit_service_autostart_command.
+    printf '%s\n--host\n127.0.0.1\n--port\n%s\n' "$EXAKIT_DASH_SERVER_BIN" "$EXAKIT_DASH_SERVER_PORT"
 }
 
 # dash_server_uninstall [dry] — remove everything the dash-server install put

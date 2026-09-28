@@ -313,7 +313,7 @@ exapump_install_glibc_shim() {
     chmod 755 "$_shim_real"
 
     run_logged "$_shim_runtime" pull "$EXAKIT_EXAPUMP_SHIM_IMAGE" \
-        || die "Could not pull $EXAKIT_EXAPUMP_SHIM_IMAGE with $_shim_runtime (see log). Check network access and re-run."
+        || die "Could not pull $EXAKIT_EXAPUMP_SHIM_IMAGE with $_shim_runtime. What it printed: exakit logs setup. Check network access and re-run."
 
     # $HOME/$PWD/id expand at RUN time (quoted heredoc); the runtime, image,
     # and real-binary path are baked in below with a safe substitution.
@@ -323,16 +323,37 @@ exapump_install_glibc_shim() {
 # The exapump release binary requires a newer glibc than this system has, so
 # it runs inside a container with host networking. The real binary lives at
 # the path baked in below; re-running the installer regenerates this wrapper.
-# Files are visible to exapump only under $HOME and /tmp.
+# Files are visible to exapump under $HOME, /tmp, and the directory you run it
+# from. THE LAST ONE MATTERS: this wrapper used to mount only the first two and
+# silently relocate the working directory to $HOME when you were anywhere else,
+# so `exapump upload sales.csv` from /srv/data resolved against $HOME/sales.csv
+# - reporting the wrong directory when nothing was there, and loading a
+# DIFFERENT FILE and calling it a success when something was. That is the
+# population this shim exists for: it is only generated on glibc < 2.38
+# (RHEL/Rocky/Alma 8-9, Debian 11-12, Amazon Linux 2023), which is servers,
+# where data lives under /srv, /data or an NFS mount far more often than under
+# $HOME. Mounting the current directory costs nothing and removes both shapes.
 if [ -t 0 ] && [ -t 1 ]; then _exakit_tty="-it"; else _exakit_tty="-i"; fi
+_exakit_v=""; _exakit_vp=""
 case "$PWD" in
-    "$HOME"*|/tmp*) _exakit_wd="$PWD" ;;
-    *)              _exakit_wd="$HOME" ;;
+    "$HOME"*|/tmp*)
+        # Already inside a mount; mounting it again would nest.
+        _exakit_wd="$PWD" ;;
+    *)
+        if [ -d "$PWD" ]; then
+            _exakit_wd="$PWD"; _exakit_v="-v"; _exakit_vp="$PWD:$PWD"
+        else
+            # No current directory to mount (deleted under us). Say so rather
+            # than quietly resolving relative paths somewhere else.
+            echo "exapump: the current directory does not exist; relative paths will resolve against $HOME" >&2
+            _exakit_wd="$HOME"
+        fi ;;
 esac
 exec @RUNTIME@ run --rm $_exakit_tty --network host @USERNS@ \
     -u "$(id -u):$(id -g)" \
     -e HOME="$HOME" \
     -v "$HOME:$HOME" -v /tmp:/tmp \
+    ${_exakit_v:+"$_exakit_v"} ${_exakit_vp:+"$_exakit_vp"} \
     -w "$_exakit_wd" \
     @IMAGE@ \
     "@REAL@" "$@"
@@ -588,7 +609,7 @@ exapump_run_sql_file() {
     [ "${EXAKIT_UPLOAD_QUIET:-0}" = 1 ] || info "Running ${2:-$(basename "$1")}"
     if ! run_logged "$(exapump_cli)" sql -p "$EXAKIT_EXAPUMP_PROFILE" < "$1"; then
         [ -n "${EXAKIT_LOG_FILE:-}" ] && exakit_explain_db_error "$(tail -8 "$EXAKIT_LOG_FILE" 2>/dev/null)"
-        die "SQL file failed: $1 (see log)"
+        die "The SQL in $(basename "$1") did not run. The database's own message: exakit logs setup. Check the database is up with: exakit status"
     fi
     [ "${EXAKIT_UPLOAD_QUIET:-0}" = 1 ] || ok "${2:-$(basename "$1")} done"
 }
@@ -728,7 +749,7 @@ exapump_upload() {
         if [ -n "$_upl_why" ]; then
             die "Could not load $(basename "$1") into $2 — $_upl_why"
         fi
-        die "Upload failed: $1 -> $2 (see log)"
+        die "Could not load $(basename "$1") into $2. What exapump said: exakit logs setup. Check the database is up with: exakit status"
     fi
     [ "${EXAKIT_UPLOAD_QUIET:-0}" = 1 ] || ok "$(basename "$1") loaded"
     # A CRLF file whose last column is text LOADS - and every value in that
@@ -2584,7 +2605,7 @@ exakit_load_dataset_dir() {
         exapump_upload_many "$_ld_schema" $_ld_csvs
         EXAKIT_PROGRESS_STATE=""
         [ -z "$EXAKIT_UPLOAD_FAILED" ] || \
-            die "Upload failed: $EXAKIT_UPLOAD_FAILED (see log)"
+            die "Could not load $EXAKIT_UPLOAD_FAILED. The reason: exakit logs setup. Retry this step with: exakit update"
         _ld_done_w=$(( _ld_done_w + _ld_bytes ))
     fi
 

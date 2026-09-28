@@ -189,7 +189,7 @@ pyexasol_validate() {
         if pyexasol_apply_sve_workaround "$_pyx_python"; then
             : # import fixed in place — fall through to the live check below
         else
-            warn "pyexasol is installed but cannot be imported from $EXAKIT_PYEXASOL_VENV (see log). Recorded validated=false; remove the venv and re-run setup to retry."
+            warn "pyexasol is installed but cannot be imported from $EXAKIT_PYEXASOL_VENV. Why: exakit logs setup. Recorded validated=false; remove the venv and re-run setup to retry."
             manifest_set components.pyexasol.validated false
             return 0
         fi
@@ -238,7 +238,7 @@ PY
         ok_step "pyexasol ${EXAKIT_PYEXASOL_VERSION} installed and validated against the database ($(( $(date +%s 2>/dev/null || echo 0) - _pyv_t0 ))s)"
         info_step "Use it from Python:  $(ui_tilde "$_pyx_python")  (import pyexasol)"
     else
-        warn "pyexasol could not complete SELECT 1 against the database (see log). Recorded validated=false; re-run setup to retry."
+        warn "pyexasol could not complete SELECT 1 against the database. Why: exakit logs setup. Check the database is up with: exakit status, then re-run setup to retry."
         manifest_set components.pyexasol.validated false
     fi
     return 0

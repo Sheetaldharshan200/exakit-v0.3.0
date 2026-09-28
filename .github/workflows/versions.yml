@@ -599,6 +599,19 @@ jobs:
       - run: bash tests/podman-rootless-selfheal.sh
       - run: bash tests/windows-rootful-podman.sh
       - run: bash tests/skills.sh
+      # AGENTS.md's hand-maintained rosters go stale silently: a registered
+      # add-on with a skill and a help document was invisible to the runbook,
+      # and a quickstart named a command form both CLIs reject.
+      - run: bash tests/agents-rosters.sh
+      # bash 3.2 is /bin/bash on macOS. This guard proves its own premise on the
+      # running shell and tests its detector against a fixture - and until now it
+      # ran on no runner at all, so the defect it was written for could return
+      # unnoticed. It is cheap; it runs on both.
+      - run: bash tests/bash32-guard.sh
+      # The only empirical proof the MCP database user is read-only. It skips
+      # cleanly without credentials, so it is safe on a runner that has none.
+      - run: bash tests/mcp-readonly-sql-matrix.sh
+      - run: bash tests/kit-upgrade.sh
       - run: bash tests/agent-operability.sh
       # The MCP subsystem's own tests were never wired in, so nothing in CI
       # exercised mcp/ at all -- a NameError in that package would have shipped.

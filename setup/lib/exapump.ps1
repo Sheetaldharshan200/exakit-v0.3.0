@@ -231,7 +231,7 @@ function Install-Exapump {
             $have = ""
             try {
                 $ErrorActionPreference = "Continue"
-                $versionOut = (& $existing --version 2>&1 | Out-String)
+                $versionOut = (& $existing --version 2>&1 | Out-String -Width 4096)
                 if ($versionOut -match '(\d+\.\d+\.\d+)') { $have = $Matches[1] }
             } catch { } finally {
                 $ErrorActionPreference = $previousEAP
@@ -457,7 +457,18 @@ function Set-ExapumpTomlSection {
         $content += $section
     }
 
+    # LOCKED BEFORE THE SECRET GOES IN, not after. $content carries plaintext
+    # database passwords, and this staging file used to be created by
+    # Set-Content at whatever ACL the directory handed down - so between the
+    # write and the Move there was a readable copy of the admin credential on
+    # disk. Protect-ExakitFile $ConfigPath at the caller locked only the final
+    # name. The kit's own Python half states the rule it is following here
+    # (mcp/runtime/filesystem.py): on Windows it is protect_path() on the temp
+    # file, BEFORE the replace, that provides the guarantee. A rename keeps the
+    # file's explicit DACL, so the destination arrives already locked.
     $tmp = "$ConfigPath.tmp"
+    New-Item -ItemType File -Path $tmp -Force | Out-Null
+    if (Get-Command Protect-ExakitFile -ErrorAction SilentlyContinue) { Protect-ExakitFile $tmp }
     Set-Content -Path $tmp -Value $content -NoNewline
     Move-Item -Force $tmp $ConfigPath
 }
@@ -689,7 +700,7 @@ function Invoke-ExapumpSqlFile {
         # "Connection refused" arrives WITH "exakit start" instead of leaving the
         # reader to map one to the other.
         Show-ExakitDbErrorRemedy $result.Output
-        Fail "SQL file failed: $Path (see log)"
+        Fail "The SQL in $(Split-Path -Leaf $Path) did not run. The database's own message: exakit logs setup. Check the database is up with: exakit status"
     }
     if (-not $script:ExakitUploadQuiet) { Ok "$Description done" }
     return $true
@@ -824,7 +835,7 @@ function Invoke-ExapumpUpload {
         # same words, on both paths. Twin of exapump_upload in exapump.sh.
         $uploadWhy = Get-ExakitUploadFailureReason -Output $result.Output
         if ($uploadWhy) { Fail "Could not load $(Split-Path $Path -Leaf) into $Target - $uploadWhy" }
-        Fail "Upload failed: $Path -> $Target (see log)"
+        Fail "Could not load $(Split-Path -Leaf $Path) into $Target. What exapump said: exakit logs setup. Check the database is up with: exakit status"
     }
     if (-not $script:ExakitUploadQuiet) { Ok "$(Split-Path $Path -Leaf) loaded" }
     # A CRLF file whose last column is text LOADS - with a carriage return on
@@ -1313,10 +1324,21 @@ function Get-ExakitTableName {
     return $table
 }
 
+# THE PROFILE, NOT $HOME - the same distinction Get-ExakitProfileHome exists to
+# make. cmd.exe does not expand ~ itself, so the literal reaches the kit and
+# this function is the only expansion there is. On a domain machine $HOME is
+# the account's home-directory attribute (H:\, \\server\share\user) while the
+# user's Downloads are under %USERPROFILE%, so `exakit data-load ~/Downloads/
+# sales.csv` - the spelling every doc, skill and agent emits - resolved against
+# the network share and reported the file missing while it sat in plain sight.
 function Get-ExakitNormalizedPath {
     param([Parameter(Mandatory)][string]$Path)
-    if ($Path -eq "~") { return $HOME }
-    if ($Path.StartsWith("~/") -or $Path.StartsWith("~\")) { return Join-Path $HOME $Path.Substring(2) }
+    $home_ = if (Get-Command Get-ExakitProfileHome -ErrorAction SilentlyContinue) {
+        Get-ExakitProfileHome
+    } else { $HOME }
+    if (-not $home_) { $home_ = $HOME }
+    if ($Path -eq "~") { return $home_ }
+    if ($Path.StartsWith("~/") -or $Path.StartsWith("~\")) { return Join-Path $home_ $Path.Substring(2) }
     return $Path
 }
 
@@ -2693,7 +2715,7 @@ function Invoke-ExakitDatasetDirLoad {
             -Phase "$Id - loading $($csvFiles.Count) data $unit"
         Invoke-ExapumpUploadMany -Files $uploadFiles -Id $Id | Out-Null
         if ($script:ExakitUploadFailures.Count -gt 0) {
-            Fail "Upload failed: $($script:ExakitUploadFailures -join '; ') (see log)"
+            Fail "Could not load $($script:ExakitUploadFailures -join '; '). The reason: exakit logs setup. Retry this step with: exakit update"
         }
         $doneWeight += $bytes
     }

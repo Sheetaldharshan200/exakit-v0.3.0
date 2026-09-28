@@ -1092,7 +1092,34 @@ echo "round-3 residuals stay fixed:"
 RP_SH="$(cat "$ROOT/setup/lib/runtime-personal.sh")"
 has "a failed start reaps orphans and retries" "started after clearing an orphaned runner" "$RP_SH"
 lacks "the consent-bypass flag is gone" "_pdl_replace" "$RP_SH"
-has "no deploy path destroys without consent" "NO PATH DESTROYS WITHOUT THIS CONSENT" "$RP_SH"
+# ASSERTED AGAINST THE CODE, NOT AGAINST ITS COMMENT. The needle here used to
+# be the sentence "NO PATH DESTROYS WITHOUT THIS CONSENT", which appears in
+# this file exactly once - inside a `#` comment, three lines above the gate it
+# describes. Deleting the gate and keeping the comment left this check green,
+# which is the one scenario it exists to catch. So it now enumerates the
+# destroy sites and demands a consent gate above each, in the same function:
+# either the EXAKIT_REPLACE_DB question, or teardown's --data guard that makes
+# the caller ask for data removal by name. A push_rollback line registers an
+# undo rather than destroying, and a commented-out one destroys nothing.
+_rp_file="$ROOT/setup/lib/runtime-personal.sh"
+_rp_ungated=""
+for _rp_ln in $(grep -n 'destroy --remove' "$_rp_file" \
+                | grep -v 'push_rollback' \
+                | grep -v '^[0-9]*:[[:space:]]*#' | cut -d: -f1); do
+    _rp_head="$(sed -n "1,${_rp_ln}p" "$_rp_file")"
+    _rp_gate="$(printf '%s\n' "$_rp_head" | grep -n 'confirm_env EXAKIT_REPLACE_DB\|!= "--data"' | tail -1 | cut -d: -f1)"
+    _rp_fn="$(printf '%s\n' "$_rp_head" | grep -n '^[a-z_][a-z_0-9]*() {' | tail -1 | cut -d: -f1)"
+    if [ -z "$_rp_gate" ] || [ "${_rp_gate:-0}" -lt "${_rp_fn:-0}" ]; then
+        _rp_ungated="$_rp_ungated $_rp_ln"
+    fi
+done
+check "no deploy path destroys without consent" "none" "${_rp_ungated:-none}"
+# ...and the enumeration is not vacuously empty: if the grep above stops
+# matching (the launcher subcommand gets renamed, say), the loop body never
+# runs and the check above passes having examined nothing.
+_rp_sites="$(grep -c 'destroy --remove' "$_rp_file")"
+check "...and the destroy sites were actually found" "yes" \
+    "$([ "${_rp_sites:-0}" -ge 3 ] && echo yes || echo no)"
 # MAC-01: one PATH-persistence policy - the second writer delegates to the
 # Darwin-aware ensure_path_hint instead of preferring ~/.bashrc.
 has "the second PATH writer delegates to the one Darwin-aware policy" \
@@ -1256,8 +1283,18 @@ _ls_stub database_ready
 check "a launcher that says ready, with SQL answering, is running" "running" "$(_ls_probe personal_status)"
 # The runner the 2.3 launcher leaves behind must be recognised as OURS, or the
 # reaper calls the kit's own process foreign and refuses to clear the port.
-has "the reaper knows the 2.3 runner" '*exasol-local-runner*)   return 0 ;;' "$RP_SH"
-has "...and still knows the 2.2 one" '*mac-runner*__daemon__*) return 0 ;;' "$RP_SH"
+# Asserted on the NAME MATCH, not on what follows it. These used to pin the
+# whole line including its `return 0`, which broke the moment the predicate
+# grew two more questions to ask after the name (LIF-09: a healthy runner
+# mid-start carries the same name as a stranded one, so the name alone can no
+# longer decide a kill). What has to stay true is that both spellings are
+# recognised as OURS - otherwise the reaper calls the kit's own process foreign
+# and refuses to clear the port.
+_rp_orphan="$(sed -n '/^personal_is_orphan_daemon()/,/^}/p' "$ROOT/setup/lib/runtime-personal.sh")"
+has "the reaper knows the 2.3 runner" '*exasol-local-runner*' "$_rp_orphan"
+has "...and still knows the 2.2 one"  '*mac-runner*__daemon__*' "$_rp_orphan"
+# ...and anything that is neither is still refused outright.
+has "...and refuses anything else"    '*) return 1 ;;' "$_rp_orphan"
 has "a stopped deployment holding its port is cleared before the start" \
     'Clearing a leftover Exasol runner still holding port' "$RP_SH"
 
@@ -1649,6 +1686,377 @@ check "...and routes it to the Linux setup" "setup/setup-linux.sh" \
     "$(sed -n '/^        Linux)/,/^            ;;/p' "$ROOT/install.sh" | sed -n 's/.*setup_script="\([^"]*\)".*/\1/p')"
 check "gate(macos) unchanged" \
     "OK: Compatibility check passed (macos arm64, 16 GB RAM, 100 GB free)" "$(_p2gate macos 0)"
+
+echo
+echo "the boot entry a login actually runs:"
+# MAC-05. The plist is XML and its ProgramArguments is an ARGV, and the writer
+# used to honour neither: `for arg in $cmd` word-split and glob-expanded a
+# space-joined string, and the path went between XML tags unescaped. A kit
+# under "/Volumes/Data Disk" wrote a first argument of "/Volumes/Data"; a path
+# containing a wildcard was replaced by whatever matched in the current
+# directory; an & anywhere in the path produced a document launchd cannot parse
+# at all. Every one of those was then reported as "starts at login", because
+# launchctl load's exit status was discarded.
+#
+# Checked through macOS's OWN parser rather than by grepping the XML: what
+# matters is what launchd reads back, not what the generator emitted.
+_as_plist() { # _as_plist <newline-delimited argv> -> "arg|arg|arg" or PARSE-ERROR
+    _asp_dir="$WORK/plist"; rm -rf "$_asp_dir"; mkdir -p "$_asp_dir"
+    _asp_f="$_asp_dir/t.plist"
+    ROOT="$ROOT" ARGV="$1" OUT="$_asp_f" bash -c '
+        . "$ROOT/setup/lib/common.sh" >/dev/null 2>&1
+        {
+            printf "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            printf "<plist version=\"1.0\">\n<dict>\n"
+            printf "  <key>ProgramArguments</key>\n  <array>\n"
+            printf "%s\n" "$ARGV" | while IFS= read -r a; do
+                [ -n "$a" ] || continue
+                printf "    <string>%s</string>\n" "$(_exakit_xml_escape "$a")"
+            done
+            printf "  </array>\n</dict>\n</plist>\n"
+        } > "$OUT"' 2>/dev/null
+    if command -v /usr/libexec/PlistBuddy >/dev/null 2>&1; then
+        _asp_out="$(/usr/libexec/PlistBuddy -c "Print :ProgramArguments" "$_asp_f" 2>&1)"
+        case "$_asp_out" in
+            *"Error Reading File"*|*ampersand*) printf 'PARSE-ERROR' ; return ;;
+        esac
+        printf '%s' "$_asp_out" | sed -e '1d' -e '$d' -e 's/^[[:space:]]*//' | paste -sd'|' -
+    else
+        printf 'SKIP'
+    fi
+}
+if [ "$(uname -s)" = "Darwin" ]; then
+    # The glob case is run from a directory with files in it on purpose: an
+    # unquoted expansion there returns those files, which is how this defect
+    # turns a kit path into someone else's filenames.
+    mkdir -p "$WORK/globcwd" && : > "$WORK/globcwd/a.txt" && : > "$WORK/globcwd/b.txt"
+    check "an ordinary path is two arguments" "/opt/kit/exasol|start" \
+        "$(_as_plist "/opt/kit/exasol
+start")"
+    check "a path with a space stays ONE argument" "/Volumes/Data Disk/exasol|start" \
+        "$(_as_plist "/Volumes/Data Disk/exasol
+start")"
+    check "a path with a wildcard is not expanded" "$WORK/globcwd/*|start" \
+        "$(cd "$WORK/globcwd" && _as_plist "$WORK/globcwd/*
+start")"
+    check "XML metacharacters keep the plist parseable" "/opt/R&D <x>/exasol|start" \
+        "$(_as_plist "/opt/R&D <x>/exasol
+start")"
+    check "dash-server's flags are separate arguments" "/opt/dash|--host|127.0.0.1|--port|8501" \
+        "$(_as_plist "/opt/dash
+--host
+127.0.0.1
+--port
+8501")"
+fi
+# ...and the registration stops claiming success when launchd refuses the file.
+_as_src="$(sed -n '/^_exakit_autostart_register()/,/^}/p' "$ROOT/setup/lib/common.sh")"
+has "a refused launchctl load is not reported as OK" 'launchctl load refused' "$_as_src"
+lacks "the plist argv is never word-split"           'for _ar_arg in $_ar_cmd' "$_as_src"
+# LIN-04: the unit shape is declared by the service, not guessed from the
+# command line. The guess tested for a leading "podman start", which the one
+# service every Linux install registers - the database, whose boot command is
+# "$(personal_cli) start" - never matched. It therefore got Type=simple with
+# Restart=on-failure: a clean start exits 0, so systemd reported inactive(dead)
+# while the database was up, and a start that failed once at boot was retried
+# at the 100 ms default until the start limit put the unit in failed for good.
+_as_kind() { bash -c '. "'"$ROOT"'/setup/lib/common.sh" >/dev/null 2>&1; _exakit_service_autostart_kind "'"$1"'"'; }
+check "the database boot command is a hand-off" "handoff"     "$(_as_kind database)"
+check "dash-server is supervised"               "longrunning" "$(_as_kind dash-server)"
+check "an unknown service defaults to supervised" "longrunning" "$(_as_kind not-a-service)"
+lacks "the unit shape is not guessed from a substring" '"podman start"*)' \
+    "$(sed -n '/^_exakit_autostart_register()/,/^}/p' "$ROOT/setup/lib/common.sh")"
+has "a supervised unit cannot trip the start limit" 'RestartSec=5' \
+    "$(sed -n '/^_exakit_autostart_register()/,/^}/p' "$ROOT/setup/lib/common.sh")"
+
+# systemd reads the same contract back as one quoted line.
+check "ExecStart quotes an argument with a space" '"/Volumes/Data Disk/exasol" start' \
+    "$(bash -c '. "'"$ROOT"'/setup/lib/common.sh" >/dev/null 2>&1; _exakit_autostart_argv_line "/Volumes/Data Disk/exasol
+start"')"
+
+echo
+echo "the machine contract holds on the paths that REFUSE, not only those that answer:"
+# AGK-03. AGENTS.md: "Where a command takes --json ... the answer is one object
+# on stdout and nothing else there." Every refusal path ignored it - prose to
+# stderr, zero bytes on stdout - so an agent that had committed to a parser got
+# nothing to parse and the reason on a stream it was not reading. The kit
+# already had the right pattern in exactly one place (the loader's no-library
+# branch), applied nowhere else.
+_rj() { bash "$ROOT/setup/exakit" "$@" 2>/dev/null; }
+_rj_ok() { # _rj_ok <args...> -> "object" | "empty" | "not-json"
+    _rjo="$(_rj "$@")"
+    [ -n "$_rjo" ] || { printf 'empty'; return; }
+    printf '%s' "$_rjo" | python3 -c 'import json,sys
+try:
+    d = json.load(sys.stdin)
+    print("object" if isinstance(d, dict) and d.get("ok") is False and d.get("rejected") else "not-json")
+except Exception:
+    print("not-json")' 2>/dev/null
+}
+check "a bad option on a --json command answers an object" "object" "$(_rj_ok status --bogus-zz --json)"
+check "an unknown command with --json answers an object"   "object" "$(_rj_ok definitely-not-a-command --json)"
+check "...and does not dump the usage screen into it"      "object" "$(_rj_ok skills --bogus-zz --json)"
+# The exit code is the other half of the contract, and it says "your input was
+# wrong" rather than "the command failed".
+_rj status --bogus-zz --json >/dev/null 2>&1; check "a refusal still exits 2" "2" "$?"
+# Without --json the human path is untouched: nothing on stdout.
+check "no --json means nothing on stdout" "empty" "$(_rj_ok status --bogus-zz)"
+# sql keeps its own parsing: its argument is arbitrary SQL, and a statement
+# containing --json is a query, not a request for a machine answer.
+has "sql still parses --json itself" '_sql_json' "$(cat "$ROOT/setup/exakit")"
+
+echo
+echo "hidden commands are MARKED for machines, not deleted:"
+# AGK-02. AGENTS.md describes catalog --json as "every supported command (a
+# handful of internal upgrade paths are marked hidden)". The dumps deleted the
+# entries instead, so no row carried a hidden key and three dispatchable
+# commands were absent - including skills-install, which `exakit skills --json`
+# hands a machine as its "next". An agent holding both documents had to
+# conclude one of them was lying.
+_cat="$(bash "$ROOT/setup/exakit" catalog --json 2>/dev/null)"
+check "every catalog row carries a hidden key" "yes" \
+    "$(printf '%s' "$_cat" | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+print("yes" if d["commands"] and all("hidden" in r for r in d["commands"]) else "no")' 2>/dev/null)"
+check "the repair commands are present and marked" "exakit rollback-kit2,exakit skills-install,exakit upgrade-kit2" \
+    "$(printf '%s' "$_cat" | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+print(",".join(sorted(r["invocation"] for r in d["commands"] if r.get("hidden"))))' 2>/dev/null)"
+# ...and the command the kit tells a machine to run is one the catalog admits exists.
+has "skills --json still names skills-install as a next" 'exakit skills-install' \
+    "$(cat "$ROOT/setup/lib/common.sh")"
+check "...and the catalog now admits it exists" "yes" \
+    "$(printf '%s' "$_cat" | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+print("yes" if any(r["invocation"] == "exakit skills-install" for r in d["commands"]) else "no")' 2>/dev/null)"
+# The SCREENS stay clean - these exist for repair, not for discovery.
+check "the overview does not advertise them" "0" \
+    "$(bash "$ROOT/setup/exakit" help 2>/dev/null | grep -c 'skills-install')"
+check "--all does not advertise them either" "0" \
+    "$(bash "$ROOT/setup/exakit" help --all 2>/dev/null | grep -c 'skills-install')"
+
+echo
+echo "what the kit thinks this CPU is:"
+# MAC-04. detect_arch read `uname -m` and asked nothing else. Under Rosetta 2 a
+# translated process is TOLD it is x86_64 - that is the point of the
+# translation - so a kit installed from a Rosetta shell (an iTerm window
+# duplicated with "Open using Rosetta", a terminal inside a translated IDE)
+# fetched the Intel build of Exasol Personal onto Apple Silicon and ran the
+# database under emulation, silently.
+_ar_probe() { # _ar_probe <uname -m> <uname -s> <proc_translated or "">
+    ROOT="$ROOT" M="$1" S="$2" T="$3" bash -c '
+        . "$ROOT/setup/lib/detect.sh" >/dev/null 2>&1
+        uname() { case "$1" in -m) printf "%s\n" "$M" ;; -s) printf "%s\n" "$S" ;; esac; }
+        sysctl() { [ -n "$T" ] || return 1; printf "%s\n" "$T"; }
+        detect_arch'
+}
+check "a native arm64 Mac"              "arm64"       "$(_ar_probe arm64 Darwin 0)"
+check "a Rosetta shell is seen through" "arm64"       "$(_ar_probe x86_64 Darwin 1)"
+check "a genuine Intel Mac stays Intel" "x86_64"      "$(_ar_probe x86_64 Darwin "")"
+check "Linux x86_64 is untouched"       "x86_64"      "$(_ar_probe x86_64 Linux "")"
+check "Linux aarch64 is untouched"      "arm64"       "$(_ar_probe aarch64 Linux "")"
+check "an unknown CPU is still refused" "unsupported" "$(_ar_probe riscv64 Linux "")"
+
+echo
+echo "the five state queries use ONE word per state:"
+# AGK-07. AGENTS.md: the state queries "agree with each other on ... the status
+# vocabulary". They did not. status --json said "stopped"; info --json and
+# mcp-doctor --json each said "database not running" - a value in no vocabulary
+# AGENTS.md defined - so `d["status"] == "stopped"` was correct for one command
+# and silently false for the other two, which is exactly the class of bug the
+# shared shape exists to prevent.
+#
+# Asserted on the EMITTERS, because the live machine can only be in one state
+# at a time and this suite must not stop a running database to see the other.
+_sv_src="$(cat "$ROOT/setup/exakit")"
+_sv_ps="$(cat "$ROOT/setup/exakit.ps1")"
+lacks "no shell emitter invents a status word" '"status": "database not running"' "$_sv_src"
+lacks "...nor does the Python info block"      'doc["status"] = "database not running"' "$_sv_src"
+lacks "...nor either PowerShell twin"          'status = "database not running"' "$_sv_ps"
+lacks "...including its info emitter"          '$statusText = "database not running"' "$_sv_ps"
+# The sentence is still available to callers that want it, under its own key.
+has "the older shape is kept under its own key" '"database": "not running"' "$_sv_src"
+has "...on the Windows side too"               'database = "not running"'  "$_sv_ps"
+# And every word a state query can emit is one AGENTS.md lists.
+_sv_doc="$(sed -n '/^\*\*Liveness\*\*/p' "$ROOT/AGENTS.md")"
+has "AGENTS.md lists the word they all use" '`stopped`' "$_sv_doc"
+lacks "...and no longer lists the private one" '`database not running`' "$_sv_doc"
+
+echo
+echo "the one place the kit escalates to root says so accurately:"
+# SEC-02. README.md described the Podman install as consent-gated - "it asks
+# first" - while the code's own comment says the opposite ("NOT ASKED FOR ANY
+# MORE ... a y/n whose only sensible answer is yes"). A reader expecting a y/n
+# and looking away instead got a sudo timestamp and `sh -c "<package install>"`.
+# The code's reasoning is sound; the documents were describing a different kit.
+_pd_readme="$(cat "$ROOT/README.md")"
+_pd_quick="$(cat "$ROOT/quickstarts/linux.md")"
+_pd_code="$(cat "$ROOT/setup/lib/runtime-personal.sh")"
+# Scoped to the PODMAN row. "it asks first" also appears in the README about
+# `exakit update` stopping the database for a runtime update - which is true
+# (common.sh:5845, and the opt-in is `exakit update --yes`), so a whole-file
+# search for that phrase would fail on a correct sentence.
+_pd_podman_row="$(grep -n 'Podman (rootless is fine)' "$ROOT/README.md")"
+lacks "README does not promise a prompt that is not there" 'it asks first' "$_pd_podman_row"
+lacks "...nor does the Linux quickstart"                   'offers to install it for you' "$_pd_quick"
+has "README says what actually happens"                    'without stopping to ask' "$_pd_readme"
+has "...and names the way out"                             'EXAKIT_INSTALL_PODMAN=0' "$_pd_readme"
+has "...the quickstart names it too"                       'EXAKIT_INSTALL_PODMAN=0' "$_pd_quick"
+has "the opt-out is real code, not just documentation"     'EXAKIT_INSTALL_PODMAN:-' "$_pd_code"
+# The prompt has to size the request: a reusable sudo timestamp running a root
+# shell, not "one command".
+lacks "the sudo prompt no longer says 'one command'" 'for this one command as administrator' "$_pd_code"
+has "...it says what sudo actually grants"           'for the rest of its usual timeout' "$_pd_code"
+
+echo
+echo "WSL 1 is refused at the front, as detect_wsl_version says it is:"
+# WSL-03. detect_wsl_version's comment says "this gates a hard refusal" and
+# nothing called it for that - its one caller discarded the value and used it
+# as a boolean. So a WSL 1 distro (no Linux kernel, no cgroups, no user
+# namespaces) was classified `wsl`, routed to setup-linux.sh, and told to
+# install Podman inside itself. On Debian/Ubuntu that apt-get SUCCEEDS, so the
+# preflight went green and the installer then ran a sudo package install
+# unprompted - with the real failure arriving minutes later as a raw cgroups
+# error naming neither Podman nor the kernel.
+_wsl_pf() { # _wsl_pf <version> -> the preflight lines that mention WSL 1 or Podman
+    ROOT="$ROOT" V="$1" bash -c '
+        . "$ROOT/setup/lib/detect.sh" >/dev/null 2>&1
+        detect_os() { echo wsl; }
+        detect_wsl_version() { printf "%s\n" "$V"; }
+        preflight_report 2>&1 | sed "s/\x1b\[[0-9;]*m//g"'
+}
+has "WSL 1 is refused, and told how to convert" 'wsl --set-version' "$(_wsl_pf 1)"
+lacks "...and is not sent to install Podman"    'Podman: available' "$(_wsl_pf 1)"
+has "WSL 2 still takes the Linux checks"        'Podman' "$(_wsl_pf 2)"
+lacks "...and is not refused"                   'wsl --set-version' "$(_wsl_pf 2)"
+# The install gate refuses too, not only the preflight: an install does not
+# have to pass through preflight_report to get here.
+has "the install gate refuses WSL 1 as well" 'WSL 1 is not supported' "$_pd_code"
+has "...naming the conversion command"       'wsl --set-version <distro> 2' "$_pd_code"
+
+echo
+echo "a refusal is the same refusal on both CLIs:"
+# DOC-01's second half. `exakit autostart off` is a command three documents
+# used to name and neither CLI has - but the shell refused it with reject()
+# (exit 2, "your input was wrong") while PowerShell used Fail (exit 1, "the
+# command failed", plus a .last-failure note that status --json then reported
+# as an unfinished install step on a machine where nothing was wrong). An agent
+# scripting it from a document could not even classify what came back.
+if command -v pwsh >/dev/null 2>&1; then
+    _rp_sh_rc="$(bash "$ROOT/setup/exakit" autostart off >/dev/null 2>&1; echo $?)"
+    _rp_ps_rc="$(pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" autostart off >/dev/null 2>&1; echo $?)"
+    check "bad input exits 2 on the shell CLI"      "2" "$_rp_sh_rc"
+    check "...and 2 on the PowerShell CLI too"      "2" "$_rp_ps_rc"
+    # And with --json, one object on stdout and NOTHING else there - which is
+    # what AGENTS.md promises. The Windows-home notice used to print ahead of
+    # the object on exactly the machines the kit cares most about (a domain
+    # profile with a redirected home), leaving it unparseable; it now goes to
+    # stderr when a machine is asking.
+    _rp_ps_json="$(pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" autostart off --json 2>/dev/null)"
+    check "the PowerShell refusal is one parseable object" "yes" \
+        "$(printf '%s' "$_rp_ps_json" | python3 -c 'import json,sys
+try:
+    d = json.load(sys.stdin)
+    print("yes" if d.get("rejected") and d.get("ok") is False else "no")
+except Exception:
+    print("no")' 2>/dev/null)"
+    # remedy is null, not "" - declared [string] it coerced to empty, and a
+    # parser testing `if remedy:` would branch differently on the two platforms
+    # for the same refusal.
+    check "...with remedy null, as on the shell side" "null null" \
+        "$(printf '%s|%s' \
+            "$(printf '%s' "$_rp_ps_json" | python3 -c 'import json,sys;print("null" if json.load(sys.stdin)["remedy"] is None else "notnull")' 2>/dev/null)" \
+            "$(bash "$ROOT/setup/exakit" autostart off --json 2>/dev/null | python3 -c 'import json,sys;print("null" if json.load(sys.stdin)["remedy"] is None else "notnull")' 2>/dev/null)" \
+          | tr '|' ' ')"
+else
+    echo "  (pwsh not available - PowerShell parity checks skipped)"
+fi
+has "the PowerShell refusal goes through Deny-ExakitInput" 'Deny-ExakitInput "autostart takes no arguments' \
+    "$(cat "$ROOT/setup/exakit.ps1")"
+has "the home notice is kept off a machine's stdout" '[Console]::Error.WriteLine' \
+    "$(sed -n '/^function Show-ExakitHomeNotice/,/^}/p' "$ROOT/setup/lib/exakit-common.ps1")"
+
+echo
+echo "an error message that ends the run says what to do next:"
+# NEW-03. QUICKSTART.md promises "Every error message names its remedy", and
+# the fatal ones said "(see log)" - which names a file the reader has no path
+# to, no way to open, and no idea which of `exakit logs`' three targets holds.
+# The repo already knew: two comments beside genuinely good translators say at
+# length that sending the reader into another program to look for an answer
+# THIS RUN IS HOLDING is the wrong shape. The standard existed and was applied
+# twice.
+#
+# The rule enforced here is narrow and checkable: a message may point at the
+# log, but it must name the command that opens it. "log" on its own is not a
+# remedy; "exakit logs setup" is.
+_sl_bad=""
+for _sl_f in "$ROOT"/setup/lib/*.sh "$ROOT"/setup/exakit "$ROOT"/setup/lib/*.ps1 "$ROOT"/setup/exakit.ps1; do
+    [ -f "$_sl_f" ] || continue
+    # Only lines that RAISE something - a comment about the old wording is not
+    # a message anyone sees.
+    _sl_hits="$(grep -nE '(die|warn|Fail|Warn2)[ (]"' "$_sl_f" 2>/dev/null \
+                | grep '(see log)' \
+                | grep -v 'exakit ' | cut -d: -f1 | tr '\n' ',' )"
+    [ -n "$(printf '%s' "$_sl_hits" | tr -d ',')" ] || continue
+    _sl_bad="$_sl_bad ${_sl_f##*/}:${_sl_hits%,}"
+done
+check "no raised message points at 'the log' without naming the command" "" "${_sl_bad# }"
+# ...and the check is not vacuous: the raisers it scans are really there.
+_sl_raisers="$(grep -chE '(die|warn|Fail|Warn2)[ (]"' "$ROOT"/setup/lib/common.sh)"
+check "...and it scanned real raisers" "yes" \
+    "$([ "${_sl_raisers:-0}" -gt 50 ] && echo yes || echo no)"
+# The messages that replaced them name a target that actually exists.
+_sl_targets="$(bash "$ROOT/setup/exakit" logs --json 2>/dev/null | python3 -c 'import json,sys
+try: print(" ".join(t.get("target","") for t in json.load(sys.stdin)["targets"]))
+except Exception: print("")' 2>/dev/null)"
+case "$_sl_targets" in
+    *setup*) check "the target those messages name is a real one" "yes" "yes" ;;
+    *)       check "the target those messages name is a real one" "yes" "no: [$_sl_targets]" ;;
+esac
+
+echo
+echo "the --json shapes AGENTS.md documents are the shapes the CLIs emit:"
+# AGK-04/05. Two ways the machine contract had drifted from its own document.
+#
+# AGK-04: `mcp-status --bogus` answered 4 ("not installed") on a bare machine,
+# because its option validation sat AFTER the install check - the one command
+# of twelve that did. Whether the kit is installed does not change whether an
+# option exists, and AGENTS.md says bad input exits 2 for "an unknown option to
+# any command".
+_jc_home="$WORK/json-contract-none"
+for _jc_cmd in mcp-status status version info skills catalog logs; do
+    _jc_rc="$(EXAKIT_HOME="$_jc_home" bash "$ROOT/setup/exakit" "$_jc_cmd" --bogus-zz >/dev/null 2>&1; echo $?)"
+    check "bad input on '$_jc_cmd' exits 2 even with nothing installed" "2" "$_jc_rc"
+done
+# ...and the legitimate not-installed answer is still 4, not swallowed by the above.
+_jc_rc="$(EXAKIT_HOME="$_jc_home" bash "$ROOT/setup/exakit" mcp-status --json >/dev/null 2>&1; echo $?)"
+check "...while a real not-installed answer stays 4" "4" "$_jc_rc"
+
+# AGK-05: the paragraph forbade `status` on the document commands and then
+# listed `status` for skills, and described its shape as two keys when it has
+# five. A parser written to either half was wrong.
+_jc_doc="$(grep -o '`skills --json` is `{[^}]*}`' "$ROOT/AGENTS.md" | head -1)"
+_jc_keys="$(bash "$ROOT/setup/exakit" skills --json 2>/dev/null | python3 -c 'import json,sys
+print(" ".join(sorted(json.load(sys.stdin))))' 2>/dev/null)"
+for _jc_k in $_jc_keys; do
+    case "$_jc_doc" in
+        *"\"$_jc_k\""*) check "AGENTS.md documents skills --json's '$_jc_k'" "yes" "yes" ;;
+        *)                check "AGENTS.md documents skills --json's '$_jc_k'" "yes" "no" ;;
+    esac
+done
+lacks "...and no longer claims those commands carry no status" 'they carry none of those three keys' \
+    "$(cat "$ROOT/AGENTS.md")"
+# Every status skills can emit is one the Currency vocabulary lists.
+_jc_currency="$(grep -n '^\*\*Currency\*\*' "$ROOT/AGENTS.md" | cut -d: -f1 | head -1)"
+_jc_cline="$(sed -n "${_jc_currency}p" "$ROOT/AGENTS.md")"
+for _jc_v in current update_pending missing; do
+    case "$_jc_cline" in
+        *"\`$_jc_v\`"*) check "the Currency vocabulary lists '$_jc_v'" "yes" "yes" ;;
+        *)                check "the Currency vocabulary lists '$_jc_v'" "yes" "no" ;;
+    esac
+done
+_jc_emits="$(grep -o '_skj_status="[a-z_]*"' "$ROOT/setup/lib/common.sh" | sed 's/.*="//;s/"//' | sort -u | tr '\n' ' ')"
+check "...and those are exactly what the code emits" "current missing update_pending " "$_jc_emits"
 
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]

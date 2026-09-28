@@ -96,6 +96,30 @@ else
     # to be prose and exit 1, so a parser pointed at a relocated EXAKIT_HOME
     # got neither the status nor the remedy it was promised.
     _no_lib_remedy="re-run the installer (curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | sh)${EXAKIT_HOME:+; or point EXAKIT_HOME at an install that has kit/setup/lib}"
+    # AN INTERRUPTED UPDATE IS A DIFFERENT PROBLEM WITH A MUCH CHEAPER ANSWER,
+    # and this is the only code left able to say so. `exakit update` renames
+    # the kit aside before renaming the new one in; killed between the two, the
+    # machine has a kit.backup-<ts> and no kit, and every subcommand lands
+    # here. Telling that user to re-download and reinstall the kit would be
+    # both slower and more destructive than the single rename that fixes it.
+    #
+    # The marker is what the updater leaves; the directory scan is the fallback
+    # for a kit updated by a version of this file that did not write one.
+    _no_lib_home="${EXAKIT_HOME:-$HOME/.exasol-starter-kit}"
+    _no_lib_backup=""
+    if [ -f "$_no_lib_home/.update-in-progress" ]; then
+        _no_lib_backup="$(cat "$_no_lib_home/.update-in-progress" 2>/dev/null || true)"
+    fi
+    if [ -z "$_no_lib_backup" ] || [ ! -d "$_no_lib_backup" ]; then
+        _no_lib_backup=""
+        for _no_lib_cand in "$_no_lib_home"/kit.backup-*; do
+            [ -d "$_no_lib_cand/setup/lib" ] || continue
+            _no_lib_backup="$_no_lib_cand"
+        done
+    fi
+    if [ -n "$_no_lib_backup" ] && [ ! -d "$_no_lib_home/kit" ]; then
+        _no_lib_remedy="mv '$_no_lib_backup' '$_no_lib_home/kit'"
+    fi
     for _no_lib_arg in "$@"; do
         case "$_no_lib_arg" in
             --json|-j)
@@ -104,6 +128,14 @@ else
                 exit 4 ;;
         esac
     done
+    if [ -n "$_no_lib_backup" ] && [ ! -d "$_no_lib_home/kit" ]; then
+        echo "exakit: an update was interrupted before the new kit was put in place." >&2
+        echo "exakit: your previous kit copy is still here, and nothing else was touched - the database, its data and your credentials are untouched." >&2
+        echo "exakit: put it back with one command:" >&2
+        echo "  $_no_lib_remedy" >&2
+        echo "exakit: then run 'exakit update' again." >&2
+        exit 4
+    fi
     echo "exakit: cannot find the kit library (looked in $_script_dir/lib and ${EXAKIT_HOME:-$HOME/.exasol-starter-kit}/kit/setup/lib)" >&2
     echo "exakit: if EXAKIT_HOME is set, it must point at an install that has kit/setup/lib; otherwise re-run the installer." >&2
     exit 4
@@ -1575,7 +1607,16 @@ cmd_mcp_doctor() {
             # Same three keys as every other --json answer from a state query
             # (installed / status / remedy), so one parser handles all of them.
             # `database` is kept for callers written against the older shape.
-            printf '{"installed": true, "status": "database not running", "database": "not running", "remedy": "%s"}\n' \
+            #
+            # "stopped", THE SAME WORD `status --json` USES. AGENTS.md promises
+            # the five state queries "agree with each other on the status
+            # vocabulary", and this emitter and info's said "database not
+            # running" where status said "stopped" - one state, three emitters,
+            # two words, so `if d["status"] == "stopped"` was correct for one
+            # command and silently false for the other two. The sentence lives
+            # on in `database` and in the prose below, where it reads well;
+            # `status` is the machine field and now has one value per state.
+            printf '{"installed": true, "status": "stopped", "database": "not running", "remedy": "%s"}\n' \
                 "$(exakit_runtime_remedy)"
         else
             warn "The database is not running — fix that first: $(exakit_runtime_remedy)"
@@ -1662,6 +1703,19 @@ cmd_mcp_status() {
     _ms_json=0
     for _ms_pre in "$@"; do
         case "$_ms_pre" in --json|-j) _ms_json=1 ;; esac
+    done
+    # AND THE REFUSAL COMES FIRST TOO, for the same reason the --json read does.
+    # This validation used to sit AFTER _require_install, so on a machine with
+    # nothing installed `exakit mcp-status --bogus` answered 4 ("not
+    # installed") for what is bad input - the one command out of twelve that
+    # did. AGENTS.md is unambiguous: bad input exits 2, for "an unknown option
+    # to any command", and whether the kit happens to be installed does not
+    # change whether the option exists.
+    for _ms_pre in "$@"; do
+        case "$_ms_pre" in
+            --json|-j) ;;
+            -*) reject "Unknown option '$_ms_pre' for mcp-status (supported: --json)." ;;
+        esac
     done
     _require_install "$_ms_json"
     exakit_init_logging
@@ -1829,7 +1883,11 @@ elif not rtype:
     doc["remedy"] = install_cmd
     doc["remedy_hint"] = "no runtime is recorded yet; the installer resumes at the unfinished step"
 else:
-    doc["status"] = "database not running"
+    # "stopped" - the same word status --json uses for this state. See the
+    # note in cmd_mcp_doctor: the status field is the machine's, and it has
+    # one value per state.
+    doc["status"] = "stopped"
+    doc["database"] = "not running"
     doc["remedy"] = "exakit start"
 skills_have = ((doc.get("components") or {}).get("skills") or {}).get("version")
 skills_want = sys.argv[3] or None
@@ -2140,7 +2198,16 @@ _with_notice() {
 #
 # `sql` is excluded on purpose: its argument is arbitrary SQL text, and a
 # statement that happens to contain --help is a query, not a request for help.
-if [ $# -ge 2 ] && [ "$1" != "sql" ]; then
+#
+# A leading help flag is excluded too: `exakit --help --json` is the help
+# COMMAND with an option, not a request for a topic literally named "--help".
+# It used to fall in here, be rendered as a command page for that topic, and
+# print grep's usage block instead of the JSON document an agent asked for.
+case "${1:-}" in
+    help|--help|-h) _help_skip=1 ;;
+    *)              _help_skip=0 ;;
+esac
+if [ $# -ge 2 ] && [ "$1" != "sql" ] && [ "$_help_skip" -eq 0 ]; then
     for _help_arg in "$@"; do
         case "$_help_arg" in
             --help|-h)
@@ -2180,6 +2247,24 @@ _exakit_refuse_unknown_options() {
         esac
     done
 }
+
+# EXAKIT_REFUSAL_JSON — did this caller ask for a machine answer?
+#
+# Set once, here, so that reject() and the unknown-command arm below can honour
+# --json on the paths that REFUSE, not only on the paths that succeed. `sql` is
+# excluded for the same reason it is excluded from the universal --help hook:
+# its argument is arbitrary SQL text, and a statement containing --json is a
+# query. It carries its own --json parsing and its own _sql_reject anyway.
+case "${1:-}" in
+    sql) : ;;
+    *)
+        for _rj_arg in "$@"; do
+            case "$_rj_arg" in
+                --json|-j) EXAKIT_REFUSAL_JSON=1; export EXAKIT_REFUSAL_JSON; break ;;
+            esac
+        done
+        ;;
+esac
 
 # State QUERIES are read-only by contract: no probe they run - however it
 # fails - may write the .last-failure note that status --json then reports as
@@ -2250,6 +2335,12 @@ case "${1:-help}" in
        # answer is its page - not "unknown command" followed by the whole menu.
        if exakit_help_is_id "${1}"; then
            exakit_help_render component "${1}"
+       elif [ "${EXAKIT_REFUSAL_JSON:-0}" = "1" ]; then
+           # One object on stdout, and the whole usage screen NOT dumped into
+           # the middle of it.
+           printf '{"ok": false, "error": "%s", "remedy": "exakit catalog --json", "rejected": true}\n' \
+               "$(_exakit_json_string "Unknown command '${1}'.")"
+           exit 2
        else
            echo "exakit: unknown command '${1}'" >&2
            usage >&2

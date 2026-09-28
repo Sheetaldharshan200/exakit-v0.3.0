@@ -18,6 +18,12 @@ from mcp.core.serialization import sha256_text
 # that record it must not present it as one.
 OWNER_ONLY_ACL = "owner-only-acl"
 
+# What describe_protection() reports for a Windows file whose ACL is NOT the
+# owner-only one protect_path applies - it still inherits from its parent, or it
+# grants somebody else. Distinct from None, which means "could not be read":
+# one is drift to report, the other is a check that did not run.
+NOT_OWNER_ONLY_ACL = "not-owner-only-acl"
+
 
 def _is_windows() -> bool:
     """One place the whole module asks "is chmod real here?".
@@ -64,6 +70,72 @@ def protect_path(path: Path) -> str | None:
             return None
         return OWNER_ONLY_ACL
     path.chmod(stat.S_IRWXU if path.is_dir() else (stat.S_IRUSR | stat.S_IWUSR))
+    return format(stat.S_IMODE(path.stat().st_mode), "04o")
+
+
+def describe_protection(path: Path) -> str | None:
+    """What ``path`` is ACTUALLY protected by right now - the read side of
+    :func:`protect_path`.
+
+    Returns a four-digit POSIX mode, :data:`OWNER_ONLY_ACL`,
+    :data:`NOT_OWNER_ONLY_ACL`, or ``None`` when the posture could not be
+    determined at all.
+
+    This exists because the validator had no way to ask. Its permission check
+    read ``stat().st_mode`` and skipped the comparison on Windows - where the
+    mode means nothing - and then recorded a PASS for the check it had just
+    skipped, on the files that carry the database password in plaintext. A
+    check that cannot read a posture must report that it could not, not that
+    the posture is good; so ``None`` is a distinct answer here and callers are
+    expected to treat it as "unverified" rather than folding it into either
+    outcome.
+
+    Owner-only on Windows means what protect_path makes it mean: inheritance
+    stripped, and no principal granted but this user.
+    """
+    if not path.exists():
+        return None
+    if _is_windows():
+        try:
+            completed = subprocess.run(
+                ["icacls", str(path)],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        username = (os.environ.get("USERNAME") or getpass.getuser()).strip().lower()
+        target = str(path).lower()
+        principals: list[str] = []
+        inherited = False
+        for raw in (completed.stdout or "").splitlines():
+            line = raw.strip()
+            if not line or line.lower().startswith("successfully processed"):
+                continue
+            # icacls prints "<path> PRINCIPAL:(FLAGS)" on its first line and a
+            # bare "PRINCIPAL:(FLAGS)" on every line after it.
+            if line.lower().startswith(target):
+                line = line[len(target):].strip()
+            if ":" not in line:
+                continue
+            principal, _, flags = line.partition(":")
+            # (I) marks an ACE inherited from the parent - exactly what
+            # /inheritance:r removes, and exactly what a client rewriting its
+            # own config re-acquires.
+            if "(I)" in flags:
+                inherited = True
+            principals.append(principal.strip().lower())
+        if not principals:
+            return None
+        if inherited:
+            return NOT_OWNER_ONLY_ACL
+        # A principal arrives as "DOMAIN\\user" or bare "user"; compare the
+        # account name, which is what protect_path granted.
+        if any(p.rsplit("\\", 1)[-1] != username for p in principals):
+            return NOT_OWNER_ONLY_ACL
+        return OWNER_ONLY_ACL
     return format(stat.S_IMODE(path.stat().st_mode), "04o")
 
 

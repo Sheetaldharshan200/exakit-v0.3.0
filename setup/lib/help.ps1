@@ -64,24 +64,42 @@ $script:ExakitHelpKnownTools = @("exakit", "exapump", "exasol", "dash-server",
     "exasol-json-tables", "exasol-mcp-server", "exasol-mcp-server-http")
 
 # Twin of commands_of() in help.sh: an entry marked "hidden": true keeps its
-# page (exakit <cmd> --help) but is left off the overview, --all, the catalogue
-# and the JSON surfaces. It exists for repair, not for discovery.
+# page (exakit <cmd> --help) but is left off the overview, --all and the
+# catalogue SCREEN. It exists for repair, not for discovery.
+#
+# The JSON surfaces MARK it instead of dropping it - see
+# Get-ExakitHelpDocWithHiddenMarked below, and the twin in help.sh.
 function Get-ExakitHelpVisibleCommands {
-    param($Doc)
+    param($Doc, [switch]$IncludeHidden)
     $out = @()
     foreach ($entry in @($Doc.commands)) {
         if ($null -eq $entry) { continue }
-        if ($entry.PSObject.Properties["hidden"] -and $entry.hidden) { continue }
+        if (-not $IncludeHidden -and $entry.PSObject.Properties["hidden"] -and $entry.hidden) { continue }
         $out += $entry
     }
     return $out
 }
 
-# A copy of a document with its hidden commands removed, for the JSON dumps.
-function Get-ExakitHelpDocWithoutHidden {
+# A copy of a document that KEEPS its hidden commands, each carrying
+# "hidden": true, for the JSON dumps. AGENTS.md says of catalog --json that the
+# internal upgrade paths "are marked hidden"; the dumps used to delete them, so
+# no row carried a hidden key and three dispatchable commands were absent
+# entirely - including skills-install, which `exakit skills --json` hands a
+# machine as its "next".
+function Get-ExakitHelpDocWithHiddenMarked {
     param($Doc)
     $copy = $Doc | Select-Object *
-    if ($copy.PSObject.Properties["commands"]) { $copy.commands = @(Get-ExakitHelpVisibleCommands $Doc) }
+    if ($copy.PSObject.Properties["commands"]) {
+        $marked = @()
+        foreach ($entry in (Get-ExakitHelpVisibleCommands $Doc -IncludeHidden)) {
+            $e = $entry | Select-Object *
+            $isHidden = [bool]($e.PSObject.Properties["hidden"] -and $e.hidden)
+            if ($e.PSObject.Properties["hidden"]) { $e.hidden = $isHidden }
+            else { $e | Add-Member -NotePropertyName hidden -NotePropertyValue $isHidden }
+            $marked += $e
+        }
+        $copy.commands = $marked
+    }
     return $copy
 }
 
@@ -366,12 +384,13 @@ function Show-ExakitHelpComponent {
 }
 
 function Get-ExakitHelpRows {
+    param([switch]$IncludeHidden)
     $docs = Get-ExakitHelpDocuments
     $rows = @()
     $seen = @{}
     foreach ($key in ($docs.Keys | Sort-Object)) {
         $doc = $docs[$key]
-        foreach ($entry in (Get-ExakitHelpVisibleCommands $doc)) {
+        foreach ($entry in (Get-ExakitHelpVisibleCommands $doc -IncludeHidden:$IncludeHidden)) {
             $tool = $key
             $command = $entry.command
             $parts = $command -split '\s+'
@@ -393,6 +412,7 @@ function Get-ExakitHelpRows {
                 tool = $tool; command = $command; options = $entry.options
                 description = $text; invocation = ("$tool $command").Trim()
                 source = $key
+                hidden = [bool]($entry.PSObject.Properties["hidden"] -and $entry.hidden)
             }
             if ($seen.ContainsKey($dedupe)) {
                 $keptAt = $seen[$dedupe]
@@ -510,13 +530,13 @@ function Show-ExakitHelpCommand {
 function Show-ExakitHelpJson {
     param([string]$Which)
     $docs = Get-ExakitHelpDocuments
-    $rows = Get-ExakitHelpRows
+    $rows = Get-ExakitHelpRows -IncludeHidden
     if (-not $Which -or $Which -eq "all") {
         $visibleDocs = [ordered]@{}
-        foreach ($k in ($docs.Keys | Sort-Object)) { $visibleDocs[$k] = Get-ExakitHelpDocWithoutHidden $docs[$k] }
+        foreach ($k in ($docs.Keys | Sort-Object)) { $visibleDocs[$k] = Get-ExakitHelpDocWithHiddenMarked $docs[$k] }
         $payload = [ordered]@{ schema_version = 1; search = $null; count = $rows.Count; commands = $rows; documents = $visibleDocs }
     } elseif ($docs.ContainsKey($Which)) {
-        $payload = Get-ExakitHelpDocWithoutHidden $docs[$Which]
+        $payload = Get-ExakitHelpDocWithHiddenMarked $docs[$Which]
     } else {
         $needle = $Which.ToLowerInvariant()
         $hit = @($rows | Where-Object {

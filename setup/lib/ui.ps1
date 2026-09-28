@@ -133,10 +133,25 @@ $script:UiBoxW = 58
 Initialize-ExakitConsole
 
 # --- primitive helpers ------------------------------------------------------
+# Both roots, longest match wins, compared ordinally.
+#
+# Two bugs in one line, and they cancelled out into "the shortening just stops
+# working". Every path the kit prints is built from %USERPROFILE%, so on a
+# domain machine nothing ever matched $HOME and users saw the full path
+# everywhere. And String.StartsWith(string) is culture-sensitive AND
+# case-sensitive, so even on a single-profile machine a path that differs only
+# in case - routine on a case-insensitive filesystem - did not match either.
 function Get-ExakitTilde([string]$Path) {
     if (-not $Path) { return $Path }
-    $h = $HOME
-    if ($h -and $Path.StartsWith($h)) { return "~" + $Path.Substring($h.Length) }
+    $roots = @()
+    if ($env:USERPROFILE) { $roots += $env:USERPROFILE }
+    if ($HOME) { $roots += $HOME }
+    $best = ""
+    foreach ($r in $roots) {
+        if ($r -and $Path.StartsWith($r, [System.StringComparison]::OrdinalIgnoreCase) -and
+            $r.Length -gt $best.Length) { $best = $r }
+    }
+    if ($best) { return "~" + $Path.Substring($best.Length) }
     return $Path
 }
 

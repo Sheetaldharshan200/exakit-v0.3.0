@@ -455,7 +455,7 @@ exasol_vscode_uninstall() {
         info "Removing the Exasol VS Code extension (${EXAKIT_EXASOL_VSCODE_EXT_ID})"
         if ! _exasol_vscode_code --uninstall-extension "$EXAKIT_EXASOL_VSCODE_EXT_ID" \
                 >>"${EXAKIT_LOG_FILE:-/dev/null}" 2>&1; then
-            warn "code --uninstall-extension reported issues (see log) — remove it inside VS Code if it is still listed."
+            warn "code --uninstall-extension reported issues — what it printed: exakit logs setup. Remove it inside VS Code if it is still listed."
         fi
         if _exasol_vscode_live_version >/dev/null 2>&1; then
             warn "VS Code still lists ${EXAKIT_EXASOL_VSCODE_EXT_ID} — a running VS Code may hold it; remove it from the Extensions view."

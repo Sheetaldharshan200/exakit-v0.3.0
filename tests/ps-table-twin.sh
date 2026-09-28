@@ -602,7 +602,22 @@ has "...and restores that one too"            '$script:ExakitQuietDetail = $prev
 # is the harder failure to notice.
 _ps_on="$(grep -cF 'ExakitQuietDetail = $true' "$_PS_ALL" || true)"
 _ps_off="$(grep -cE 'ExakitQuietDetail = \$[A-Za-z]*[Pp]rev[A-Za-z]*' "$_PS_ALL" || true)"
-check "every quiet bracket is closed again" "$_ps_on" "$_ps_off"
+# THIS LINE CALLED AN ASSERTION THAT DOES NOT EXIST. The suite defines pass,
+# fail, has and lacks - never `check` - so it printed "check: command not found"
+# to stderr, touched neither counter, and the suite still reported "0 failed"
+# with exit 0. A dead assertion is worse than no assertion: it reads as coverage.
+#
+# Reviving it verbatim would fail, and rightly: it asserted the two counts are
+# EQUAL, and they are not (10 sets, 13 restores) because a restore in a finally
+# block legitimately covers a set that only happens on one branch. What a grep
+# can actually prove is the direction - restoring fewer times than you set means
+# a flag escapes its bracket and silences every step after it, which is the
+# failure the comment above describes.
+if [ "$_ps_off" -ge "$_ps_on" ]; then
+    pass "every quiet bracket is closed again ($_ps_on set, $_ps_off restored)"
+else
+    fail "a quiet flag escapes its bracket: $_ps_on set, only $_ps_off restored"
+fi
 rm -f "$_PS_ALL"
 
 printf '\n%d checks, %d failed\n' "$checks" "$fails"

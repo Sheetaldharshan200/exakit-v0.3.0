@@ -1161,7 +1161,21 @@ for name in ("upgrade-kit2", "rollback-kit2"):
     entry = [c for c in doc["commands"] if c["command"] == name]
     assert entry and entry[0].get("hidden") is True, name
 ' "$ROOT/setup/help/exakit.json" && \
-   ! bash "$ROOT/setup/exakit" catalog --json 2>/dev/null | grep -q 'upgrade-kit2' && \
+   bash "$ROOT/setup/exakit" catalog --json 2>/dev/null | python3 -c '
+# OUT OF DISCOVERY, NOT OUT OF THE DOCUMENT. This used to assert the string was
+# absent from catalog --json altogether, which contradicted AGENTS.md ("a
+# handful of internal upgrade paths are marked hidden") and meant no row
+# carried a hidden key at all. The machine surface discloses them with the
+# flag; the SCREENS are what must not advertise them, and that is asserted
+# just below.
+import json, sys
+d = json.load(sys.stdin)
+by = {r["invocation"]: r for r in d["commands"]}
+for name in ("exakit upgrade-kit2", "exakit rollback-kit2"):
+    assert by.get(name, {}).get("hidden") is True, name
+' && \
+   ! bash "$ROOT/setup/exakit" help --all 2>/dev/null | grep -q 'upgrade-kit2' && \
+   ! bash "$ROOT/setup/exakit" help 2>/dev/null | grep -q 'upgrade-kit2' && \
    grep -q 'Write-ExakitKit2NotAvailable' "$ROOT/setup/exakit.ps1"; then
     check "kit2(cli_surface)" "yes" "yes"
 else
