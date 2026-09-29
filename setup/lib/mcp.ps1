@@ -607,6 +607,15 @@ function Assert-McpReadonlyPosture {
         Fail "The MCP read-only user has system privileges beyond the read-only set (CREATE SESSION, USE ANY SCHEMA, SELECT ANY TABLE)."
     }
 
+    # NOR MAY IT REACH ANYTHING THROUGH A ROLE. A privilege held via a granted
+    # role is attributed to the ROLE, not to the user, so every check above is
+    # blind to `GRANT <role> TO MCP_READONLY`. Twin of the role query in
+    # _exakit_assert_mcp_readonly_posture; PUBLIC is excluded because every
+    # user holds it by definition.
+    if (-not (Test-ExapumpSqlHasToken $ConfigPath "admin" "SELECT CASE WHEN COUNT(*) = 0 THEN 'EXAKIT_ROLE_SCOPE_OK' ELSE 'EXAKIT_ROLE_SCOPE_TOO_WIDE' END AS STATUS FROM EXA_DBA_ROLE_PRIVS WHERE GRANTEE = '$identifierLit' AND GRANTED_ROLE NOT IN ('PUBLIC')" "EXAKIT_ROLE_SCOPE_OK")) {
+        Fail "The MCP read-only user holds a database ROLE, which can carry privileges these checks cannot see. Rebuild it with: exakit mcp-setup"
+    }
+
     # No object privilege may be anything other than SELECT.
     if (-not (Test-ExapumpSqlHasToken $ConfigPath "admin" "SELECT CASE WHEN COUNT(*) = 0 THEN 'EXAKIT_OBJ_PRIV_SCOPE_OK' ELSE 'EXAKIT_OBJ_PRIV_SCOPE_TOO_WIDE' END AS STATUS FROM EXA_DBA_OBJ_PRIVS WHERE GRANTEE = '$identifierLit' AND PRIVILEGE <> 'SELECT'" "EXAKIT_OBJ_PRIV_SCOPE_OK")) {
         Fail "The MCP read-only user has a write object privilege; it must be read-only."

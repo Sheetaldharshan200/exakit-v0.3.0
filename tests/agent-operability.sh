@@ -2425,5 +2425,26 @@ has "...and the refusal explains where the number came from" 'sparse file on /mn
 check "off WSL the note stays silent" "" \
     "$(bash -c '. "'"$ROOT"'/setup/lib/detect.sh" >/dev/null 2>&1; detect_free_disk_note "$HOME" 2>/dev/null || true')"
 
+echo
+echo "the read-only posture check cannot be walked around with a role:"
+# SEC-07. A privilege held through a granted role is attributed to the ROLE in
+# EXA_DBA_SYS_PRIVS, not to the user - so every query in the posture check was
+# blind to `GRANT <role> TO MCP_READONLY`, while the function's own header
+# claimed it proved the user holds the read set "and nothing more". The live
+# write-probe catches a role conferring CREATE TABLE in the probe schema and is
+# genuinely load-bearing, but it is one CREATE TABLE in one schema: a role
+# granting SELECT ANY DICTIONARY - the privilege this repo singles out as
+# deliberately withheld, because it exposes audit logs, sessions and other
+# users - passed the whole check.
+for _rp_half in setup/lib/common.sh setup/lib/mcp.ps1; do
+    _rp_src="$(cat "$ROOT/$_rp_half")"
+    has "$_rp_half asks EXA_DBA_ROLE_PRIVS"    'EXA_DBA_ROLE_PRIVS' "$_rp_src"
+    has "...and refuses a user holding a role" 'EXAKIT_ROLE_SCOPE_OK' "$_rp_src"
+    has "...while excluding PUBLIC"            "GRANTED_ROLE NOT IN ('PUBLIC')" "$_rp_src"
+done
+# The header no longer claims more than the queries prove.
+lacks "the header no longer overclaims" 'user has no write/DDL/admin privilege (no INSERT ANY TABLE, CREATE USER,' \
+    "$(sed -n '/^_exakit_assert_mcp_readonly_posture()/,/_probe_schema=/p' "$ROOT/setup/lib/common.sh" | grep '^[[:space:]]*#')"
+
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]

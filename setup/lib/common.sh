@@ -7639,10 +7639,13 @@ _exakit_assert_mcp_readonly_posture() {
     _user_lit="$(_exakit_sql_literal "$_identifier_user")"
 
     # The read-only user's system privileges must be EXACTLY the read set:
-    # CREATE SESSION + USE ANY SCHEMA + SELECT ANY TABLE. Assert each is present,
-    # then assert nothing outside that set exists — which is what guarantees the
-    # user has no write/DDL/admin privilege (no INSERT ANY TABLE, CREATE USER,
-    # GRANT ANY, SELECT ANY DICTIONARY, etc.).
+    # CREATE SESSION + USE ANY SCHEMA + SELECT ANY TABLE. Assert each is
+    # present, then assert nothing outside that set exists — directly, through
+    # a role, or as an object grant. Together those three say the user has no
+    # write/DDL/admin privilege (no INSERT ANY TABLE, CREATE USER, GRANT ANY,
+    # SELECT ANY DICTIONARY, etc.). Before the role query was added, this
+    # comment claimed "and nothing more" while a single GRANT of any role went
+    # entirely unseen.
     _exakit_exapump_sql_has_token \
         "$_config_path" "admin" \
         "SELECT CASE WHEN EXISTS (SELECT 1 FROM EXA_DBA_SYS_PRIVS WHERE GRANTEE = '$_user_lit' AND PRIVILEGE = 'CREATE SESSION') THEN 'EXAKIT_CREATE_SESSION_OK' ELSE 'EXAKIT_CREATE_SESSION_MISSING' END AS STATUS" \
@@ -7662,6 +7665,24 @@ _exakit_assert_mcp_readonly_posture() {
         "$_config_path" "admin" \
         "SELECT CASE WHEN COUNT(*) = 0 THEN 'EXAKIT_SYS_PRIV_SCOPE_OK' ELSE 'EXAKIT_SYS_PRIV_SCOPE_TOO_WIDE' END AS STATUS FROM EXA_DBA_SYS_PRIVS WHERE GRANTEE = '$_user_lit' AND PRIVILEGE NOT IN ('CREATE SESSION', 'USE ANY SCHEMA', 'SELECT ANY TABLE')" \
         "EXAKIT_SYS_PRIV_SCOPE_OK" || die "The database login for your AI client has more than read-only access, so the kit will not hand it over. Rebuild it with: exakit mcp-setup (or check EXAKIT_MCP_READONLY_USER, which is '$_readonly_user' here, for a login you granted extra privileges to)."
+
+    # NOR MAY IT REACH ANYTHING THROUGH A ROLE. A privilege held via a granted
+    # role is attributed to the ROLE in EXA_DBA_SYS_PRIVS, not to the user, so
+    # every check above is blind to `GRANT <role> TO MCP_READONLY`. The write
+    # probe below does catch a role conferring CREATE TABLE in the probe
+    # schema, and it is genuinely load-bearing - but it is one CREATE TABLE in
+    # one schema, so a role granting SELECT ANY DICTIONARY (the privilege this
+    # file and sql/mcp_readonly_user.sql single out as deliberately withheld,
+    # because it exposes audit logs, sessions and other users), IMPORT/EXPORT,
+    # EXECUTE ANY SCRIPT, or CREATE ANY TABLE in some other schema passed the
+    # whole posture check. The kit never grants a role, so this is drift
+    # detection - which is exactly what mcp-doctor re-runs this for.
+    #
+    # PUBLIC is excluded because every user holds it by definition.
+    _exakit_exapump_sql_has_token \
+        "$_config_path" "admin" \
+        "SELECT CASE WHEN COUNT(*) = 0 THEN 'EXAKIT_ROLE_SCOPE_OK' ELSE 'EXAKIT_ROLE_SCOPE_TOO_WIDE' END AS STATUS FROM EXA_DBA_ROLE_PRIVS WHERE GRANTEE = '$_user_lit' AND GRANTED_ROLE NOT IN ('PUBLIC')" \
+        "EXAKIT_ROLE_SCOPE_OK" || die "The database login for your AI client holds a database ROLE, which can carry privileges these checks cannot see, so the kit will not hand it over. Rebuild it with: exakit mcp-setup"
 
     # No object privilege may be anything other than SELECT — i.e. the user
     # holds no INSERT/UPDATE/DELETE/ALTER/etc. object grant anywhere.
