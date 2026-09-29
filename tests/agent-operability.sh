@@ -2446,5 +2446,43 @@ done
 lacks "the header no longer overclaims" 'user has no write/DDL/admin privilege (no INSERT ANY TABLE, CREATE USER,' \
     "$(sed -n '/^_exakit_assert_mcp_readonly_posture()/,/_probe_schema=/p' "$ROOT/setup/lib/common.sh" | grep '^[[:space:]]*#')"
 
+echo
+echo "a skipped suite can be made to fail, so CI cannot mistake one for a pass:"
+# QAT-05/QAT-06. Every suite with a prerequisite handled a missing one by
+# printing "skipped" and exiting 0, so on a runner without it the suite
+# reported SUCCESS having asserted nothing. macos-latest has no pwsh, so the
+# PowerShell AST sweep - the guard credited with catching a shipped-broken
+# exasol-scheduler install - read nothing and passed on that leg; ubuntu-latest
+# was the only thing running it, on the implicit property that the hosted image
+# ships pwsh. And mcp-readonly-sql-matrix.sh, the ONLY suite that empirically
+# proves the MCP user can read and cannot write, would have printed SKIP and
+# passed if anyone had wired it in.
+_rq() { # _rq <env assignments> <suite> -> exit code
+    ROOT="$ROOT" bash -c "cd '$ROOT' && $1 bash $2 >/dev/null 2>&1; echo \$?"
+}
+check "a missing prerequisite still skips by default" "0" \
+    "$(_rq 'EXAKIT_PS_BIN=definitely-not-a-shell' tests/ps-undefined-functions.sh)"
+check "...and FAILS where the environment declared it required" "1" \
+    "$(_rq 'EXAKIT_REQUIRE_PS=1 EXAKIT_PS_BIN=definitely-not-a-shell' tests/ps-undefined-functions.sh)"
+check "...and a different requirement does not trigger it" "0" \
+    "$(_rq 'EXAKIT_REQUIRE_DB=1 EXAKIT_PS_BIN=definitely-not-a-shell' tests/ps-undefined-functions.sh)"
+check "EXAKIT_REQUIRE_ALL covers every kind" "1" \
+    "$(_rq 'EXAKIT_REQUIRE_ALL=1 EXAKIT_PS_BIN=definitely-not-a-shell' tests/ps-undefined-functions.sh)"
+# The security suite routes its skip through the same helper, so a maintainer
+# running it after an install cannot read a skip as proof.
+has "the read-only SQL matrix can be made to insist" 'exakit_require_skip DB' \
+    "$(cat "$ROOT/tests/mcp-readonly-sql-matrix.sh")"
+# And CI declares the requirement on the leg that is supposed to satisfy it.
+_rq_ci="$(cat "$ROOT/.github/workflows/versions.yml")"
+has "CI requires pwsh on the Linux leg"  "PowerShell available (required on Linux)" "$_rq_ci"
+has "...and passes the flag to the suites" 'EXAKIT_REQUIRE_PS' "$_rq_ci"
+# The skip branch STAYS - macOS is a real platform for the shell suites and has
+# no business failing over an engine it does not ship. What has to be true is
+# that it is now unreachable on the leg that declared the requirement.
+has "...while a required leg fails instead of skipping" \
+    'FAIL pwsh is missing on the runner that is supposed to have it' "$_rq_ci"
+has "...and the plain skip survives for the leg that may not have it" \
+    'pwsh not installed on this runner - PowerShell suites skipped' "$_rq_ci"
+
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]

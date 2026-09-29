@@ -661,7 +661,23 @@ jobs:
       # exists, and finding its next unresolved call by pushing and waiting
       # costs a full CI round each time.
       - run: bash tests/lib/ps-uninstall-calls.sh
+      # ONE LEG HAS TO INSIST. This used to skip on any runner without pwsh and
+      # exit 0 either way, so macos-latest (which has none) reported success
+      # having run nothing, and ubuntu-latest was the only thing covering these
+      # five suites plus the AST sweep - on the implicit property that the
+      # hosted image happens to ship pwsh. Drop it from the image and six
+      # guards go quiet with a green matrix and nothing to notice.
+      #
+      # ubuntu-latest now declares that it requires pwsh, so its absence is a
+      # red build there. macOS keeps the skip: it is a real platform for the
+      # shell suites and has no business failing over an engine it does not
+      # ship.
+      - name: PowerShell available (required on Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: pwsh --version
       - name: PowerShell-native suites
+        env:
+          EXAKIT_REQUIRE_PS: ${{ matrix.os == 'ubuntu-latest' && '1' || '0' }}
         run: |
           if command -v pwsh >/dev/null 2>&1; then
             pwsh -NoProfile -File tests/noninteractive-answers.ps1
@@ -669,6 +685,9 @@ jobs:
             pwsh -NoProfile -File tests/runtime-personal-ps.ps1
             pwsh -NoProfile -File tests/legacy-crossing-ps.ps1
             pwsh -NoProfile -File tests/data-load-shapes-ps.ps1
+          elif [ "${EXAKIT_REQUIRE_PS:-0}" = "1" ]; then
+            echo "FAIL pwsh is missing on the runner that is supposed to have it" >&2
+            exit 1
           else
             echo "pwsh not installed on this runner - PowerShell suites skipped"
           fi
