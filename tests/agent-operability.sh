@@ -1290,11 +1290,15 @@ check "a launcher that says ready, with SQL answering, is running" "running" "$(
 # longer decide a kill). What has to stay true is that both spellings are
 # recognised as OURS - otherwise the reaper calls the kit's own process foreign
 # and refuses to clear the port.
-_rp_orphan="$(sed -n '/^personal_is_orphan_daemon()/,/^}/p' "$ROOT/setup/lib/runtime-personal.sh")"
+# The name test moved into _personal_is_runner_process when personal_starting
+# needed the same question answered (LIF-10) - one definition, so the reaper
+# and the status probe can never disagree about whose process it is. What has
+# to stay true is unchanged: both spellings are ours, anything else is not.
+_rp_orphan="$(sed -n '/^_personal_is_runner_process()/,/^}/p' "$ROOT/setup/lib/runtime-personal.sh")"
 has "the reaper knows the 2.3 runner" '*exasol-local-runner*' "$_rp_orphan"
 has "...and still knows the 2.2 one"  '*mac-runner*__daemon__*' "$_rp_orphan"
 # ...and anything that is neither is still refused outright.
-has "...and refuses anything else"    '*) return 1 ;;' "$_rp_orphan"
+has "...and refuses anything else"    'return 1' "$_rp_orphan"
 has "a stopped deployment holding its port is cleared before the start" \
     'Clearing a leftover Exasol runner still holding port' "$RP_SH"
 
@@ -2348,6 +2352,78 @@ check "...and it saw the guarded calls" "yes" \
 # The one that carries a credential is the one that must never be unguarded.
 has "the token-bearing lookup pins https" "--proto '=https' --proto-redir '=https'" \
     "$(sed -n '/_esd_json="\$(curl/,+3p' "$ROOT/setup/lib/exasol-scheduler.sh")"
+
+echo
+echo "a booting database is not a port conflict:"
+# LIF-10. personal_status emitted no `starting`, so port-bound + launcher-alive
+# + SQL-not-answering-yet - which IS a deployment's startup window - came back
+# as `conflict`. Two consequences. common.sh already had a `starting` arm in
+# the post-update check that could never be reached, so it fell to the
+# catch-all and warned about a conflict for a database that was simply booting.
+# And `conflict` is the value that sends cmd_start into the reaper, which is
+# step one of the path that SIGKILLs a healthy starting runner (LIF-09).
+_ps_probe() { # _ps_probe <sql-answers 0|1> <launcher-state> <starting 0|1>
+    ROOT="$ROOT" A="$1" L="$2" S="$3" bash -c '
+        . "$ROOT/setup/lib/common.sh" >/dev/null 2>&1
+        . "$ROOT/setup/lib/runtime-personal.sh" >/dev/null 2>&1
+        personal_deployment_exists() { return 0; }
+        port_in_use() { return 0; }
+        personal_db_port() { echo 8563; }
+        personal_deployment_wedged() { return 1; }
+        EXAKIT_PERSONAL_BIN=/bin/sh
+        eval "personal_db_answers() { return $A; }"
+        eval "personal_launcher_state() { printf %s '"'"'$L'"'"'; }"
+        eval "personal_starting() { return $S; }"
+        personal_status' 2>/dev/null
+}
+check "SQL answering is running"                  "running"  "$(_ps_probe 0 running 1)"
+check "the launcher's own 'stopped' wins"         "stopped"  "$(_ps_probe 1 stopped 1)"
+check "our own young runner is starting"          "starting" "$(_ps_probe 1 running 0)"
+check "a port held by something else is conflict" "conflict" "$(_ps_probe 1 running 1)"
+# The two probes must agree about whose process it is, or a runner can be
+# "starting" to one and reapable to the other.
+has "one definition of 'this is our runner'" '_personal_is_runner_process' \
+    "$(sed -n '/^personal_is_orphan_daemon()/,/^}/p' "$ROOT/setup/lib/runtime-personal.sh")"
+has "...used by the starting probe too"      '_personal_is_runner_process' \
+    "$(sed -n '/^personal_starting()/,/^}/p' "$ROOT/setup/lib/runtime-personal.sh")"
+has "exakit start waits instead of reaping"  'already starting' "$(cat "$ROOT/setup/exakit")"
+
+echo
+echo "WSL is detected by more than one signal, and free disk means the real disk:"
+# WSL-02: /proc/version is built from the KERNEL's strings, so a WSL2 distro
+# booting a user-supplied kernel had no "microsoft" in it and was read as plain
+# linux - losing every WSL-specific remedy, including the only sentence that
+# tells the reader Docker Desktop on the Windows side does not count.
+for _wd_f in setup/lib/detect.sh install.sh; do
+    _wd_src="$(cat "$ROOT/$_wd_f")"
+    has "$_wd_f consults WSL_DISTRO_NAME" 'WSL_DISTRO_NAME' "$_wd_src"
+    has "$_wd_f consults /run/WSL"        '/run/WSL' "$_wd_src"
+    has "$_wd_f consults the interop handler" 'binfmt_misc/WSLInterop' "$_wd_src"
+done
+# WSL-07: a WSL2 root filesystem is a sparse VHDX formatted to WSL's maximum,
+# so df inside the distro answers against that, not against the Windows drive
+# holding it - and the 20 GB gate was inert on the one platform where free
+# space is indirect.
+_wd_disk() { # _wd_disk <distro GB> <windows GB> -> what the gate sees
+    ROOT="$ROOT" H="$1" C="$2" bash -c '
+        . "$ROOT/setup/lib/detect.sh" >/dev/null 2>&1
+        detect_os() { echo wsl; }
+        detect_wsl_backing_drive() { echo /mnt/c; }
+        eval "_detect_free_disk_gb_raw() { case \"\$1\" in /mnt/c) echo $C ;; *) echo $H ;; esac; }"
+        detect_free_disk_gb /home/sam' 2>/dev/null
+}
+check "the smaller of the two is what binds"   "6"  "$(_wd_disk 900 6)"
+check "...and the distro's figure when it is"  "40" "$(_wd_disk 40 800)"
+_wd_note="$(ROOT="$ROOT" bash -c '
+    . "$ROOT/setup/lib/detect.sh" >/dev/null 2>&1
+    detect_os() { echo wsl; }
+    detect_wsl_backing_drive() { echo /mnt/c; }
+    _detect_free_disk_gb_raw() { case "$1" in /mnt/c) echo 6 ;; *) echo 900 ;; esac; }
+    detect_free_disk_note /home/sam' 2>/dev/null)"
+has "...and the refusal explains where the number came from" 'sparse file on /mnt/c' "$_wd_note"
+# Off WSL nothing changes: the note is silent and the figure is the path's own.
+check "off WSL the note stays silent" "" \
+    "$(bash -c '. "'"$ROOT"'/setup/lib/detect.sh" >/dev/null 2>&1; detect_free_disk_note "$HOME" 2>/dev/null || true')"
 
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]

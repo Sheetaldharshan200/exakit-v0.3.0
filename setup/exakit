@@ -874,6 +874,15 @@ cmd_start() {
         personal)
             if personal_deployment_running 2>/dev/null; then
                 ok "Database is already running"
+            elif [ "$(personal_status 2>/dev/null)" = "starting" ]; then
+                # ALREADY COMING UP. Before personal_status could say so this
+                # state was reported as `conflict`, which sent this command
+                # into the reaper - and the reaper's kill is what leaves the
+                # launcher `interrupted`, whose only documented cure destroys
+                # the database. So the honest answer here is also the safe one:
+                # wait, do not start a second time, and say how to watch.
+                ok "The database is already starting — give it a moment."
+                info "Watch it come up with: exakit status   (it answers 'running' when ready)"
             elif [ "$(personal_status 2>/dev/null)" = "conflict" ]; then
                 # Port open is not database up: with another program on 8563 this
                 # said "already running" and exited 0 while status said stopped.

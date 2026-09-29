@@ -470,6 +470,13 @@ personal_check_requirements() {
         fi
         if [ "$_disk" -lt "$EXAKIT_PERSONAL_MIN_DISK_GB" ]; then
             error "This machine is not compatible right now: the database needs at least ${EXAKIT_PERSONAL_MIN_DISK_GB} GB free disk and $HOME has ${_disk} GB."
+            # WHERE THAT NUMBER CAME FROM, when it did not come from this
+            # filesystem. Inside a WSL2 distro the root fs is a sparse VHDX
+            # formatted to WSL's maximum, so `df` there can say 900 GB while
+            # the Windows drive holding it has 6 - and a refusal quoting 6
+            # reads as nonsense to someone whose own `df` says otherwise.
+            _pcr_disk_note="$(detect_free_disk_note "$HOME" 2>/dev/null || true)"
+            [ -n "$_pcr_disk_note" ] && info "Why: $_pcr_disk_note"
             info "Nothing was installed. Free up disk space and re-run (or force at your own risk with EXAKIT_FORCE=1)."
             die "Insufficient free disk space: ${_disk} GB."
         fi
@@ -977,12 +984,42 @@ _personal_proc_age_seconds() {
 # Erring toward NOT reaping is the right bias: the cost of a missed reap is a
 # clear "port is held" message and a manual stop. The cost of a wrong reap is
 # the user's data.
-personal_is_orphan_daemon() {
+# _personal_is_runner_process <pid> - does this process LOOK like our runner?
+# The name test alone, shared by the reaper (which additionally needs it to be
+# old and abandoned) and by personal_starting (which needs it to be young).
+# One definition, so the two can never disagree about whose process it is.
+_personal_is_runner_process() {
     case "$(ps -p "$1" -o command= 2>/dev/null || true)" in
-        *mac-runner*__daemon__*) : ;;
-        *exasol-local-runner*)   : ;;
-        *) return 1 ;;
+        *mac-runner*__daemon__*) return 0 ;;
+        *exasol-local-runner*)   return 0 ;;
     esac
+    return 1
+}
+
+# personal_starting - is the port held by OUR OWN runner, still within its
+# start budget? Then the database is coming up, not in conflict with anything.
+#
+# personal_status had no such state: port bound + launcher not "stopped" + SQL
+# not answering yet is exactly a deployment's startup window, and it was
+# reported as `conflict` - which reads as "another program has your port" on a
+# machine that has no such program. Two consequences. The post-update check in
+# common.sh already had a `starting` arm that could never be reached, so it
+# fell to the catch-all and warned about a conflict for a database that was
+# simply booting. And `conflict` is what sends cmd_start into the reaper, which
+# is the first step of the path that SIGKILLs a healthy starting runner.
+personal_starting() {
+    command -v personal_db_port_pids >/dev/null 2>&1 || return 1
+    for _pst_pid in $(personal_db_port_pids 2>/dev/null || true); do
+        _personal_is_runner_process "$_pst_pid" || continue
+        _pst_age="$(_personal_proc_age_seconds "$_pst_pid" 2>/dev/null || true)"
+        [ -n "$_pst_age" ] || continue
+        [ "$_pst_age" -lt "${EXAKIT_PERSONAL_REAP_MIN_AGE:-180}" ] && return 0
+    done
+    return 1
+}
+
+personal_is_orphan_daemon() {
+    _personal_is_runner_process "$1" || return 1
     if [ "${EXAKIT_PERSONAL_REAP_MIN_AGE:-0}" -gt 0 ]; then
         _iod_age="$(_personal_proc_age_seconds "$1" 2>/dev/null || true)"
         if [ -n "$_iod_age" ] && [ "$_iod_age" -lt "$EXAKIT_PERSONAL_REAP_MIN_AGE" ]; then
@@ -1913,6 +1950,9 @@ personal_status() {
                 echo "stopped"
             elif personal_db_answers; then
                 echo "running"
+            elif personal_starting; then
+                # Our own runner, still inside its start budget: coming up.
+                echo "starting"
             else
                 echo "conflict"
             fi
