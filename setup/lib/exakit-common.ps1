@@ -311,6 +311,16 @@ function Show-ExakitHomeNotice {
     if (-not $script:ExakitHomeNotice) { return }
     $notice = $script:ExakitHomeNotice
     $script:ExakitHomeNotice = ""
+    # STDERR WHEN A MACHINE IS ASKING. AGENTS.md promises that a --json answer
+    # is "one object on stdout and nothing else there", and this notice fires
+    # on exactly the machines the kit cares most about - a domain profile with
+    # a redirected home - so on those it could land ahead of the object and
+    # make it unparseable. It is a warning, and a warning belongs on stderr,
+    # where a person still sees it and no parser has to step over it.
+    if ($script:ExakitRefusalJson) {
+        [Console]::Error.WriteLine("  ! " + $notice)
+        return
+    }
     Warn2 $notice
 }
 
@@ -869,6 +879,47 @@ class ExakitFailException : System.Exception {
     ExakitFailException([string]$Msg) : base($Msg) {}
 }
 
+# Deny-ExakitInput <message> [remedy] - refuse the caller's input, honouring
+# --json. Twin of reject() in common.sh, and it exists for the same reason: a
+# refusal owes the same contract as an answer. AGENTS.md promises that where a
+# command takes --json "the answer is one object on stdout and nothing else
+# there", and every refusal path used to print prose to the host and leave
+# stdout empty - so an agent that had committed to a parser got nothing to
+# parse and a reason on a stream it was not reading.
+#
+# Exit 2, like the shell twin: your input was wrong, as distinct from the
+# command failing.
+function Deny-ExakitInput {
+    # $Remedy is deliberately UNTYPED. Declared [string], an omitted remedy
+    # became "" rather than staying $null, so the object carried
+    # "remedy":"" where the shell twin carries "remedy": null - and a parser
+    # testing `if remedy:` would branch differently on the two platforms for
+    # the same refusal.
+    param([Parameter(Mandatory)][string]$Message, $Remedy = $null)
+    if ($script:ExakitRefusalJson) {
+        $payload = [ordered]@{ ok = $false; error = $Message; remedy = $Remedy; rejected = $true }
+        Write-Output ($payload | ConvertTo-Json -Compress -Depth 4)
+        if (Get-Command Write-ExakitLog -ErrorAction SilentlyContinue) { Write-ExakitLog "REJECT" $Message }
+        exit 2
+    }
+    # EXIT 2, NOT Fail's 1. Bad input is not an install failure, which is the
+    # same argument reject()'s comment in common.sh makes: Fail records a
+    # .last-failure note that `exakit status --json` then reports as a step of
+    # your install that did not finish, and leaves it hanging off an otherwise
+    # healthy machine. It also exits 1, so `exakit status --bogus` answered 1
+    # on Windows where the shell CLI answers 2 - two different codes for the
+    # same refusal, which is exactly what an agent branches on.
+    Stop-ExakitAnimation
+    if (Get-Command Write-ExakitLog -ErrorAction SilentlyContinue) { Write-ExakitLog "REJECT" $Message }
+    Write-Host ""
+    if ($script:UiFancy) {
+        Write-Host ("  {0}{1} {2}{3}{4}" -f $script:UiErr, $script:UiCross, $script:UiBold, $Message, $script:UiReset)
+    } else {
+        Write-Host ("  {0} {1}" -f $script:UiCross, $Message) -ForegroundColor Red
+    }
+    exit 2
+}
+
 function Fail([string]$Msg) {
     # Whatever is animating has to stop BEFORE the card is printed, or the message
     # is written into a frame that is still being repainted and the next redraw
@@ -1252,7 +1303,7 @@ function Install-ExakitUv {
         # identical). Behavior intentionally unchanged here pending that fix.
         Invoke-Expression (Invoke-RestMethod -Uri "https://astral.sh/uv/install.ps1") *>> $script:LogFile
     } catch {
-        Fail "uv installation failed (see log): $_"
+        Fail "The uv installer did not finish, and the MCP server runs through uv. What it printed: $_ - more in: exakit logs setup"
     }
     $bin = Get-ExakitUvBin
     if (-not $bin) {
@@ -2006,15 +2057,33 @@ function Invoke-ExakitBounded {
     $process = $null
     try {
         $process = [System.Diagnostics.Process]::Start($info)
-        # Read stdout on a task so a chatty command cannot fill the pipe buffer and
-        # deadlock against our own WaitForExit.
+        # BOTH pipes on tasks, and both started before the wait. Redirecting a
+        # pipe and never reading it is exactly the deadlock this comment used
+        # to claim it had prevented, and stderr was the unread one: a Windows
+        # anonymous pipe buffers 4 KB, so a probe that writes more than that to
+        # stderr blocks forever on the write, never exits, and WaitForExit
+        # burns its entire timeout before we kill it. Every caller reads the
+        # $null that comes back as "this feature is not supported", so a tool
+        # that prints its usage to stderr, or a runtime emitting deprecation
+        # warnings, silently withholds a capability the launcher needs - after
+        # stalling for the full timeout to do it.
         $reader = $process.StandardOutput.ReadToEndAsync()
+        $errReader = $process.StandardError.ReadToEndAsync()
         if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
             try { $process.Kill() } catch { }
             Write-ExakitLog "WARN" "$FilePath did not answer within ${TimeoutSeconds}s; giving up"
             return $null
         }
-        if ($process.ExitCode -ne 0) { return $null }
+        if ($process.ExitCode -ne 0) {
+            # Now that it is drained, stderr is worth keeping: a probe that
+            # failed for a nameable reason used to fail namelessly.
+            $errText = ""
+            try { $errText = $errReader.Result } catch { }
+            if ($errText -and $errText.Trim()) {
+                Write-ExakitLog "WARN" "$FilePath exited $($process.ExitCode): $($errText.Trim())"
+            }
+            return $null
+        }
         return $reader.Result
     } catch {
         Write-ExakitLog "WARN" "$FilePath could not be run: $_"
@@ -4724,7 +4793,7 @@ function Get-ExakitMarketplaceAddonDescription {
     if (-not (Test-ExakitAboutCacheFresh $cache)) { Update-ExakitAboutCache $Id | Out-Null }
     if (Test-Path $cache) {
         $text = ""
-        try { $text = ((Get-Content -Path $cache -Encoding UTF8 -TotalCount 1) | Out-String).Trim() } catch { }
+        try { $text = ((Get-Content -Path $cache -Encoding UTF8 -TotalCount 1) | Out-String -Width 4096).Trim() } catch { }
         if ($text) { return $text }
     }
     $doc = Get-ExakitAddonDocument $Id

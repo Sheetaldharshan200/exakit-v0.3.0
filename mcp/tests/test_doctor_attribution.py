@@ -132,3 +132,65 @@ class DoctorAttributionTests(unittest.TestCase):
             doctor = self.subsystem.execute(self._request("doctor"))
         drift = [f for f in doctor.findings if f.code == "permission_drift"]
         self.assertEqual(len(drift), 1, [f.scope for f in drift])
+
+
+class WindowsPermissionPostureTests(unittest.TestCase):
+    """SEC-06: doctor must not report a pass for a check it skipped.
+
+    `validate_permission_posture` read stat().st_mode and compared it only when
+    NOT on Windows - then fell into the else and recorded
+    "Managed config uses the expected local file mode" as PASS evidence. On
+    Windows that sentence was about a mode that means nothing there, for an ACL
+    nothing had read. These are the AI client configs holding EXA_PASSWORD in
+    plaintext, and mcp-doctor is the command the docs point at for this exact
+    question.
+    """
+
+    def setUp(self) -> None:
+        self._temp_dir = Path(tempfile.mkdtemp(prefix="mcp-win-posture-"))
+        self.addCleanup(shutil.rmtree, self._temp_dir, True)
+        self.artifact_path = self._temp_dir / "claude.json"
+        self.artifact_path.write_text('{"mcpServers": {}}\n', encoding="utf-8")
+
+    def _stage(self, posture, os_name="win32"):
+        """Run the stage with describe_protection stubbed to one answer."""
+        from mcp.validator import service as svc
+
+        validator = svc.ValidatorService.__new__(svc.ValidatorService)
+        validator._environment = mock.Mock(os_name=os_name)
+        artifact = mock.Mock(path=str(self.artifact_path), client="claude_desktop")
+        with mock.patch.object(svc, "describe_protection", return_value=posture):
+            return svc.ValidatorService.validate_permission_posture(validator, [artifact])
+
+    def test_an_owner_only_acl_passes_and_says_so_accurately(self) -> None:
+        from mcp.runtime.filesystem import OWNER_ONLY_ACL
+        result = self._stage(OWNER_ONLY_ACL)
+        self.assertEqual(result.findings, [])
+        self.assertEqual([e.status for e in result.evidence], ["pass"])
+        # It must not claim a "file mode" on Windows - that was the false part.
+        self.assertIn("ACL", result.evidence[0].details)
+        self.assertNotIn("mode", result.evidence[0].details)
+
+    def test_a_drifted_acl_is_reported_as_drift(self) -> None:
+        from mcp.runtime.filesystem import NOT_OWNER_ONLY_ACL
+        result = self._stage(NOT_OWNER_ONLY_ACL)
+        self.assertEqual([f.code for f in result.findings], ["permission_drift"])
+        self.assertEqual(result.findings[0].scope.get("client"), "claude_desktop")
+
+    def test_an_unreadable_acl_is_not_a_pass(self) -> None:
+        """The whole point. Before, this path recorded pass evidence."""
+        result = self._stage(None)
+        self.assertEqual(result.findings, [])
+        self.assertEqual([e.status for e in result.evidence], ["unverified"])
+        self.assertNotIn("pass", [e.status for e in result.evidence])
+
+    def test_posix_0600_still_passes_with_its_own_wording(self) -> None:
+        result = self._stage("0600", os_name="posix")
+        self.assertEqual(result.findings, [])
+        self.assertEqual([e.status for e in result.evidence], ["pass"])
+        self.assertIn("mode", result.evidence[0].details)
+
+    def test_posix_0644_is_still_drift(self) -> None:
+        result = self._stage("0644", os_name="posix")
+        self.assertEqual([f.code for f in result.findings], ["permission_drift"])
+        self.assertEqual(result.findings[0].evidence, ["0644"])

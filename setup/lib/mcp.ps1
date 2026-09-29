@@ -213,7 +213,7 @@ function Install-Mcp {
             $primeOut = $early.Output
             $primeCode = $early.ExitCode
         } else {
-            $primeOut = & (Get-UvxPath) "$($script:McpPackage)@$($script:McpVersion)" "--help" 2>&1 | Out-String
+            $primeOut = & (Get-UvxPath) "$($script:McpPackage)@$($script:McpVersion)" "--help" 2>&1 | Out-String -Width 4096
             $primeCode = $LASTEXITCODE
         }
     } catch {
@@ -249,11 +249,21 @@ function Install-Mcp {
 # Get-McpCredentials - "user, password_file" for the client configs. Prefers
 # the validated dedicated read-only user; falls back to the runtime admin
 # user if MCP read-only provisioning has not run.
+# A THIRD FIELD, Kind: which credential this actually is. The fallback below
+# hands back the ADMIN account, and it did so indistinguishably from the
+# read-only one - so the status line went on printing "(read-only)" about a
+# full-privilege session, inverting the kit's central safety claim in the one
+# direction that matters. The fallback stays, because it is what lets a
+# half-provisioned kit still be repaired; it just can no longer pass itself off
+# as the read-only user. Twin of mcp_credentials in mcp.sh.
 function Get-McpCredentials {
     $connectionUser = Get-ExakitManifestValue "components.mcp_server.connection.user"
     $connectionPwFile = Get-ExakitManifestValue "components.mcp_server.connection.password_file"
-    if ($connectionUser -and $connectionPwFile) { return @{ User = $connectionUser; PasswordFile = $connectionPwFile } }
-    return @{ User = (Get-ExakitManifestValue "runtime.user"); PasswordFile = (Get-ExakitManifestValue "runtime.password_file") }
+    if ($connectionUser -and $connectionPwFile) {
+        return @{ User = $connectionUser; PasswordFile = $connectionPwFile; Kind = "readonly" }
+    }
+    Write-ExakitLog "WARN" "No read-only MCP credential is recorded; falling back to the ADMIN account. Repair with: exakit mcp-setup"
+    return @{ User = (Get-ExakitManifestValue "runtime.user"); PasswordFile = (Get-ExakitManifestValue "runtime.password_file"); Kind = "admin-fallback" }
 }
 
 function Resolve-McpCredentials {
@@ -262,7 +272,7 @@ function Resolve-McpCredentials {
     if ($creds.PasswordFile -and (Test-Path $creds.PasswordFile)) {
         $password = (Get-Content $creds.PasswordFile -Raw).TrimEnd("`r", "`n")
     }
-    return @{ User = $creds.User; Password = $password }
+    return @{ User = $creds.User; Password = $password; Kind = $creds.Kind }
 }
 
 # Show-McpHandshakeDetail <text> - show what the failed handshake actually said.
@@ -472,11 +482,34 @@ function Invoke-ExapumpAdminSql {
         # Windows. Do not let PowerShell convert that into a terminating
         # exception before Test-ExapumpSucceeded can evaluate the output.
         $ErrorActionPreference = "Continue"
-        # $Sql carries quoted identifiers; 5.1 would drop the quotes. See
-        # ConvertTo-ExakitNativeArgs.
-        $sqlArg = @(ConvertTo-ExakitNativeArgs @($Sql))[0]
-        $out = @(& $bin sql -p $Profile $sqlArg 2>&1) -join "`n"
-        $code = $LASTEXITCODE
+        # STDIN, NOT ARGV - the twin of _exakit_run_exapump_sql in common.sh,
+        # whose comment spells out why: two of the statements that come through
+        # here are CREATE/ALTER USER ... IDENTIFIED BY <password>, and an argv
+        # is readable by anything running as this user.
+        #
+        # On Windows that is worse than on unix, not better. A command line is
+        # readable through Win32_Process by any process in the session, is
+        # captured by EDR agents, and where "Include command line in process
+        # creation events" is on - a common enterprise baseline - it is written
+        # permanently into Security event 4688 and forwarded to the SIEM.
+        # PowerShell script-block logging catches it as well. So the read-only
+        # database password was being recorded durably outside the ACL'd
+        # credential file the rest of this kit works to protect.
+        #
+        # exapump's own help documents the stdin path: "[SQL]  SQL statement to
+        # execute (reads from stdin if omitted or if '-' is given)". Sending it
+        # this way also retires the ConvertTo-ExakitNativeArgs quoting dance -
+        # nothing goes through the 5.1 command-line rules any more, so quoted
+        # identifiers arrive intact by construction rather than by escaping.
+        $previousOutputEncoding = $OutputEncoding
+        try {
+            # No BOM: exapump parses the first bytes as SQL.
+            $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+            $out = @($Sql | & $bin sql -p $Profile 2>&1) -join "`n"
+            $code = $LASTEXITCODE
+        } finally {
+            $OutputEncoding = $previousOutputEncoding
+        }
         return @{ Output = $out; ExitCode = $code; Success = (Test-ExapumpSucceeded -ExitCode $code -Output $out) }
     } catch {
         # A native command's stderr write can surface here as an exception
@@ -574,6 +607,15 @@ function Assert-McpReadonlyPosture {
         Fail "The MCP read-only user has system privileges beyond the read-only set (CREATE SESSION, USE ANY SCHEMA, SELECT ANY TABLE)."
     }
 
+    # NOR MAY IT REACH ANYTHING THROUGH A ROLE. A privilege held via a granted
+    # role is attributed to the ROLE, not to the user, so every check above is
+    # blind to `GRANT <role> TO MCP_READONLY`. Twin of the role query in
+    # _exakit_assert_mcp_readonly_posture; PUBLIC is excluded because every
+    # user holds it by definition.
+    if (-not (Test-ExapumpSqlHasToken $ConfigPath "admin" "SELECT CASE WHEN COUNT(*) = 0 THEN 'EXAKIT_ROLE_SCOPE_OK' ELSE 'EXAKIT_ROLE_SCOPE_TOO_WIDE' END AS STATUS FROM EXA_DBA_ROLE_PRIVS WHERE GRANTEE = '$identifierLit' AND GRANTED_ROLE NOT IN ('PUBLIC')" "EXAKIT_ROLE_SCOPE_OK")) {
+        Fail "The MCP read-only user holds a database ROLE, which can carry privileges these checks cannot see. Rebuild it with: exakit mcp-setup"
+    }
+
     # No object privilege may be anything other than SELECT.
     if (-not (Test-ExapumpSqlHasToken $ConfigPath "admin" "SELECT CASE WHEN COUNT(*) = 0 THEN 'EXAKIT_OBJ_PRIV_SCOPE_OK' ELSE 'EXAKIT_OBJ_PRIV_SCOPE_TOO_WIDE' END AS STATUS FROM EXA_DBA_OBJ_PRIVS WHERE GRANTEE = '$identifierLit' AND PRIVILEGE <> 'SELECT'" "EXAKIT_OBJ_PRIV_SCOPE_OK")) {
         Fail "The MCP read-only user has a write object privilege; it must be read-only."
@@ -665,8 +707,17 @@ function Set-McpReadonlyAccess {
         # every exit path - success, a thrown Fail, or any other exception - so no
         # individual step has to remember to clean it up.
         try {
+            # Created empty and locked first. GetTempPath() honours %TMP%, so on
+            # a machine where TEMP is redirected to a share or a folder-
+            # redirected profile the inherited ACL is not owner-only - and both
+            # the ADMIN and the read-only password are about to be written into
+            # this file. Set-ExapumpTomlSection protects its own staging file
+            # too; this covers the destination name itself.
+            New-Item -ItemType File -Path $tempConfig -Force | Out-Null
+            Protect-ExakitFile $tempConfig
             Set-ExapumpTomlSection -ConfigPath $tempConfig -Profile "admin" -Host_ $dbHost -Port $dbPort -User $runtimeUser -Password $adminPassword
             Set-ExapumpTomlSection -ConfigPath $tempConfig -Profile "mcp_readonly" -Host_ $dbHost -Port $dbPort -User $readonlyUser -Password $readonlyPassword -Schema $defaultSchemaUc
+            Protect-ExakitFile $tempConfig
 
             # Verify the TOML config was created and is readable
             if (-not (Test-Path $tempConfig)) {
@@ -861,13 +912,13 @@ function Invoke-McpModule {
         # code through. Same fix as Invoke-Exapump / Invoke-ExapumpAdminSql.
         $ErrorActionPreference = "Continue"
         if (Test-ExakitSystemPythonForMcp) {
-            $out = & python -m mcp @ModuleArgs 2>&1 | Out-String
+            $out = & python -m mcp @ModuleArgs 2>&1 | Out-String -Width 4096
         } else {
             # Fall back to the managed uv Python (pinned to 3.12), which is
             # guaranteed to satisfy the 3.11+ requirement. uv is already a
             # hard dependency here (the MCP server itself runs via uvx).
             $uv = Install-ExakitUv
-            $out = & $uv run --python $script:ManagedPythonVersion --no-project python -m mcp @ModuleArgs 2>&1 | Out-String
+            $out = & $uv run --python $script:ManagedPythonVersion --no-project python -m mcp @ModuleArgs 2>&1 | Out-String -Width 4096
         }
         return @{ Output = $out; ExitCode = $LASTEXITCODE }
     } catch {
@@ -900,7 +951,7 @@ function Invoke-McpSetupCli {
         # screen before anyone could read it. Fail() stops the animation for the
         # same reason.
         Stop-ExakitAnimation
-        Warn2 "AI client setup failed (see log)."
+        Warn2 "Could not write the MCP entry for this AI client. What failed: exakit logs setup. Retry with: exakit mcp-setup"
         return $null
     }
     return $result.Output
@@ -930,7 +981,7 @@ function Invoke-McpOperationCli {
         # nothing repaired, and the log's own advice was "run exakit mcp-doctor".
         # Twin of _exakit_mcp_reported in common.sh.
         if (Test-McpResultReported -Text $result.Output) { return $result.Output }
-        Warn2 "MCP $Operation failed (see log)."
+        Warn2 "MCP $Operation did not complete. The reason: exakit logs setup. Retry with: exakit mcp-setup"
         return $null
     }
     return $result.Output
@@ -1125,7 +1176,14 @@ function Show-McpSetupSummary {
 function Show-McpReadyPanel {
     param([string]$Mode = "")
     $dsn = Get-ExakitManifestValue "runtime.dsn"
-    $mcpUser = Get-ExakitManifestValue "components.mcp_server.connection.user"
+    # THROUGH THE RESOLVER, not a direct manifest read. Reading
+    # connection.user here meant this panel could not tell "the read-only user
+    # is recorded" from "there is none and the client is about to be handed the
+    # admin account" - the two cases whose difference this line exists to
+    # report. Get-McpCredentials answers both in one call.
+    $mcpCreds = Get-McpCredentials
+    $mcpUser = $mcpCreds.User
+    $mcpUserKind = $mcpCreds.Kind
     $mcpPackage = Get-ExakitManifestValue "components.mcp_server.package"
     if (-not $mcpPackage) { $mcpPackage = $script:McpPackage }
     $mcpVersion = Get-ExakitManifestValue "components.mcp_server.version"
@@ -1145,8 +1203,17 @@ function Show-McpReadyPanel {
         "DATA  MCP TLS: $tls" | Add-Content -Path $script:LogFile
     }
     if ($dsn) { $dsnShown = $dsn } else { $dsnShown = "unknown" }
-    if ($mcpUser) { $userShown = $mcpUser } else { $userShown = "mcp_readonly" }
-    Ok "MCP server 'exasol' - $dsnShown as $userShown (read-only), started by your AI client on demand"
+    # The user that was RESOLVED, not a default that assumes the good case:
+    # "mcp_readonly" was printed even when the resolution had fallen back to
+    # the admin account, which is exactly when the reader needed to know.
+    if ($mcpUser) { $userShown = $mcpUser } else { $userShown = "unknown" }
+    if ($mcpUserKind -eq "admin-fallback") {
+        Warn2 "MCP server 'exasol' - $dsnShown as $userShown - this is the ADMIN account, NOT the read-only user."
+        Info "No read-only MCP credential is recorded, so writes from your AI client would NOT be rejected by the database."
+        Info "Fix it with: exakit mcp-setup"
+    } else {
+        Ok "MCP server 'exasol' - $dsnShown as $userShown (read-only), started by your AI client on demand"
+    }
 
     # The prompt is only PRINTED when it could not be handed over: on the
     # clipboard it is four lines nobody has to read, and off a console (an
@@ -1188,8 +1255,10 @@ function Show-McpOperationSummary {
             $state = if ($stateLabels.ContainsKey($entry.state)) { $stateLabels[$entry.state] } else { $entry.state }
             $note = ""
             if ($entry.state -eq "configured") {
-                $note = "$($entry.path)"
-                if ($note.StartsWith($HOME)) { $note = "~" + $note.Substring($HOME.Length) }
+                # One shortener for the kit, not a third hand-rolled copy of
+                # it: Get-ExakitTilde knows about %USERPROFILE% and compares
+                # ordinally, which this line did neither of.
+                $note = Get-ExakitTilde "$($entry.path)"
             } elseif ($entry.state -eq "not_set_up") {
                 $note = "run: exakit mcp-setup"
             }

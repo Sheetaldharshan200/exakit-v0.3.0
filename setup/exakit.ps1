@@ -33,9 +33,24 @@
 #                         (Exasol Nano in Docker or Podman) into this database;
 #                         the kit's own sample data is left out and the
 #                         container is never removed
+#   sql '<statement>' [--file PATH] [--write] [--json]
+#                         run one SQL statement and translate the error into a
+#                         remedy; reads only unless --write. Uses the ADMIN
+#                         connection (the read-only boundary is the MCP user)
+#   repair-runtime [--yes] [--json]
+#                         rebuild the database from empty when it will not
+#                         start. DESTROYS every table in it; the bundled sample
+#                         datasets are reloaded afterwards, anything you loaded
+#                         is not. Declining exits 5 and changes nothing
 #   mcp-setup             permanently configure MCP in supported AI clients
 #   mcp-doctor [clients]  check MCP config, connectivity, and managed state
 #   mcp-status [clients]  show managed MCP state for the supported AI clients
+#   mcp-remove <client> [<client>...]
+#                         take the kit's managed MCP entries out of the named
+#                         clients and forget them, so mcp-doctor stops
+#                         reporting a client that is no longer on this machine
+#   skills [--json]       list the kit's AI skills and whether each one has
+#                         reached the agents' discovery folders
 #   skills-install        install the kit's AI skills for CLI agents
 #                         (~\.claude\skills, ~\.agents\skills)
 #   marketplace           browse optional add-ons (dash-server, ...) and install
@@ -43,11 +58,13 @@
 #                         through `exakit update` like every other component
 #   upgrade-kit2          add the Kit 2 trust assets (bash paths only for now)
 #   rollback-kit2         remove what upgrade-kit2 added (bash paths only for now)
-#   uninstall [-Yes] [-DryRun]
-#                         remove EVERYTHING the kit installed: database + all
-#                         data, MCP client configs, skills, exapump, the kit
-#                         home and the CLI binaries. -DryRun previews; -Yes
-#                         skips the typed confirmation
+#   uninstall [<addon-id>] [-Yes] [-DryRun]
+#                         with no add-on id: remove EVERYTHING the kit
+#                         installed - database + all data, MCP client configs,
+#                         skills, exapump, the kit home and the CLI binaries.
+#                         Name a marketplace add-on to remove just that one
+#                         (its service, binary and credential; nothing else).
+#                         -DryRun previews; -Yes skips the typed confirmation
 #   whats-new [version]   what changed in this kit version
 #   logs [target]         every log the kit can show; no target lists them
 #                         (-f follows, --lines N, --path prints the path)
@@ -824,7 +841,14 @@ function Invoke-CmdAutostart {
     Assert-ExakitInstalled
     Initialize-ExakitLogging
     if ($Action) {
-        Fail "autostart takes no arguments - run 'exakit autostart' and answer the question."
+        # Deny, not Fail: this is bad input, and the shell twin answers it with
+        # reject() - exit 2. Through Fail it exited 1, which AGENTS.md reserves
+        # for a command that failed rather than a command that was misused, so
+        # an agent scripting `exakit autostart off` from a document could not
+        # even classify the refusal. Fail also recorded a .last-failure note,
+        # which `exakit status --json` then reported as an unfinished install
+        # step on a machine where nothing was wrong.
+        Deny-ExakitInput "autostart takes no arguments - run 'exakit autostart' and answer the question."
     }
     Show-ExakitAutostart
 
@@ -933,8 +957,14 @@ function Invoke-CmdRepairRuntime {
     } else {
         Warn2 "This rebuilds your database from empty. Every table in it is deleted and cannot be recovered."
         Info "The bundled sample datasets are reloaded afterwards. Anything you loaded yourself is not."
+        # A format the kit can load back - see the note on the shell twin.
+        # `exakit sql --json` emits an {"ok","rows","row_count"} envelope that
+        # nothing here ingests, so the one rescue instruction printed before a
+        # command that destroys the database produced a file its owner could
+        # not restore from.
         Info "If the database still answers, copy out anything you want to keep first, one table at a time:"
-        Info "  exakit sql --json 'SELECT * FROM <SCHEMA>.<TABLE>' > table.json"
+        Info "  exapump sql -p $($script:ExapumpProfile) -f csv 'SELECT * FROM <SCHEMA>.<TABLE>' > table.csv"
+        Info "  ...and load it back afterwards with: exakit data-load table.csv"
     }
     if (-not $confirmed) {
         if (-not (Confirm-ExakitPrompt "Delete everything in the database and rebuild it empty?" $false)) {
@@ -1962,7 +1992,7 @@ function Invoke-CmdVersion {
         }
         $statusWord = "current"
         $remedy = $null
-        if ($pending -gt 0) { $statusWord = "updates_pending"; $remedy = "exakit update" }
+        if ($pending -gt 0) { $statusWord = "update_pending"; $remedy = "exakit update" }
         [ordered]@{
             installed       = $true
             status          = $statusWord
@@ -2968,7 +2998,9 @@ function Invoke-CmdInfoJson {
         # ("steps_completed": "launcher"); hand parsers the array they were promised.
         if ($doc.PSObject.Properties["steps_completed"]) { $doc.steps_completed = @($doc.steps_completed | Where-Object { $null -ne $_ }) }
         $doc | Add-Member -NotePropertyName "installed" -NotePropertyValue $true -Force
-        $statusText = "database not running"
+        # "stopped" - one word per state across all five queries; see the note
+        # in the shell twin's cmd_mcp_doctor.
+        $statusText = "stopped"
         $remedyText = "exakit start"
         $remedyHint = $null
         if ($running) { $statusText = "running"; $remedyText = $null }
@@ -2993,6 +3025,11 @@ function Invoke-CmdInfoJson {
             $remedyHint = "the installer is still running (step: $installStep) - poll the remedy until status is running"
         }
         $doc | Add-Member -NotePropertyName "status" -NotePropertyValue $statusText -Force
+        # Kept for callers written against the older shape, the same way the
+        # shell twin keeps it.
+        if ($statusText -eq "stopped") {
+            $doc | Add-Member -NotePropertyName "database" -NotePropertyValue "not running" -Force
+        }
         $doc | Add-Member -NotePropertyName "remedy" -NotePropertyValue $remedyText -Force
         if ($remedyHint) { $doc | Add-Member -NotePropertyName "remedy_hint" -NotePropertyValue $remedyHint -Force }
         # The skill set's verdict, from the manifest and the cached versions
@@ -3159,9 +3196,16 @@ function Invoke-CmdSql {
 # saw a broken kit where there was only a typo. Same output as
 # Assert-ExakitKnownOptions.
 function Stop-ExakitBadOption([string]$Msg) {
-    Write-Host ""
-    Write-Host "  [x] $Msg"
-    exit 2
+    # Delegates rather than duplicating. This function and Deny-ExakitInput
+    # were written independently for the same defect - a bad option answered
+    # with Fail's exit 1, where the shell CLI answers reject()'s 2 - and kept
+    # side by side they would drift, which is the failure mode this repo has
+    # been bitten by often enough to have a name for. Deny-ExakitInput is the
+    # one with the fuller behaviour: it also honours --json, so a refusal
+    # reaches an agent as one object on stdout rather than prose on a stream it
+    # is not reading. The name is kept because it reads well at the call sites
+    # that use it, and because keeping it costs nothing once it is a delegate.
+    Deny-ExakitInput $Msg
 }
 
 function Show-ExakitUsage {
@@ -3184,8 +3228,22 @@ function Show-ExakitUsage {
 # source of truth `exakit catalog` renders - so every subcommand AND every
 # component supports the flag. Twin of the bash pre-dispatch block.
 #
+# Did this caller ask for a machine answer? Set once, so the paths that REFUSE
+# can honour --json and not only the paths that succeed. `sql` is excluded for
+# the same reason it is excluded from the help hook below: its argument is
+# arbitrary SQL, and a statement containing --json is a query.
+$script:ExakitRefusalJson = ($Command -ne "sql") -and
+    ((@($RestArgs) -contains "--json") -or (@($RestArgs) -contains "-j"))
+
 # `sql` is excluded on purpose: its argument is arbitrary SQL text.
-if ($Command -and $Command -ne "sql" -and ($RestArgs -contains "--help" -or $RestArgs -contains "-h")) {
+#
+# So is help itself. The -File binder pushes a leading `--help` into $RestArgs
+# and leaves $Command at its "help" default, so `exakit --help --json` arrived
+# here looking like "the help command, asked for its own help page" and was
+# answered with the human page for `help` - swallowing the --json an agent
+# asked for. A help flag on the help command is the help command.
+$_helpSelf = @("help", "--help", "-h", "-?") -contains "$Command"
+if ($Command -and $Command -ne "sql" -and -not $_helpSelf -and ($RestArgs -contains "--help" -or $RestArgs -contains "-h")) {
     if (Test-ExakitHelpId $Command) {
         Show-ExakitHelpComponent -Id $Command | Out-Null
     } else {
@@ -3203,9 +3261,12 @@ try {
         param([string]$CommandName, [string[]]$Allowed, [string[]]$Arguments)
         foreach ($a in @($Arguments)) {
             if ("$a" -like "-*" -and ($Allowed -notcontains "$a")) {
+                if ($Allowed.Count -gt 0) { $msg = "Unknown option '$a' for $CommandName (supported: $($Allowed -join ' '))." }
+                else { $msg = "Unknown option '$a' for $CommandName (it takes none)." }
+                # --json gets one object on stdout; everyone else gets the card.
+                if ($script:ExakitRefusalJson) { Deny-ExakitInput $msg }
                 Write-Host ""
-                if ($Allowed.Count -gt 0) { Write-Host "  [x] Unknown option '$a' for $CommandName (supported: $($Allowed -join ' '))." }
-                else { Write-Host "  [x] Unknown option '$a' for $CommandName (it takes none)." }
+                Write-Host "  [x] $msg"
                 exit 2
             }
         }
@@ -3235,6 +3296,18 @@ try {
             "--help"    { $Command = "help";    $RestArgs = $rest }
             "-h"        { $Command = "help";    $RestArgs = $rest }
             "-?"        { $Command = "help";    $RestArgs = $rest }
+            # help's OWN options, left in $RestArgs for the help arm to read.
+            #
+            # This block cannot tell a $Command that defaulted to "help" from
+            # one the user typed, so `exakit help --json` - the documented
+            # agent contract, and what the bash CLI answers with a 37-command
+            # document - arrived here as an unknown top-level option and was
+            # refused outright. Same for --all, which every help screen
+            # advertises. They are options of the command, not of the CLI.
+            "--json"    { }
+            "-j"        { }
+            "--all"     { }
+            "-a"        { }
             default {
                 # An unknown COMMAND already exits 2 with the help screen; an
                 # unknown leading OPTION used to exit 0 with it, which is the
@@ -3266,6 +3339,20 @@ try {
         # shim's path. "-v" is deliberately absent: see that block.
         "--version"    { Invoke-CmdVersion }
         "update"        {
+            # THE STAGED MAJOR-UPGRADE ROUTE IS NOT ON THIS PLATFORM, and the
+            # generic refusal made that look like a typo. The shell CLI
+            # implements --plan/--backup/--apply and its header advertised them
+            # with no platform qualifier, so a Windows user meeting a Personal
+            # MAJOR upgrade was pointed at a migration route and then told
+            # "Unknown option '--plan'" - a blocked upgrade and nothing to do
+            # about it. Naming the real route costs one arm and is the whole
+            # difference between stuck and moving.
+            foreach ($_upArg in @($RestArgs)) {
+                if (@("--plan", "--backup", "--apply") -contains "$_upArg") {
+                    Deny-ExakitInput ("$_upArg is part of the staged major-upgrade route, which the Windows CLI does not implement (it is macOS, Linux and WSL only). " +
+                        "To take a major Exasol Personal upgrade here, re-run the installer: irm https://www.exasol.com/install/starter-kit.ps1 | iex")
+                }
+            }
             Assert-ExakitKnownOptions -CommandName "update" -Allowed @("--yes", "-y", "-Yes") -Arguments $RestArgs
             # -y/--yes/-Yes answers the runtime offer, so it must not be mistaken
             # for the target when it is the only argument given.
@@ -3413,7 +3500,8 @@ try {
             if (-not $doctorUp) {
                 if ($doctorJson) {
                     # The same three keys every --json state answer carries.
-                    [ordered]@{ installed = $true; status = "database not running"; remedy = "exakit start"; database = "not running" } | ConvertTo-Json
+                    # "stopped", matching status --json and the shell twin.
+                    [ordered]@{ installed = $true; status = "stopped"; remedy = "exakit start"; database = "not running" } | ConvertTo-Json
                 } else {
                     Warn2 "The database is not running - fix that first: exakit start"
                     Info "MCP diagnostics need a live database (the read-only user and its grants are checked against it)."
@@ -3480,6 +3568,11 @@ try {
                 -Json:($RestArgs -contains "--json" -or $RestArgs -contains "-j")
         }
         default {
+            # One object on stdout for a machine, and the whole usage screen
+            # NOT dumped into the middle of it.
+            if ($script:ExakitRefusalJson) {
+                Deny-ExakitInput "Unknown command '$Command'." "exakit catalog --json"
+            }
             Write-Host "exakit: unknown command '$Command'" -ForegroundColor Red
             Show-ExakitUsage
             exit 2

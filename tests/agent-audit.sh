@@ -104,7 +104,12 @@ has "status --json names the conflict remedy" "another process is listening on t
 
 echo "4. info --json carries the contract keys:"
 _info="$(bash "$CLI" info --json 2>/dev/null)"; _irc="$(bash "$CLI" info --json >/dev/null 2>&1; echo $?)"
-check "installed/status/remedy present" "True database not running exakit start" \
+# One word per state across all five queries - "stopped", the same value
+# status --json uses. This used to expect "database not running", which was
+# info's and mcp-doctor's private spelling of the state status called
+# "stopped", so `d["status"] == "stopped"` was right for one command and
+# silently false for the other two.
+check "installed/status/remedy present" "True stopped exakit start" \
     "$(printf '%s' "$_info" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["installed"], d["status"], d["remedy"])')"
 check "the record is still the manifest" "0.2.1" "$(printf '%s' "$_info" | python3 -c 'import json,sys; print(json.load(sys.stdin)["kit"]["version"])')"
 check "exit 3 with the database down" "3" "$_irc"
@@ -153,7 +158,7 @@ check "both exit 2" "2 2" "$(bash "$CLI" sql 'SELCT 1' >/dev/null 2>&1; printf '
 echo "11. --json on version and mcp-status, unknown options rejected:"
 _v="$(bash "$CLI" version --json 2>/dev/null)"
 check "version --json is one object with the contract keys" "yes" \
-    "$(printf '%s' "$_v" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["installed"] is True; assert d["status"] in ("current","updates_pending"); assert (d["remedy"] is None) == (d["status"] == "current"); print("yes")' 2>/dev/null || echo no)"
+    "$(printf '%s' "$_v" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["installed"] is True; assert d["status"] in ("current","update_pending"); assert (d["remedy"] is None) == (d["status"] == "current"); print("yes")' 2>/dev/null || echo no)"
 has "...with component rows" '"component": "exakit"' "$_v"
 # EVERY row says whether it is optional. Without this an agent could not tell
 # "you never installed this add-on" from "a piece of your kit is missing":
@@ -621,7 +626,26 @@ check "preflight has a page now" "yes" \
 has "...and it is on the help screen" "preflight" "$(bash "$CLI" help 2>&1)"
 check "the kit2 commands are hidden, not absent" "True True" \
     "$(python3 -c 'import json; d=json.load(open("'"$ROOT"'/setup/help/exakit.json")); print(" ".join(str([c for c in d["commands"] if c["command"]==n][0].get("hidden")) for n in ("upgrade-kit2","rollback-kit2")))')"
-lacks "...so catalog --json does not advertise them" "upgrade-kit2" "$(bash "$CLI" catalog --json 2>/dev/null)"
+# NOT ADVERTISED IS NOT THE SAME AS ABSENT. This used to assert that
+# catalog --json did not contain the string at all, which is what the code did
+# - and it contradicted AGENTS.md, which describes catalog --json as "every
+# supported command (a handful of internal upgrade paths are marked hidden and
+# are not for you to call)". Deleting them meant no row carried a hidden key,
+# and three dispatchable commands were missing outright; skills-install among
+# them, which `exakit skills --json` hands a machine as its own "next". An
+# agent holding both documents had to conclude one of them was lying.
+#
+# So the intent is kept and the assertion moved to where it belongs: the
+# SCREENS must not advertise these, and the machine surface must disclose them
+# with the flag AGENTS.md says is there.
+_ca_json="$(bash "$CLI" catalog --json 2>/dev/null)"
+check "catalog --json discloses them, marked hidden" "True True" \
+    "$(printf '%s' "$_ca_json" | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+by = {r["invocation"]: r for r in d["commands"]}
+print(" ".join(str(bool(by.get("exakit " + n, {}).get("hidden"))) for n in ("upgrade-kit2", "rollback-kit2")))' 2>/dev/null)"
+lacks "...and the help overview does not advertise them" "upgrade-kit2" "$(bash "$CLI" help 2>/dev/null)"
+lacks "...nor does --all"                               "upgrade-kit2" "$(bash "$CLI" help --all 2>/dev/null)"
 
 echo "R5-9. AGENTS.md matches what the code actually does:"
 _agents="$(cat "$ROOT/AGENTS.md")"

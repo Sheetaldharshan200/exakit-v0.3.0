@@ -86,7 +86,7 @@ The database everywhere is **Exasol Personal** — the same launcher-managed loc
 | Your machine | Minimum Requirements | That's all |
 |---|---|---|
 | **macOS** | 8 GB+ RAM, 20 GB free disk | Runs in a lightweight managed VM — nothing to install first |
-| **Linux** | Podman (rootless is fine), 8 GB+ RAM, 20 GB free disk | Nothing to install first: if Podman is missing the installer says so and installs it for you, between the launcher and the database (it asks first, and needs `sudo` for that one command) |
+| **Linux** | Podman (rootless is fine), 8 GB+ RAM, 20 GB free disk | Nothing to install first: if Podman is missing the installer says so and installs it for you, between the launcher and the database — without stopping to ask, because the database cannot run without it. It needs `sudo`, so you will be asked for your password. Set `EXAKIT_INSTALL_PODMAN=0` to skip it and install Podman yourself |
 | **Windows x86_64** | 8 GB+ RAM, 20 GB free disk | Runs through host Podman; the launcher offers to install Podman itself (may ask for administrator approval). If Podman Desktop already made the default machine, it must be **rootless** (`podman machine set --rootful=false`) — a rootful machine cannot publish the database port to Windows, and the installer says so |
 
 Already have the kit with its database in a container? Re-run the install command — it asks whether to migrate your data or continue without it, and deletes nothing either way. Skipped that, or the installer never saw the container? `exakit migrate docker-nano` does the same copy later, into the running database. On both roads the kit's own sample data (TPC-H and friends) is left out — the kit loads that itself.
@@ -143,8 +143,8 @@ The kit ships **three bundled datasets**, each in its own schema, so your AI cli
 
 ```bash
 exakit data-load             # bundled datasets not yet loaded, or your own data
-exakit data-load --force     # reload TPC-H
-EXAKIT_DATASETS=tpch,energy,weather exakit data-load --force   # reload all three
+exakit data-load --force     # REPLACE TPC-H: drops and rebuilds its tables
+EXAKIT_DATASETS=tpch,energy,weather exakit data-load --force   # replace all three the same way
 ```
 
 Your own data can be CSV, Parquet or JSON files (`.geojson` included), or a folder of them, one table each (JSON through the JSON Tables add-on, offered when needed). The kit hands files to the loaders as they are: a `;`-separated CSV is passed on with its delimiter, and a `.tsv` or `.txt` table is named for a rename to `.csv`, which is the one format exapump reads. Uploads land in the `STARTER_KIT` schema. Details: [what's included](data/README.md) · [data dictionary](data/data-dictionary.md) · [14 example questions with reference SQL](data/example-questions.md)

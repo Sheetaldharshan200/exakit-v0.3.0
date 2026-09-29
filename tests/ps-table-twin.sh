@@ -44,6 +44,38 @@ printf '\n== every ui_table_* has a named PowerShell twin ==\n'
 # adding a row here and finding there is nothing to put in it.
 #
 #   <shell function>|<powershell function>
+#
+# DERIVED, NOT TRUSTED. The map alone could only fail for a function someone
+# had already remembered to list - which is the case that needs no guard. The
+# header promised it catches "drift by omission", and it was already blind to
+# two live functions: ui_table_abort and ui_table_detach had been added to
+# ui.sh and never appeared here. So the sweep below reads every ^ui_table_*
+# out of ui.sh and fails on any name that is in neither the map nor the
+# unix-only list. Adding a shell function is now "add a row or say why there
+# is nothing to put in it", which is what the header always claimed.
+UI_TABLE_MAP="$(cat <<'MAPEOF'
+ui_table_widths|Get-ExakitTableWidths
+ui_table_frame|Get-ExakitTableFrame
+ui_table_render|Show-ExakitTable
+ui_table_redraw|Update-ExakitTable
+ui_table_set|Set-ExakitTableRow
+ui_table_tick|Set-ExakitTableTicks
+ui_table_begin|Start-ExakitTable
+ui_table_end|Stop-ExakitTable
+ui_table_menu|Invoke-ExakitTableMenu
+ui_table_disable|Disable-ExakitTableRow
+ui_table_abort|Stop-ExakitAnimation
+ui_animation_stop|Stop-ExakitAnimation
+MAPEOF
+)"
+
+# Deliberately unix-only, with the reason. A name here is a decision on the
+# record, not an oversight - and the sweep still fails if it leaves ui.sh.
+UI_TABLE_UNIX_ONLY="$(cat <<'SOLOEOF'
+ui_table_detach|clears the animation ownership a SUBSHELL inherited, so a
+SOLOEOF
+)"
+
 while IFS='|' read -r sh_fn ps_fn; do
     [ -n "$sh_fn" ] || continue
     if ! grep -q "^${sh_fn}()" "$UI_SH"; then
@@ -55,19 +87,54 @@ while IFS='|' read -r sh_fn ps_fn; do
     else
         fail "$sh_fn has no twin: ui.ps1 defines no $ps_fn"
     fi
-done <<'MAPEOF'
-ui_table_widths|Get-ExakitTableWidths
-ui_table_frame|Get-ExakitTableFrame
-ui_table_render|Show-ExakitTable
-ui_table_redraw|Update-ExakitTable
-ui_table_set|Set-ExakitTableRow
-ui_table_tick|Set-ExakitTableTicks
-ui_table_begin|Start-ExakitTable
-ui_table_end|Stop-ExakitTable
-ui_table_menu|Invoke-ExakitTableMenu
-ui_table_disable|Disable-ExakitTableRow
-ui_animation_stop|Stop-ExakitAnimation
-MAPEOF
+done <<MAPLOOP
+$UI_TABLE_MAP
+MAPLOOP
+
+# The sweep the header promised: ui.sh is the source of truth for the left
+# column, not this file.
+_utw_unmapped=""
+for _utw_fn in $(grep -o '^ui_table_[a-z_]*' "$UI_SH" | sort -u); do
+    case "
+$UI_TABLE_MAP" in
+        *"
+$_utw_fn|"*) continue ;;
+    esac
+    case "
+$UI_TABLE_UNIX_ONLY" in
+        *"
+$_utw_fn|"*) continue ;;
+    esac
+    _utw_unmapped="$_utw_unmapped $_utw_fn"
+done
+# pass/fail, NOT check - this suite has no check(). Calling one that does not
+# exist prints "command not found" to stderr and leaves the counters untouched,
+# so the assertion reads as a pass. That is the exact footgun agent-operability.sh
+# documents as the reason its `lacks` helper exists, and these two lines were
+# written with it before a mutation test showed them passing on a defect.
+if [ -z "${_utw_unmapped# }" ]; then
+    pass "every ui_table_* in ui.sh is mapped or declared unix-only"
+else
+    fail "ui.sh has ui_table_* with no map row and no unix-only declaration:${_utw_unmapped}"
+fi
+# ...and the sweep is not vacuous: it found the functions to check.
+_utw_count="$(grep -c '^ui_table_[a-z_]*()' "$UI_SH")"
+if [ "${_utw_count:-0}" -ge 10 ]; then
+    pass "...and it saw the real function list ($_utw_count functions)"
+else
+    fail "...but it only found $_utw_count ui_table_* functions - the sweep is not looking at ui.sh"
+fi
+# A name declared unix-only must still exist; a stale exemption is a lie too.
+while IFS='|' read -r _utw_solo _utw_why; do
+    [ -n "$_utw_solo" ] || continue
+    if grep -q "^${_utw_solo}()" "$UI_SH"; then
+        pass "$_utw_solo is unix-only on purpose"
+    else
+        fail "$_utw_solo is exempted here but no longer exists in ui.sh"
+    fi
+done <<SOLOLOOP
+$UI_TABLE_UNIX_ONLY
+SOLOLOOP
 
 # The two helpers with no direct shell name (_ui_table_prep is a bash-only
 # fork-avoidance trick; building rows is a file write there and two calls here).
@@ -602,7 +669,22 @@ has "...and restores that one too"            '$script:ExakitQuietDetail = $prev
 # is the harder failure to notice.
 _ps_on="$(grep -cF 'ExakitQuietDetail = $true' "$_PS_ALL" || true)"
 _ps_off="$(grep -cE 'ExakitQuietDetail = \$[A-Za-z]*[Pp]rev[A-Za-z]*' "$_PS_ALL" || true)"
-check "every quiet bracket is closed again" "$_ps_on" "$_ps_off"
+# THIS LINE CALLED AN ASSERTION THAT DOES NOT EXIST. The suite defines pass,
+# fail, has and lacks - never `check` - so it printed "check: command not found"
+# to stderr, touched neither counter, and the suite still reported "0 failed"
+# with exit 0. A dead assertion is worse than no assertion: it reads as coverage.
+#
+# Reviving it verbatim would fail, and rightly: it asserted the two counts are
+# EQUAL, and they are not (10 sets, 13 restores) because a restore in a finally
+# block legitimately covers a set that only happens on one branch. What a grep
+# can actually prove is the direction - restoring fewer times than you set means
+# a flag escapes its bracket and silences every step after it, which is the
+# failure the comment above describes.
+if [ "$_ps_off" -ge "$_ps_on" ]; then
+    pass "every quiet bracket is closed again ($_ps_on set, $_ps_off restored)"
+else
+    fail "a quiet flag escapes its bracket: $_ps_on set, only $_ps_off restored"
+fi
 rm -f "$_PS_ALL"
 
 printf '\n%d checks, %d failed\n' "$checks" "$fails"

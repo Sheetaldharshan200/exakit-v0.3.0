@@ -87,7 +87,7 @@ personal_heal_rootless_podman() {
 
     # A terminal may be asked; a scripted run must have said so in advance.
     if [ -n "$(_exakit_prompt_tty)" ]; then
-        confirm_env EXAKIT_PODMAN_SELFHEAL "Let the kit $_phr_what? It runs one sudo command and will ask for your password" y || {
+        confirm_env EXAKIT_PODMAN_SELFHEAL "Let the kit $_phr_what? It runs a command as administrator and will ask for your password" y || {
             info "Not changed. To do it yourself:  sudo $_phr_fix"
             return 0
         }
@@ -280,7 +280,14 @@ personal_install_podman() {
             exakit_note_failure "Podman needs an administrator password and this run has no terminal to ask for one"
             return 1
         fi
-        info "Your password, for this one command as administrator:"
+        # "this one command" UNDERSTATED IT. What is obtained is a sudo
+        # timestamp, reusable for the rest of its timeout, and what is run
+        # under it is `sh -c "<package manager install>"` - a root shell
+        # running the distro's own maintainer scripts. That is the ordinary
+        # way to install a package and it is fine; describing it as one
+        # command was what was not fine, because the reader sizing the request
+        # was sizing the wrong thing.
+        info "Your password, to install Podman as administrator (this grants sudo for the rest of its usual timeout):"
         if ! sudo -v; then
             info "Not installed. To do it yourself:  ${_pin_sudo}$_pin_cmd"
             exakit_note_failure "The administrator password for the Podman install was not given"
@@ -332,6 +339,22 @@ personal_check_requirements() {
     case "$_pcr_os" in
         macos) : ;;
         linux|wsl)
+            # ...WSL 2. WSL 1 is not Linux to anyone: it translates syscalls to
+            # the NT kernel, so it has no cgroups, no user namespaces, and no
+            # container runtime that can work. detect_wsl_version exists to
+            # gate exactly this refusal - its own comment says so - and until
+            # now nothing called it for that. Unrefused, a WSL 1 distro reached
+            # the Podman branch below, `apt-get install podman` SUCCEEDED, and
+            # the failure surfaced minutes later as a raw cgroups error, after
+            # a sudo package install the user never needed.
+            if [ "$_pcr_os" = wsl ] && [ "$(detect_wsl_version 2>/dev/null)" = "1" ]; then
+                error "This is a WSL 1 distro. Exasol Personal runs the database in a container, and WSL 1 has no Linux kernel to run one with."
+                info "Convert this distro to WSL 2, from PowerShell on the Windows side:"
+                info "  wsl --list --verbose          (find this distro's name and see its version)"
+                info "  wsl --set-version <distro> 2  (converts it; your files are kept)"
+                info "Then reopen the distro and re-run the installer: $(exakit_install_command)"
+                die "WSL 1 is not supported: Exasol Personal needs a real Linux kernel."
+            fi
             # WSL IS LINUX TO THE LAUNCHER, AND THAT IS THE WHOLE STORY. A WSL2
             # distro is an AMD64 Linux with a real kernel, the launcher ships a
             # Linux build, and its Linux local runtime asks for exactly one
@@ -432,6 +455,11 @@ personal_check_requirements() {
                 info "  [wsl2]"
                 info "  memory=8GB"
                 info "Then apply it from PowerShell: wsl --shutdown  (reopen this distro afterwards)"
+                # The escape hatch belongs in BOTH arms. It was only in the else
+                # branch, so it was invisible to exactly the users most likely to
+                # be refused by a rounding edge on a machine that really does have
+                # the memory.
+                info "Already sized correctly? Force past this check with EXAKIT_FORCE=1."
             else
                 info "Nothing was installed. Re-run on a machine with ${EXAKIT_PERSONAL_MIN_RAM_GB}+ GB RAM (or force at your own risk with EXAKIT_FORCE=1)."
             fi
@@ -442,6 +470,13 @@ personal_check_requirements() {
         fi
         if [ "$_disk" -lt "$EXAKIT_PERSONAL_MIN_DISK_GB" ]; then
             error "This machine is not compatible right now: the database needs at least ${EXAKIT_PERSONAL_MIN_DISK_GB} GB free disk and $HOME has ${_disk} GB."
+            # WHERE THAT NUMBER CAME FROM, when it did not come from this
+            # filesystem. Inside a WSL2 distro the root fs is a sparse VHDX
+            # formatted to WSL's maximum, so `df` there can say 900 GB while
+            # the Windows drive holding it has 6 - and a refusal quoting 6
+            # reads as nonsense to someone whose own `df` says otherwise.
+            _pcr_disk_note="$(detect_free_disk_note "$HOME" 2>/dev/null || true)"
+            [ -n "$_pcr_disk_note" ] && info "Why: $_pcr_disk_note"
             info "Nothing was installed. Free up disk space and re-run (or force at your own risk with EXAKIT_FORCE=1)."
             die "Insufficient free disk space: ${_disk} GB."
         fi
@@ -896,11 +931,111 @@ personal_db_port_pids() {
 # 2.2 spelling meant that on 2.3 the kit called its OWN leftover runner a
 # foreign process, refused to touch it, and left the port held by something it
 # had itself started - with the deploy path's hard stop as the only outcome.
-personal_is_orphan_daemon() {
+# A matching daemon younger than this is presumed to be a healthy runner still
+# coming up, not an orphan. Exasol Personal's own start budget is about two
+# minutes; 180s leaves margin on a slow or loaded machine. Set to 0 to reap by
+# name alone, which is what this code used to do unconditionally.
+EXAKIT_PERSONAL_REAP_MIN_AGE="${EXAKIT_PERSONAL_REAP_MIN_AGE:-180}"
+
+# _personal_proc_age_seconds <pid> - how long that process has been alive.
+# `ps -o etime=` is the portable spelling ([[dd-]hh:]mm:ss); etimes is GNU-only
+# and absent on the macOS ps. awk does the parsing so a zero-padded field
+# ("08") is read as decimal rather than tripping shell octal arithmetic.
+_personal_proc_age_seconds() {
+    ps -p "$1" -o etime= 2>/dev/null | awk '
+        {
+            gsub(/ /, "", $0)
+            if ($0 == "") exit 1
+            d = 0
+            if (index($0, "-") > 0) {
+                d = substr($0, 1, index($0, "-") - 1) + 0
+                $0 = substr($0, index($0, "-") + 1)
+            }
+            n = split($0, p, ":")
+            if (n == 3)      { s = p[1] * 3600 + p[2] * 60 + p[3] }
+            else if (n == 2) { s = p[1] * 60 + p[2] }
+            else             { s = p[1] + 0 }
+            print d * 86400 + s
+            exit 0
+        }'
+}
+
+# personal_is_orphan_daemon <pid> - is this process ours AND abandoned?
+#
+# THE NAME ALONE WAS THE WHOLE TEST, AND A HEALTHY RUNNER MID-START HAS THAT
+# NAME. That made the worst path in the kit: personal_status answers `conflict`
+# for any port that is bound while the database does not yet answer SQL - which
+# is precisely a deployment's startup window - and cmd_start reads `conflict` as
+# "probably our own orphan" and calls the reaper, which escalates to
+# `pkill -9 -P` plus `kill -9`. So a second `exakit start` during startup (two
+# shells, a user who thinks nothing happened, an agent that retries) SIGKILLed
+# the starting runner. What that costs is recorded 900 lines away in setup/exakit:
+# a SIGKILLed runner leaves the launcher's workflow state `interrupted`, after
+# which every start fails identically forever, and the only documented cure is
+# `exakit repair-runtime` - which deletes the database. For someone with three
+# months of unbacked-up tables that is the difference between a pause and a loss.
+#
+# Two more questions before the kill, both cheap:
+#   age    - a process that started seconds ago is starting, not stranded.
+#   state  - the launcher's own word. A genuine orphan is one the launcher has
+#            let go of (stopped / deployment_failed / interrupted), or one it
+#            cannot speak for at all (empty). Anything else means it believes
+#            this deployment is live, and we do not get to overrule it.
+# Erring toward NOT reaping is the right bias: the cost of a missed reap is a
+# clear "port is held" message and a manual stop. The cost of a wrong reap is
+# the user's data.
+# _personal_is_runner_process <pid> - does this process LOOK like our runner?
+# The name test alone, shared by the reaper (which additionally needs it to be
+# old and abandoned) and by personal_starting (which needs it to be young).
+# One definition, so the two can never disagree about whose process it is.
+_personal_is_runner_process() {
     case "$(ps -p "$1" -o command= 2>/dev/null || true)" in
         *mac-runner*__daemon__*) return 0 ;;
         *exasol-local-runner*)   return 0 ;;
-        *) return 1 ;;
+    esac
+    return 1
+}
+
+# personal_starting - is the port held by OUR OWN runner, still within its
+# start budget? Then the database is coming up, not in conflict with anything.
+#
+# personal_status had no such state: port bound + launcher not "stopped" + SQL
+# not answering yet is exactly a deployment's startup window, and it was
+# reported as `conflict` - which reads as "another program has your port" on a
+# machine that has no such program. Two consequences. The post-update check in
+# common.sh already had a `starting` arm that could never be reached, so it
+# fell to the catch-all and warned about a conflict for a database that was
+# simply booting. And `conflict` is what sends cmd_start into the reaper, which
+# is the first step of the path that SIGKILLs a healthy starting runner.
+personal_starting() {
+    command -v personal_db_port_pids >/dev/null 2>&1 || return 1
+    for _pst_pid in $(personal_db_port_pids 2>/dev/null || true); do
+        _personal_is_runner_process "$_pst_pid" || continue
+        _pst_age="$(_personal_proc_age_seconds "$_pst_pid" 2>/dev/null || true)"
+        [ -n "$_pst_age" ] || continue
+        [ "$_pst_age" -lt "${EXAKIT_PERSONAL_REAP_MIN_AGE:-180}" ] && return 0
+    done
+    return 1
+}
+
+personal_is_orphan_daemon() {
+    _personal_is_runner_process "$1" || return 1
+    if [ "${EXAKIT_PERSONAL_REAP_MIN_AGE:-0}" -gt 0 ]; then
+        _iod_age="$(_personal_proc_age_seconds "$1" 2>/dev/null || true)"
+        if [ -n "$_iod_age" ] && [ "$_iod_age" -lt "$EXAKIT_PERSONAL_REAP_MIN_AGE" ]; then
+            # Guarded: this predicate is reachable with runtime-personal.sh
+            # sourced on its own, where common.sh's logger does not exist, and
+            # a decision this important must not depend on a log line.
+            command -v _exakit_log_file >/dev/null 2>&1 &&
+                _exakit_log_file "INFO  not reaping pid $1: ${_iod_age}s old, still within the start budget"
+            return 1
+        fi
+    fi
+    case "$(personal_launcher_state 2>/dev/null || true)" in
+        ''|stopped|deployment_failed|interrupted) return 0 ;;
+        *) command -v _exakit_log_file >/dev/null 2>&1 &&
+               _exakit_log_file "INFO  not reaping pid $1: the launcher still calls this deployment live"
+           return 1 ;;
     esac
 }
 
@@ -1508,6 +1643,17 @@ _personal_wait_ready_probe() {
     _pwr_elapsed=0
     _pwr_maxtries=$(( _pwr_budget / 5 + 1 ))
     _tries=0
+    # SOMETHING HAS TO BE SAID WITHOUT A TTY. The only narration here is
+    # ui_spin_begin, and that returns immediately when stdout is not a
+    # terminal - so an agent's run printed NOTHING for up to 150 seconds
+    # normally, and up to 900 after a launcher update triggers the guest
+    # rebuild. Fifteen minutes of silence is indistinguishable from a hang, and
+    # the documented advice is not to loop on `exakit start`, so the agent has
+    # nothing to poll and no reason to keep waiting.
+    #
+    # To STDERR: a caller composing a --json answer on stdout must not find
+    # progress lines spliced into it.
+    _pwr_last_note=0
     while [ "$_pwr_elapsed" -lt "$_pwr_budget" ] && [ "$_tries" -lt "$_pwr_maxtries" ]; do
         # A HANDSHAKE, NOT AN OPEN PORT. Under rootless Podman the port is
         # pasta's from the moment the container starts, and `exasol info`
@@ -1528,6 +1674,11 @@ _personal_wait_ready_probe() {
         _tries=$((_tries + 1))
         _pwr_elapsed=$(( $(date +%s 2>/dev/null || echo 0) - _pwr_t0 ))
         [ "$_pwr_elapsed" -ge 0 ] || _pwr_elapsed=0
+        if [ ! -t 1 ] && [ $(( _pwr_elapsed - _pwr_last_note )) -ge 30 ]; then
+            _pwr_last_note="$_pwr_elapsed"
+            printf '  ... %s (%ss elapsed, ceiling %ss; raise it with %s)\n' \
+                "$_pwr_what" "$_pwr_elapsed" "$_pwr_budget" "$_pwr_raise" >&2
+        fi
     done
     ui_spin_end
     # The number the user actually waited, not the number the loop intended.
@@ -1815,6 +1966,9 @@ personal_status() {
                 echo "stopped"
             elif personal_db_answers; then
                 echo "running"
+            elif personal_starting; then
+                # Our own runner, still inside its start budget: coming up.
+                echo "starting"
             else
                 echo "conflict"
             fi
@@ -1906,7 +2060,7 @@ personal_teardown() {
         # default. run_logged sends its output to the log, so that prompt is
         # invisible and the install just hangs forever waiting for input. The
         # user has already confirmed at the exakit uninstall level.
-        run_logged "$(personal_cli)" destroy --remove --auto-approve || warn "Destroy reported errors (see log)"
+        run_logged "$(personal_cli)" destroy --remove --auto-approve || warn "The launcher reported errors while destroying the deployment. What it said: exakit logs setup"
     else
         info "No active deployment found"
     fi

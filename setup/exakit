@@ -14,6 +14,8 @@
 #                       on yes; without a terminal it is deferred unless --yes (or
 #                       EXAKIT_CONFIRM_RUNTIME_UPDATE=1) says otherwise
 #                       Personal major upgrades support --plan, --backup, --apply
+#                       (macOS, Linux and WSL only - the Windows CLI has no
+#                       staged route and says so if you pass one of them)
 #   info [--json]       print the connection details panel; --json prints the
 #                       install record (manifest.json) plus the state keys
 #                       installed / status / remedy / skills, nothing else
@@ -38,7 +40,7 @@
 #   data-load [--force|<path>]
 #                       open focused data loading options; a file path loads that
 #                       file, a FOLDER path bulk-loads every CSV/Parquet/JSON file
-#                       in it (one table each); --force reloads bundled datasets
+#                       in it (one table each); --force REPLACES bundled datasets
 #   sql '<statement>' [--write]
 #                       run one SQL statement and translate the error into a
 #                       remedy; reads only unless --write. Uses the ADMIN
@@ -47,6 +49,10 @@
 #   mcp-doctor          check the configured MCP clients, repair what has
 #                       drifted, then re-check (there is no separate repair)
 #   mcp-status          show managed MCP state for the supported AI clients
+#   mcp-remove <client> [<client>...]
+#                       take the kit's managed MCP entries out of the named
+#                       clients and forget them, so mcp-doctor stops reporting
+#                       a client that is no longer on this machine
 #   skills [--json]     list the kit's AI skills and whether each one has
 #                       reached the agents' discovery folders
 #   skills-install      install the kit's AI skills for CLI agents
@@ -96,6 +102,30 @@ else
     # to be prose and exit 1, so a parser pointed at a relocated EXAKIT_HOME
     # got neither the status nor the remedy it was promised.
     _no_lib_remedy="re-run the installer (curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | sh)${EXAKIT_HOME:+; or point EXAKIT_HOME at an install that has kit/setup/lib}"
+    # AN INTERRUPTED UPDATE IS A DIFFERENT PROBLEM WITH A MUCH CHEAPER ANSWER,
+    # and this is the only code left able to say so. `exakit update` renames
+    # the kit aside before renaming the new one in; killed between the two, the
+    # machine has a kit.backup-<ts> and no kit, and every subcommand lands
+    # here. Telling that user to re-download and reinstall the kit would be
+    # both slower and more destructive than the single rename that fixes it.
+    #
+    # The marker is what the updater leaves; the directory scan is the fallback
+    # for a kit updated by a version of this file that did not write one.
+    _no_lib_home="${EXAKIT_HOME:-$HOME/.exasol-starter-kit}"
+    _no_lib_backup=""
+    if [ -f "$_no_lib_home/.update-in-progress" ]; then
+        _no_lib_backup="$(cat "$_no_lib_home/.update-in-progress" 2>/dev/null || true)"
+    fi
+    if [ -z "$_no_lib_backup" ] || [ ! -d "$_no_lib_backup" ]; then
+        _no_lib_backup=""
+        for _no_lib_cand in "$_no_lib_home"/kit.backup-*; do
+            [ -d "$_no_lib_cand/setup/lib" ] || continue
+            _no_lib_backup="$_no_lib_cand"
+        done
+    fi
+    if [ -n "$_no_lib_backup" ] && [ ! -d "$_no_lib_home/kit" ]; then
+        _no_lib_remedy="mv '$_no_lib_backup' '$_no_lib_home/kit'"
+    fi
     for _no_lib_arg in "$@"; do
         case "$_no_lib_arg" in
             --json|-j)
@@ -104,6 +134,14 @@ else
                 exit 4 ;;
         esac
     done
+    if [ -n "$_no_lib_backup" ] && [ ! -d "$_no_lib_home/kit" ]; then
+        echo "exakit: an update was interrupted before the new kit was put in place." >&2
+        echo "exakit: your previous kit copy is still here, and nothing else was touched - the database, its data and your credentials are untouched." >&2
+        echo "exakit: put it back with one command:" >&2
+        echo "  $_no_lib_remedy" >&2
+        echo "exakit: then run 'exakit update' again." >&2
+        exit 4
+    fi
     echo "exakit: cannot find the kit library (looked in $_script_dir/lib and ${EXAKIT_HOME:-$HOME/.exasol-starter-kit}/kit/setup/lib)" >&2
     echo "exakit: if EXAKIT_HOME is set, it must point at an install that has kit/setup/lib; otherwise re-run the installer." >&2
     exit 4
@@ -150,7 +188,16 @@ _require_install() {
     # state query uses: 4 no install record, 3 an install with no runtime yet.
     if [ ! -f "$EXAKIT_MANIFEST" ]; then
         if [ "$_ri_json" = "1" ]; then
-            printf '{"ok": false, "installed": false, "status": "not installed", "error": "no installation found", "remedy": "%s"}\n' "$(exakit_install_command)"
+            # A SUPERSET OF THE OTHER FOUR, not a different shape. AGENTS.md
+            # promises "one shape covers all of them" for the five state
+            # queries, and mcp-status is the only one whose not-installed
+            # answer comes from here - so it alone lacked `manifest` and
+            # `reason`, and a parser reading `reason` for the explanation got a
+            # KeyError on exactly one of the five. `ok` and `error` stay for
+            # the non-state-query callers of this function, which is why this
+            # is additive rather than a swap.
+            printf '{"ok": false, "installed": false, "status": "not installed", "manifest": "%s", "reason": "no install record", "error": "no installation found", "remedy": "%s"}\n' \
+                "$EXAKIT_MANIFEST" "$(exakit_install_command)"
             exit 4
         fi
         printf '\n  %s%s %sNo installation found. Run the installer first: %s%s\n' \
@@ -368,10 +415,12 @@ cmd_status() {
         fi
         run_python_any - "$(manifest_get kit_level 2>/dev/null)" "${_type:-}" "$_cs_db"             "${_cs_autostart:-false}" "$_cs_datasets" "${_cs_pyx:-}" "$EXAKIT_MANIFEST"             "$(manifest_get steps_completed 2>/dev/null)" "$_cs_services" "$_cs_note" "$_cs_note_at" \
             "$_cs_installing" "$_cs_step" "$_cs_urls" "$(exakit_install_command)" \
-            "$_cs_legacy_c" "$_cs_legacy_e" "$_cs_legacy_choice" "$_cs_legacy_restored" "$_cs_legacy_sample" <<'EXAKIT_SJ_PY'
+            "$_cs_legacy_c" "$_cs_legacy_e" "$_cs_legacy_choice" "$_cs_legacy_restored" "$_cs_legacy_sample" \
+            "$(detect_os 2>/dev/null || true)" "$(detect_wsl_version 2>/dev/null || true)" <<'EXAKIT_SJ_PY'
 import json, sys
 kit, rtype, db, autostart, datasets, pyx, manifest, steps, services, note, note_at, installing, step, urls, install_cmd = sys.argv[1:16]
 legacy_c, legacy_e, legacy_choice, legacy_restored, legacy_sample = (sys.argv[16:21] + [""] * 5)[:5]
+host_platform, wsl_version = (sys.argv[21:23] + [""] * 2)[:2]
 installing = installing == "1"
 try:
     steps_list = json.loads(steps) if steps else []
@@ -480,6 +529,18 @@ payload = {
     "install_step": step or None,
     "kit_level": kit or None,
     "runtime": {"type": rtype or None, "status": db},
+    # WHICH MACHINE THIS IS, as a token rather than as prose. Every WSL-specific
+    # remedy the kit emits asks for an action on a DIFFERENT operating system -
+    # a .wslconfig edit under %USERPROFILE%, `wsl --shutdown` "from
+    # PowerShell", a /etc/wsl.conf line plus a distro restart - and those
+    # arrived inside remedy_hints with no structured signal that the host was
+    # WSL at all. `remedies` is documented as "the exact repair command,
+    # runnable as written", which on WSL is sometimes true (exakit start) and
+    # sometimes categorically false, and an agent had no key to tell the two
+    # apart. wsl_version is null off WSL; on it, it is the one thing
+    # detect_wsl_version has ever been asked for outside its own refusal.
+    "platform": host_platform or None,
+    "wsl_version": int(wsl_version) if wsl_version.isdigit() else None,
     "running": running,
     "services": smap,
     # Per-service addresses, from each module's own `url` hook: the JSON key
@@ -813,6 +874,15 @@ cmd_start() {
         personal)
             if personal_deployment_running 2>/dev/null; then
                 ok "Database is already running"
+            elif [ "$(personal_status 2>/dev/null)" = "starting" ]; then
+                # ALREADY COMING UP. Before personal_status could say so this
+                # state was reported as `conflict`, which sent this command
+                # into the reaper - and the reaper's kill is what leaves the
+                # launcher `interrupted`, whose only documented cure destroys
+                # the database. So the honest answer here is also the safe one:
+                # wait, do not start a second time, and say how to watch.
+                ok "The database is already starting — give it a moment."
+                info "Watch it come up with: exakit status   (it answers 'running' when ready)"
             elif [ "$(personal_status 2>/dev/null)" = "conflict" ]; then
                 # Port open is not database up: with another program on 8563 this
                 # said "already running" and exited 0 while status said stopped.
@@ -944,8 +1014,17 @@ cmd_repair_runtime() {
     else
         warn "This rebuilds your database from empty. Every table in it is deleted and cannot be recovered."
         info "The bundled sample datasets are reloaded afterwards. Anything you loaded yourself is not."
+        # A FORMAT THE KIT CAN LOAD BACK. This used to name
+        # `exakit sql --json`, whose output is a {"ok", "rows", "row_count"}
+        # envelope - readable, but nothing in the kit ingests it: exapump takes
+        # .csv and .parquet, and the json-tables path expects raw JSON
+        # documents, not a result wrapper. So the one rescue instruction
+        # printed before a command that destroys the database produced a file
+        # its owner could not restore from. exapump's own CSV output is a
+        # plain header-plus-rows file, which `exakit data-load` reads directly.
         info "If the database still answers, copy out anything you want to keep first, one table at a time:"
-        info "  exakit sql --json 'SELECT * FROM <SCHEMA>.<TABLE>' > table.json"
+        info "  exapump sql -p $EXAKIT_EXAPUMP_PROFILE -f csv 'SELECT * FROM <SCHEMA>.<TABLE>' > table.csv"
+        info "  ...and load it back afterwards with: exakit data-load table.csv"
     fi
     if [ "$_rr_yes" -ne 1 ]; then
         if ! confirm "Delete everything in the database and rebuild it empty?" n; then
@@ -1269,8 +1348,18 @@ cmd_uninstall() {
         fi
         if [ "$_uni_yes" -ne 1 ]; then
             confirm "Remove the $_uni_addon add-on?" n || {
+                # EXIT 5, THE SAME AS repair-runtime's DECLINE thirty lines up.
+                # AGENTS.md defines 5 as "a command you did not confirm", and
+                # this path answered 0 - which means "done" to anything reading
+                # the code. An agent told to remove an add-on, running without
+                # a terminal so confirm() takes its default of no, was told the
+                # removal had succeeded and moved on; the add-on is still
+                # there. Declining is not an error (nothing is recorded, and
+                # the message is an info, not a die), but it is not success
+                # either, and the two must not share a code.
                 info "Nothing was removed."
-                exit 0
+                info "When you are ready: exakit uninstall $_uni_addon --yes"
+                exit 5
             }
         fi
         _exakit_uninstall_component "$_uni_addon" 0
@@ -1302,6 +1391,22 @@ cmd_uninstall() {
     if [ "$_uni_yes" = 1 ]; then
         printf '\n'
         warn "exakit uninstall --yes removes the FULL kit (all local database data included)."
+        # THE PLAN RUNS ON THIS PATH TOO, not only under --dry-run. --yes is
+        # what AGENTS.md documents for automation, so it is the path an agent
+        # takes when a user says "uninstall the starter kit" - and it used to
+        # print one warn line and then destroy, leaving no record anywhere of
+        # WHAT it destroyed. The kit has no data-export facility (see
+        # exakit_update_runtime's note), so the database's contents are gone
+        # with no recoverable copy; the least this can do is name them first,
+        # in the transcript the agent keeps and in the log.
+        info "About to remove:"
+        exakit_uninstall_run 1
+        printf '\n'
+        info "There is no export step: the kit cannot copy your tables out, and this does not stop to ask."
+        info "To keep anything, stop now (Ctrl-C) and copy it out first, one table at a time:"
+        info "  exapump sql -p $EXAKIT_EXAPUMP_PROFILE -f csv 'SELECT * FROM <SCHEMA>.<TABLE>' > table.csv"
+        info "  ...which exakit data-load table.csv can load back into a new install."
+        printf '\n'
         exakit_uninstall_run 0
         printf '\n'
         ok "Uninstall complete — the Exasol Personal Local Starter Kit has been removed."
@@ -1430,7 +1535,7 @@ cmd_data_load() {
     if [ -n "$_dl_force" ]; then
         _kit_root="$(exakit_repo_root)" || \
             die "Could not find the kit's sql/ and data/ files to load."
-        # EXAKIT_DATASETS names WHICH datasets; --force says "reload them even
+        # EXAKIT_DATASETS names WHICH datasets; --force says "replace them even
         # though they are already there". They compose. --force used to ignore
         # the variable outright and reload the bundled sample alone, so an
         # unattended `EXAKIT_DATASETS=tpch,energy,weather exakit data-load
@@ -1479,7 +1584,7 @@ cmd_data_load() {
                             info "Loading dataset '$_dl_id' (EXAKIT_DATASETS)."
                             exakit_load_dataset "$_kit_root" "$_dl_id" || _dl_failed=1
                             ;;
-                        *) ok "Dataset '$_dl_id' is already loaded — nothing to do (reload it with: exakit data-load --force)" ;;
+                        *) ok "Dataset '$_dl_id' is already loaded — nothing to do (replace it with: exakit data-load --force, which drops and rebuilds its tables)" ;;
                     esac
                     ;;
                 *)
@@ -1575,7 +1680,16 @@ cmd_mcp_doctor() {
             # Same three keys as every other --json answer from a state query
             # (installed / status / remedy), so one parser handles all of them.
             # `database` is kept for callers written against the older shape.
-            printf '{"installed": true, "status": "database not running", "database": "not running", "remedy": "%s"}\n' \
+            #
+            # "stopped", THE SAME WORD `status --json` USES. AGENTS.md promises
+            # the five state queries "agree with each other on the status
+            # vocabulary", and this emitter and info's said "database not
+            # running" where status said "stopped" - one state, three emitters,
+            # two words, so `if d["status"] == "stopped"` was correct for one
+            # command and silently false for the other two. The sentence lives
+            # on in `database` and in the prose below, where it reads well;
+            # `status` is the machine field and now has one value per state.
+            printf '{"installed": true, "status": "stopped", "database": "not running", "remedy": "%s"}\n' \
                 "$(exakit_runtime_remedy)"
         else
             warn "The database is not running — fix that first: $(exakit_runtime_remedy)"
@@ -1662,6 +1776,19 @@ cmd_mcp_status() {
     _ms_json=0
     for _ms_pre in "$@"; do
         case "$_ms_pre" in --json|-j) _ms_json=1 ;; esac
+    done
+    # AND THE REFUSAL COMES FIRST TOO, for the same reason the --json read does.
+    # This validation used to sit AFTER _require_install, so on a machine with
+    # nothing installed `exakit mcp-status --bogus` answered 4 ("not
+    # installed") for what is bad input - the one command out of twelve that
+    # did. AGENTS.md is unambiguous: bad input exits 2, for "an unknown option
+    # to any command", and whether the kit happens to be installed does not
+    # change whether the option exists.
+    for _ms_pre in "$@"; do
+        case "$_ms_pre" in
+            --json|-j) ;;
+            -*) reject "Unknown option '$_ms_pre' for mcp-status (supported: --json)." ;;
+        esac
     done
     _require_install "$_ms_json"
     exakit_init_logging
@@ -1829,7 +1956,11 @@ elif not rtype:
     doc["remedy"] = install_cmd
     doc["remedy_hint"] = "no runtime is recorded yet; the installer resumes at the unfinished step"
 else:
-    doc["status"] = "database not running"
+    # "stopped" - the same word status --json uses for this state. See the
+    # note in cmd_mcp_doctor: the status field is the machine's, and it has
+    # one value per state.
+    doc["status"] = "stopped"
+    doc["database"] = "not running"
     doc["remedy"] = "exakit start"
 skills_have = ((doc.get("components") or {}).get("skills") or {}).get("version")
 skills_want = sys.argv[3] or None
@@ -2140,7 +2271,16 @@ _with_notice() {
 #
 # `sql` is excluded on purpose: its argument is arbitrary SQL text, and a
 # statement that happens to contain --help is a query, not a request for help.
-if [ $# -ge 2 ] && [ "$1" != "sql" ]; then
+#
+# A leading help flag is excluded too: `exakit --help --json` is the help
+# COMMAND with an option, not a request for a topic literally named "--help".
+# It used to fall in here, be rendered as a command page for that topic, and
+# print grep's usage block instead of the JSON document an agent asked for.
+case "${1:-}" in
+    help|--help|-h) _help_skip=1 ;;
+    *)              _help_skip=0 ;;
+esac
+if [ $# -ge 2 ] && [ "$1" != "sql" ] && [ "$_help_skip" -eq 0 ]; then
     for _help_arg in "$@"; do
         case "$_help_arg" in
             --help|-h)
@@ -2180,6 +2320,24 @@ _exakit_refuse_unknown_options() {
         esac
     done
 }
+
+# EXAKIT_REFUSAL_JSON — did this caller ask for a machine answer?
+#
+# Set once, here, so that reject() and the unknown-command arm below can honour
+# --json on the paths that REFUSE, not only on the paths that succeed. `sql` is
+# excluded for the same reason it is excluded from the universal --help hook:
+# its argument is arbitrary SQL text, and a statement containing --json is a
+# query. It carries its own --json parsing and its own _sql_reject anyway.
+case "${1:-}" in
+    sql) : ;;
+    *)
+        for _rj_arg in "$@"; do
+            case "$_rj_arg" in
+                --json|-j) EXAKIT_REFUSAL_JSON=1; export EXAKIT_REFUSAL_JSON; break ;;
+            esac
+        done
+        ;;
+esac
 
 # State QUERIES are read-only by contract: no probe they run - however it
 # fails - may write the .last-failure note that status --json then reports as
@@ -2250,6 +2408,12 @@ case "${1:-help}" in
        # answer is its page - not "unknown command" followed by the whole menu.
        if exakit_help_is_id "${1}"; then
            exakit_help_render component "${1}"
+       elif [ "${EXAKIT_REFUSAL_JSON:-0}" = "1" ]; then
+           # One object on stdout, and the whole usage screen NOT dumped into
+           # the middle of it.
+           printf '{"ok": false, "error": "%s", "remedy": "exakit catalog --json", "rejected": true}\n' \
+               "$(_exakit_json_string "Unknown command '${1}'.")"
+           exit 2
        else
            echo "exakit: unknown command '${1}'" >&2
            usage >&2

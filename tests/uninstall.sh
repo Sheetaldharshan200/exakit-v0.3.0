@@ -32,7 +32,14 @@ HOME="$SANDBOX/home"
 export HOME
 EXAKIT_HOME="$HOME/.exasol-starter-kit"
 EXAKIT_BIN_DIR="$HOME/.local/bin"
-export EXAKIT_HOME EXAKIT_BIN_DIR
+# THE FOURTH ONE, and it is the one that bites. The removal engine resolves
+# ${EXAKIT_EXAPUMP_CONFIG_DIR:-$HOME/.exapump} and rm -rf's it. Redirecting only
+# three left that variable at whatever the DEVELOPER had exported, so running
+# this suite on a machine that sets it deleted their real exapump profiles - and
+# reported a false FAIL on top. Redirecting HOME hid it by luck, not by design:
+# the fallback landed in the sandbox only while nobody had set the variable.
+EXAKIT_EXAPUMP_CONFIG_DIR="$HOME/.exapump"
+export EXAKIT_HOME EXAKIT_BIN_DIR EXAKIT_EXAPUMP_CONFIG_DIR
 
 # --- stub the externals the engine calls ---------------------------------
 info(){ :; }; warn(){ :; }; ok(){ :; }; die(){ echo "die: $*" >&2; exit 1; }
@@ -169,6 +176,48 @@ case "$_uout" in
     *)  check "exakit uninstall dash-server is a real target" "accepted" "accepted" ;;
 esac
 
+
+echo
+echo "the EXAKIT_HOME the engine will rm -rf has to be one the kit built:"
+# EXAKIT_HOME comes from the ENVIRONMENT and reaches rm -rf. The kit's own WSL
+# remedy tells people to export it and keep it exported, so the users most
+# likely to have it set permanently are the ones an uninstall would aim
+# wherever it happened to point. --yes takes no confirmation at all.
+#
+# BOTH DIRECTIONS ARE PINNED HERE, because getting the refusal right is only
+# half of it: a first cut required manifest.json unconditionally, which refused
+# to clean up exactly the broken installs uninstall exists for. The manifest
+# proves the case; failing that the directory still has to carry one of the
+# kit's own entries, or be empty - and a populated directory that carries
+# neither is refused.
+_guard() { # _guard <dir> -> ALLOW | REFUSE
+    SANDBOX="$SANDBOX" ROOT="$ROOT" TARGET="$1" bash <<'GUARD'
+set -u
+HOME="$SANDBOX/guard-home"; export HOME
+mkdir -p "$HOME"
+# The predicate is defined inside exakit_uninstall_run, so pull that function
+# out of the source and read the definition from it rather than restating it -
+# a copy here would pass while the product drifted.
+eval "$(awk '/^ *_un_safe_target\(\) \{/,/^ *\}/' "$ROOT/setup/lib/common.sh")"
+if _un_safe_target "$TARGET"; then echo ALLOW; else echo REFUSE; fi
+GUARD
+}
+G="$SANDBOX/guard"; rm -rf "$G"
+mkdir -p "$G/installed" && : > "$G/installed/manifest.json"
+mkdir -p "$G/broken/logs" "$G/broken/credentials"
+mkdir -p "$G/empty"
+mkdir -p "$G/etc-like" && : > "$G/etc-like/hosts" && : > "$G/etc-like/passwd"
+mkdir -p "$G/project/.git" && : > "$G/project/README.md"
+mkdir -p "$G/hidden-only" && : > "$G/hidden-only/.env"
+check "a normal install is removable"          "ALLOW"  "$(_guard "$G/installed")"
+check "a broken install is still removable"    "ALLOW"  "$(_guard "$G/broken")"
+check "an empty kit home is removable"         "ALLOW"  "$(_guard "$G/empty")"
+check "an /etc-shaped directory is refused"    "REFUSE" "$(_guard "$G/etc-like")"
+check "someone's project directory is refused" "REFUSE" "$(_guard "$G/project")"
+check "a directory of hidden files is refused" "REFUSE" "$(_guard "$G/hidden-only")"
+check "a relative EXAKIT_HOME is refused"      "REFUSE" "$(_guard "relative/kit")"
+check "the filesystem root is refused"         "REFUSE" "$(_guard "/")"
+check "the home directory itself is refused"   "REFUSE" "$(_guard "$SANDBOX/guard-home")"
 
 echo
 echo "PASS=$PASS FAIL=$FAIL"

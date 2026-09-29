@@ -69,7 +69,8 @@ mcp_uv_install() {
     fi
     info "Installing uv (Python tool runner used by the MCP server)"
     if command -v brew >/dev/null 2>&1; then
-        run_logged brew install uv || die "brew install uv failed (see log)"
+        run_logged brew install uv ||
+            die "Homebrew could not install uv, which the MCP server runs through. What brew said: exakit logs setup. Then install it yourself and re-run:  brew install uv"
     else
         # TODO(security): this pipes a remote installer straight into a shell,
         # unlike the kit's own artifacts which are SHA256-verified. It can't be
@@ -78,8 +79,16 @@ mcp_uv_install() {
         # uv via a verified release asset. Brew is preferred above precisely to
         # avoid this path on the common macOS case. Fetched over TLS from the
         # official host as a documented, accepted risk until then.
-        curl -LsSf --retry 3 https://astral.sh/uv/install.sh | run_logged sh || \
-            die "uv installation failed (see log)"
+        # --proto/--proto-redir: this is the one artifact the kit installs
+        # WITHOUT a digest, and it is also the longest-lived one - uvx is the
+        # process the AI client launches to run the MCP server, and it is
+        # handed EXA_PASSWORD on every start. -L follows redirects, so without
+        # --proto-redir a 302 to http:// is fetched in the clear and piped
+        # straight into sh. Every binary download in this kit already carries
+        # --proto '=https'; the script that is executed carried neither.
+        curl -LsSf --proto '=https' --proto-redir '=https' --retry 3 \
+            https://astral.sh/uv/install.sh | run_logged sh || \
+            die "The uv installer did not finish, and the MCP server runs through uv. What it printed: exakit logs setup. Then install it yourself and re-run:  curl -LsSf https://astral.sh/uv/install.sh | sh"
         # The uv installer defaults to ~/.local/bin
         case ":$PATH:" in
             *":$HOME/.local/bin:"*) ;;
@@ -446,19 +455,34 @@ PY
 # mcp_credentials — prints "user<TAB>password_file" for the client configs.
 # Prefers the validated dedicated read-only user; falls back to the legacy
 # MCP default or, as a last resort, the runtime admin user.
+# A THIRD FIELD: which credential this is. The fallback below hands back the
+# ADMIN account, and it used to do so indistinguishably from the read-only one
+# - so every caller took it at face value and the status line went on printing
+# "(read-only)" about a full-privilege session. That inverts the kit's central
+# safety claim ("writes are rejected by the database itself") in the one
+# direction that matters: it degrades OPEN, and the single line a user would
+# check to catch it reassured them instead.
+#
+# Reaching it needs a manifest that lost those keys - a partially restored kit
+# home, a hand edit, a crossing from an older layout - not a clean install. So
+# the fallback stays (it is what lets a half-provisioned kit still be
+# repaired); what changes is that it can no longer pass itself off as the
+# read-only user. Consumers read fields 1 and 2 with `cut`, so appending a
+# third is compatible with every existing caller.
 mcp_credentials() {
     _connection_user="$(manifest_get components.mcp_server.connection.user 2>/dev/null || true)"
     _connection_pwfile="$(manifest_get components.mcp_server.connection.password_file 2>/dev/null || true)"
     if [ -n "$_connection_user" ] && [ -n "$_connection_pwfile" ]; then
-        printf '%s\t%s\n' "$_connection_user" "$_connection_pwfile"
+        printf '%s\t%s\t%s\n' "$_connection_user" "$_connection_pwfile" "readonly"
         return 0
     fi
     if [ -n "$(manifest_get components.mcp_server.user 2>/dev/null || true)" ]; then
-        printf '%s\t%s\n' "$EXAKIT_MCP_USER" "$EXAKIT_CREDS_DIR/mcp_readonly_password"
+        printf '%s\t%s\t%s\n' "$EXAKIT_MCP_USER" "$EXAKIT_CREDS_DIR/mcp_readonly_password" "readonly"
         return 0
     fi
-    printf '%s\t%s\n' "$(manifest_get runtime.user 2>/dev/null)" \
-        "$(manifest_get runtime.password_file 2>/dev/null)"
+    _exakit_log_file "WARN  No read-only MCP credential is recorded; falling back to the ADMIN account. Repair with: exakit mcp-setup"
+    printf '%s\t%s\t%s\n' "$(manifest_get runtime.user 2>/dev/null)" \
+        "$(manifest_get runtime.password_file 2>/dev/null)" "admin-fallback"
 }
 
 # mcp_resolve_creds — sets _mcp_user and _mcp_password for the caller.
@@ -467,6 +491,10 @@ mcp_resolve_creds() {
     _creds="$(mcp_credentials)"
     _mcp_user="$(printf '%s' "$_creds" | cut -f1)"
     _pwfile="$(printf '%s' "$_creds" | cut -f2)"
+    # "readonly" or "admin-fallback" - see mcp_credentials. Callers that tell
+    # the user what the AI client connects as must not describe the second as
+    # the first.
+    _mcp_user_kind="$(printf '%s' "$_creds" | cut -f3)"
     _mcp_password=""
     [ -n "$_pwfile" ] && [ -f "$_pwfile" ] && _mcp_password="$(cat "$_pwfile")"
 }
@@ -653,7 +681,7 @@ mcp_validate_http() {
         ok "HTTP mode answers on port $EXAKIT_MCP_HTTP_PORT"
         manifest_set components.mcp_server.http_validated true
     else
-        warn "HTTP mode did not answer on port $EXAKIT_MCP_HTTP_PORT (see log)"
+        warn "The HTTP MCP server did not answer on port $EXAKIT_MCP_HTTP_PORT. What it printed: exakit logs setup. Check nothing else holds that port, then retry with: exakit mcp-setup"
         manifest_set components.mcp_server.http_validated false
     fi
     # uvx spawns the actual server as a child process — kill both, bounded.

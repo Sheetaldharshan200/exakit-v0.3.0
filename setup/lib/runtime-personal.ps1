@@ -1032,7 +1032,7 @@ function Remove-Personal {
         # --auto-approve: the launcher's destroy prompts for confirmation by
         # itself; the caller (uninstall) has already asked its own question.
         if ((Invoke-ExakitLogged (Get-PersonalCli) destroy --remove --auto-approve) -ne 0) {
-            Warn2 "Destroy reported errors (see log)"
+            Warn2 "The launcher reported errors while destroying the deployment. What it said: exakit logs setup"
         }
     }
     Set-ExakitManifestValue "runtime.status" "removed"

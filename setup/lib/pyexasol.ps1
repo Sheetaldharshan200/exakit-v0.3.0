@@ -32,7 +32,7 @@ function Get-PyexasolInstalledVersion {
         $ErrorActionPreference = "Continue"
         $version = & $python -c "import pyexasol; print(pyexasol.__version__)" 2>$null
         if ($LASTEXITCODE -ne 0) { return $null }
-        return ($version | Out-String).Trim()
+        return ($version | Out-String -Width 4096).Trim()
     } catch {
         return $null
     } finally { $ErrorActionPreference = $prevEap }
@@ -129,7 +129,7 @@ function Test-PyexasolConnection {
         # is the last, optional component, so a broken import records
         # validated=false and warns rather than failing an otherwise complete
         # install (database, exapump, MCP all working).
-        Warn2 "pyexasol is installed but cannot be imported from $script:PyexasolVenv (see log). Recorded validated=false; remove the venv and re-run setup to retry."
+        Warn2 "pyexasol is installed but cannot be imported from $script:PyexasolVenv. Why: exakit logs setup. Recorded validated=false; remove the venv and re-run setup to retry."
         Set-ExakitManifestValue "components.pyexasol.validated" $false
         return
     }
@@ -185,7 +185,7 @@ finally:
         OkStep "pyexasol $($script:PyexasolVersion) installed and validated against the database ($([int]((Get-Date) - $pyvT0).TotalSeconds)s)"
         InfoStep "Use it from Python:  $(Get-ExakitTilde $python)  (import pyexasol)"
     } else {
-        Warn2 "pyexasol could not complete SELECT 1 against the database (see log). Recorded validated=false; re-run setup to retry."
+        Warn2 "pyexasol could not complete SELECT 1 against the database. Why: exakit logs setup. Check the database is up with: exakit status, then re-run setup to retry."
         Set-ExakitManifestValue "components.pyexasol.validated" $false
     }
 }

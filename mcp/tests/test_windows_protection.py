@@ -111,3 +111,84 @@ class WindowsProtectionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DescribeProtectionTests(unittest.TestCase):
+    """The READ side of protect_path, which did not exist.
+
+    The validator's permission check read ``stat().st_mode`` and compared it
+    only when not on Windows - and then recorded a PASS for the comparison it
+    had just skipped. So on the platform where the exposure matters most, and
+    on the files that carry the database password in plaintext, mcp-doctor
+    asserted a posture it had never looked at.
+
+    These drive the Windows branch on any platform, the same way the tests
+    above do, because CI has no Windows runner.
+    """
+
+    def setUp(self) -> None:
+        self._temp_dir = Path(tempfile.mkdtemp(prefix="mcp-acl-read-tests-"))
+        self.addCleanup(shutil.rmtree, self._temp_dir, True)
+        self.target = self._temp_dir / "claude.json"
+        self.target.write_text("{}", encoding="utf-8")
+
+    def _icacls(self, stdout: str):
+        def _run(args, **kwargs):
+            return mock.Mock(returncode=0, stdout=stdout, stderr="")
+        return _run
+
+    def _describe(self, stdout: str, username: str = "piotr") -> str | None:
+        from mcp.runtime import filesystem as fs
+        with mock.patch.object(fs, "_is_windows", return_value=True), \
+             mock.patch.dict("os.environ", {"USERNAME": username}), \
+             mock.patch.object(fs.subprocess, "run", self._icacls(stdout)):
+            return fs.describe_protection(self.target)
+
+    def test_owner_only_acl_is_recognised(self) -> None:
+        from mcp.runtime.filesystem import OWNER_ONLY_ACL
+        out = f"{self.target} DESKTOP-1\\piotr:(F)\n\nSuccessfully processed 1 files.\n"
+        self.assertEqual(self._describe(out), OWNER_ONLY_ACL)
+
+    def test_an_inherited_ace_is_drift(self) -> None:
+        """The exact shape a client rewrite produces: the file is recreated and
+        picks the parent's ACEs back up, marked (I)."""
+        from mcp.runtime.filesystem import NOT_OWNER_ONLY_ACL
+        out = (
+            f"{self.target} DESKTOP-1\\piotr:(F)\n"
+            "                 NT AUTHORITY\\SYSTEM:(I)(F)\n"
+        )
+        self.assertEqual(self._describe(out), NOT_OWNER_ONLY_ACL)
+
+    def test_another_principal_is_drift(self) -> None:
+        """No inheritance, but a second account is granted - a file-share ACL
+        on a redirected profile looks like this."""
+        from mcp.runtime.filesystem import NOT_OWNER_ONLY_ACL
+        out = (
+            f"{self.target} DESKTOP-1\\piotr:(F)\n"
+            "                 CORP\\helpdesk:(R)\n"
+        )
+        self.assertEqual(self._describe(out), NOT_OWNER_ONLY_ACL)
+
+    def test_unreadable_acl_is_none_not_a_pass(self) -> None:
+        """The distinction the whole fix rests on: a check that could not run
+        must not be folded into either outcome."""
+        from mcp.runtime import filesystem as fs
+
+        def _boom(args, **kwargs):
+            raise OSError("icacls not found")
+
+        with mock.patch.object(fs, "_is_windows", return_value=True), \
+             mock.patch.object(fs.subprocess, "run", _boom):
+            self.assertIsNone(fs.describe_protection(self.target))
+
+    def test_empty_icacls_output_is_none(self) -> None:
+        self.assertIsNone(self._describe("\nSuccessfully processed 1 files.\n"))
+
+    def test_posix_still_reports_the_mode(self) -> None:
+        from mcp.runtime import filesystem as fs
+        self.target.chmod(0o600)
+        with mock.patch.object(fs, "_is_windows", return_value=False):
+            self.assertEqual(fs.describe_protection(self.target), "0600")
+        self.target.chmod(0o644)
+        with mock.patch.object(fs, "_is_windows", return_value=False):
+            self.assertEqual(fs.describe_protection(self.target), "0644")

@@ -262,7 +262,7 @@ function Install-ExasolVscode {
         $previous = $ErrorActionPreference
         try {
             $ErrorActionPreference = "Continue"
-            $out = & $cli @installArgs 2>&1 | Out-String
+            $out = & $cli @installArgs 2>&1 | Out-String -Width 4096
             $code = $LASTEXITCODE
         } finally {
             $ErrorActionPreference = $previous

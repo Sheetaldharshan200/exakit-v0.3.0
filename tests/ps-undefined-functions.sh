@@ -25,9 +25,12 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # it to `powershell`, i.e. real Windows PowerShell 5.1, where the Windows-only
 # cmdlets below resolve for real instead of being taken on trust.
 EXAKIT_PS_BIN="${EXAKIT_PS_BIN:-pwsh}"
+# The skip is right for a laptop and wrong for the CI leg that is supposed to
+# have pwsh - where it meant this sweep reported success having read nothing.
+# See tests/lib/require.sh.
+. "$(dirname "$0")/lib/require.sh"
 if ! command -v "$EXAKIT_PS_BIN" >/dev/null 2>&1; then
-    echo "skipped: $EXAKIT_PS_BIN is not installed - the PowerShell AST guard needs it"
-    exit 0
+    exakit_require_skip PS "$EXAKIT_PS_BIN is not installed - the PowerShell AST guard needs it"
 fi
 
 SWEEP="$(mktemp -t ps-sweep-XXXXXX).ps1"

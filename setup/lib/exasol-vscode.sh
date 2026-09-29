@@ -264,7 +264,9 @@ exasol_vscode_pinned_sha256() {
 }
 
 exasol_vscode_release_digest_from_api() {
-    _era_json="$(curl -fsSL --retry 3 --connect-timeout 15 \
+    # --proto/--proto-redir: as in exapump.sh, this response decides which
+    # digest the download is verified against.
+    _era_json="$(curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 --connect-timeout 15 \
         "https://api.github.com/repos/${EXAKIT_EXASOL_VSCODE_REPO}/releases/tags/v$1" \
         2>/dev/null || true)"
     [ -n "$_era_json" ] || return 1
@@ -455,7 +457,7 @@ exasol_vscode_uninstall() {
         info "Removing the Exasol VS Code extension (${EXAKIT_EXASOL_VSCODE_EXT_ID})"
         if ! _exasol_vscode_code --uninstall-extension "$EXAKIT_EXASOL_VSCODE_EXT_ID" \
                 >>"${EXAKIT_LOG_FILE:-/dev/null}" 2>&1; then
-            warn "code --uninstall-extension reported issues (see log) — remove it inside VS Code if it is still listed."
+            warn "code --uninstall-extension reported issues — what it printed: exakit logs setup. Remove it inside VS Code if it is still listed."
         fi
         if _exasol_vscode_live_version >/dev/null 2>&1; then
             warn "VS Code still lists ${EXAKIT_EXASOL_VSCODE_EXT_ID} — a running VS Code may hold it; remove it from the Extensions view."
