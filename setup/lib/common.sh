@@ -2629,7 +2629,7 @@ exakit_update_actual_target() {
 
 exakit_latest_github_release_version() {
     _repo="$1"
-    _json="$(curl -fsSL --retry 1 --connect-timeout "$EXAKIT_VERSION_LOOKUP_CONNECT_TIMEOUT" --max-time "$EXAKIT_VERSION_LOOKUP_MAX_TIME" \
+    _json="$(curl -fsSL --proto '=https' --proto-redir '=https' --retry 1 --connect-timeout "$EXAKIT_VERSION_LOOKUP_CONNECT_TIMEOUT" --max-time "$EXAKIT_VERSION_LOOKUP_MAX_TIME" \
         "https://api.github.com/repos/${_repo}/releases/latest" 2>/dev/null || true)"
     [ -n "$_json" ] || return 1
     if exakit_can_run_python; then
@@ -2641,7 +2641,7 @@ exakit_latest_github_release_version() {
 
 exakit_latest_pypi_version() {
     _package="$1"
-    _json="$(curl -fsSL --retry 1 --connect-timeout "$EXAKIT_VERSION_LOOKUP_CONNECT_TIMEOUT" --max-time "$EXAKIT_VERSION_LOOKUP_MAX_TIME" \
+    _json="$(curl -fsSL --proto '=https' --proto-redir '=https' --retry 1 --connect-timeout "$EXAKIT_VERSION_LOOKUP_CONNECT_TIMEOUT" --max-time "$EXAKIT_VERSION_LOOKUP_MAX_TIME" \
         "https://pypi.org/pypi/${_package}/json" 2>/dev/null || true)"
     [ -n "$_json" ] || return 1
     if exakit_can_run_python; then
@@ -2664,23 +2664,97 @@ exakit_version_newer() {
     [ -n "$_vn_a" ] && [ -n "$_vn_b" ] || return 1
     [ "$_vn_a" != "$_vn_b" ] || return 1
     if exakit_can_run_python; then
-        run_python - "$_vn_a" "$_vn_b" <<'PY'
+        run_python - "$_vn_a" "$_vn_b" <<'EXAKIT_VERCMP_PY'
 import re, sys
-def key(v):
+
+# A PRE-RELEASE SORTS BELOW ITS OWN RELEASE. The old key() split on digit runs
+# and compared the pieces, which put "2.3.0-rc1" ABOVE "2.3.0": the list for
+# "2.3.0" ends where the rc's carries on, and the longer list wins. So anyone
+# who installed a release candidate was told they were already ahead, and
+# `exakit update` refused to move them onto the real release - permanently. It
+# also sorted "0.13.0.post1" below "0.13.0", and could raise TypeError
+# comparing an int piece against a str piece on a shape it did not expect.
+def parse(v):
     v = v.strip().lstrip("v")
-    return [int(p) if p.isdigit() else p for p in re.split(r"([0-9]+)", v)]
-sys.exit(0 if key(sys.argv[1]) > key(sys.argv[2]) else 1)
-PY
+    # Build metadata carries no ordering information (semver clause 10).
+    v = v.split("+", 1)[0]
+    # PEP 440's .postN FOLLOWS the release; semver's -rcN precedes it.
+    post = 0
+    m = re.search(r"\.post(\d+)$", v)
+    if m:
+        post = int(m.group(1))
+        v = v[:m.start()]
+    pre = ()
+    m = re.match(r"^(.*?)[-_.]?(rc|alpha|beta|a|b)\.?(\d*)$", v)
+    if m and m.group(2):
+        v = m.group(1).rstrip(".-_")
+        pre = ({"alpha": 0, "a": 0, "beta": 1, "b": 1, "rc": 2}[m.group(2)],
+               int(m.group(3) or 0))
+    nums = tuple(int(p) for p in re.findall(r"\d+", v))
+    # (1,) for a plain release beats (0, ...) for any pre-release of it, and
+    # every element compared is an int, so this cannot raise.
+    return (nums, (1,) if not pre else (0,) + pre, post)
+
+sys.exit(0 if parse(sys.argv[1]) > parse(sys.argv[2]) else 1)
+EXAKIT_VERCMP_PY
         return $?
     fi
-    _vn_a_major="$(exakit_major_version "$_vn_a")"
-    _vn_b_major="$(exakit_major_version "$_vn_b")"
-    case "$_vn_a_major$_vn_b_major" in *[!0-9]*) return 1 ;; esac
-    if [ "$_vn_a_major" -gt "$_vn_b_major" ]; then return 0; fi
-    if [ "$_vn_a_major" -lt "$_vn_b_major" ]; then return 1; fi
-    # Same major and no Python/uv: treat different tags as worth inspecting,
-    # but avoid claiming a downgrade is newer when the major clearly regressed.
-    [ "$_vn_a" != "$_vn_b" ]
+    # NO PYTHON: STILL AN ORDER, NOT A COIN TOSS. This used to compare the
+    # MAJOR only and then return "the strings differ" for anything inside one -
+    # so 2.3.0 was newer than 2.4.0 AND 2.4.0 was newer than 2.3.0. Both
+    # directions true meant exakit_component_is_ahead read every same-major
+    # component as ahead of its advertised version, and `exakit update`
+    # answered "yours is newer than the tested one - keeping yours" and skipped
+    # every component, forever, on any machine with neither python3 nor uv.
+    # runtime-personal.sh already wrote a Python-free comparator for precisely
+    # this hazard and says so in its comment; this guard never got the same.
+    _vn_num() { # _vn_num <version> <field> - that dotted field, digits only, 0 if absent
+        _vnn="$(printf '%s' "${1#v}" | cut -d'.' -f"$2" 2>/dev/null)"
+        _vnn="${_vnn%%[!0-9]*}"
+        [ -n "$_vnn" ] || _vnn=0
+        printf '%s' "$_vnn"
+    }
+    # The release part only: everything before a pre-release or build suffix.
+    _vn_a_rel="${_vn_a%%[-+]*}"
+    _vn_b_rel="${_vn_b%%[-+]*}"
+    _vn_i=1
+    while [ "$_vn_i" -le 4 ]; do
+        _vn_x="$(_vn_num "$_vn_a_rel" "$_vn_i")"
+        _vn_y="$(_vn_num "$_vn_b_rel" "$_vn_i")"
+        [ "$_vn_x" -gt "$_vn_y" ] && return 0
+        [ "$_vn_x" -lt "$_vn_y" ] && return 1
+        _vn_i=$(( _vn_i + 1 ))
+    done
+    # Same release numbers. Rank the suffix the way the Python arm does, so a
+    # machine without Python still moves rc1 -> rc2 and release -> .post1
+    # instead of sitting still. Stopping at "a release beats a pre-release"
+    # would have been SAFE - it errs toward offering nothing - but it would
+    # also strand exactly the people running pre-releases, who are the ones
+    # who most need the next one.
+    #
+    # Rank: alpha 1 < beta 2 < rc 3 < plain release 4 < .postN 5.
+    _vn_rank() { # _vn_rank <version> -> "<rank> <number>"
+        case "$1" in
+            *.post*) printf '5 %s' "$(printf '%s' "${1##*.post}" | tr -cd '0-9')"; return ;;
+        esac
+        _vnr_suf="${1#*-}"
+        [ "$_vnr_suf" = "$1" ] && { printf '4 0'; return; }
+        _vnr_n="$(printf '%s' "$_vnr_suf" | tr -cd '0-9')"
+        [ -n "$_vnr_n" ] || _vnr_n=0
+        case "$_vnr_suf" in
+            alpha*|a[0-9]*) printf '1 %s' "$_vnr_n" ;;
+            beta*|b[0-9]*)  printf '2 %s' "$_vnr_n" ;;
+            rc*)            printf '3 %s' "$_vnr_n" ;;
+            *)              printf '0 %s' "$_vnr_n" ;;
+        esac
+    }
+    _vn_a_rank="$(_vn_rank "$_vn_a")"
+    _vn_b_rank="$(_vn_rank "$_vn_b")"
+    _vn_ar="${_vn_a_rank%% *}"; _vn_an="${_vn_a_rank##* }"
+    _vn_br="${_vn_b_rank%% *}"; _vn_bn="${_vn_b_rank##* }"
+    [ "$_vn_ar" -gt "$_vn_br" ] && return 0
+    [ "$_vn_ar" -lt "$_vn_br" ] && return 1
+    [ "${_vn_an:-0}" -gt "${_vn_bn:-0}" ]
 }
 
 exakit_major_version() {
@@ -7565,10 +7639,13 @@ _exakit_assert_mcp_readonly_posture() {
     _user_lit="$(_exakit_sql_literal "$_identifier_user")"
 
     # The read-only user's system privileges must be EXACTLY the read set:
-    # CREATE SESSION + USE ANY SCHEMA + SELECT ANY TABLE. Assert each is present,
-    # then assert nothing outside that set exists — which is what guarantees the
-    # user has no write/DDL/admin privilege (no INSERT ANY TABLE, CREATE USER,
-    # GRANT ANY, SELECT ANY DICTIONARY, etc.).
+    # CREATE SESSION + USE ANY SCHEMA + SELECT ANY TABLE. Assert each is
+    # present, then assert nothing outside that set exists — directly, through
+    # a role, or as an object grant. Together those three say the user has no
+    # write/DDL/admin privilege (no INSERT ANY TABLE, CREATE USER, GRANT ANY,
+    # SELECT ANY DICTIONARY, etc.). Before the role query was added, this
+    # comment claimed "and nothing more" while a single GRANT of any role went
+    # entirely unseen.
     _exakit_exapump_sql_has_token \
         "$_config_path" "admin" \
         "SELECT CASE WHEN EXISTS (SELECT 1 FROM EXA_DBA_SYS_PRIVS WHERE GRANTEE = '$_user_lit' AND PRIVILEGE = 'CREATE SESSION') THEN 'EXAKIT_CREATE_SESSION_OK' ELSE 'EXAKIT_CREATE_SESSION_MISSING' END AS STATUS" \
@@ -7588,6 +7665,24 @@ _exakit_assert_mcp_readonly_posture() {
         "$_config_path" "admin" \
         "SELECT CASE WHEN COUNT(*) = 0 THEN 'EXAKIT_SYS_PRIV_SCOPE_OK' ELSE 'EXAKIT_SYS_PRIV_SCOPE_TOO_WIDE' END AS STATUS FROM EXA_DBA_SYS_PRIVS WHERE GRANTEE = '$_user_lit' AND PRIVILEGE NOT IN ('CREATE SESSION', 'USE ANY SCHEMA', 'SELECT ANY TABLE')" \
         "EXAKIT_SYS_PRIV_SCOPE_OK" || die "The database login for your AI client has more than read-only access, so the kit will not hand it over. Rebuild it with: exakit mcp-setup (or check EXAKIT_MCP_READONLY_USER, which is '$_readonly_user' here, for a login you granted extra privileges to)."
+
+    # NOR MAY IT REACH ANYTHING THROUGH A ROLE. A privilege held via a granted
+    # role is attributed to the ROLE in EXA_DBA_SYS_PRIVS, not to the user, so
+    # every check above is blind to `GRANT <role> TO MCP_READONLY`. The write
+    # probe below does catch a role conferring CREATE TABLE in the probe
+    # schema, and it is genuinely load-bearing - but it is one CREATE TABLE in
+    # one schema, so a role granting SELECT ANY DICTIONARY (the privilege this
+    # file and sql/mcp_readonly_user.sql single out as deliberately withheld,
+    # because it exposes audit logs, sessions and other users), IMPORT/EXPORT,
+    # EXECUTE ANY SCRIPT, or CREATE ANY TABLE in some other schema passed the
+    # whole posture check. The kit never grants a role, so this is drift
+    # detection - which is exactly what mcp-doctor re-runs this for.
+    #
+    # PUBLIC is excluded because every user holds it by definition.
+    _exakit_exapump_sql_has_token \
+        "$_config_path" "admin" \
+        "SELECT CASE WHEN COUNT(*) = 0 THEN 'EXAKIT_ROLE_SCOPE_OK' ELSE 'EXAKIT_ROLE_SCOPE_TOO_WIDE' END AS STATUS FROM EXA_DBA_ROLE_PRIVS WHERE GRANTEE = '$_user_lit' AND GRANTED_ROLE NOT IN ('PUBLIC')" \
+        "EXAKIT_ROLE_SCOPE_OK" || die "The database login for your AI client holds a database ROLE, which can carry privileges these checks cannot see, so the kit will not hand it over. Rebuild it with: exakit mcp-setup"
 
     # No object privilege may be anything other than SELECT — i.e. the user
     # holds no INSERT/UPDATE/DELETE/ALTER/etc. object grant anywhere.
@@ -8257,7 +8352,19 @@ EOF
 exakit_print_mcp_ready_panel() {
     _mode="${1:-}"
     _dsn="$(manifest_get runtime.dsn 2>/dev/null || true)"
-    _mcp_user="$(manifest_get components.mcp_server.connection.user 2>/dev/null || true)"
+    # THROUGH THE RESOLVER, not a direct manifest read. Reading
+    # connection.user here meant this panel could not tell "the read-only user
+    # is recorded" from "there is none and the client is about to be handed the
+    # admin account" - the two cases whose difference the line below exists to
+    # report. mcp_credentials answers both at once; its third field is which.
+    if command -v mcp_credentials >/dev/null 2>&1; then
+        _mcp_creds="$(mcp_credentials 2>/dev/null || true)"
+        _mcp_user="$(printf '%s' "$_mcp_creds" | cut -f1)"
+        _mcp_user_kind="$(printf '%s' "$_mcp_creds" | cut -f3)"
+    else
+        _mcp_user="$(manifest_get components.mcp_server.connection.user 2>/dev/null || true)"
+        _mcp_user_kind="readonly"
+    fi
     _mcp_package="$(manifest_get components.mcp_server.package 2>/dev/null || printf '%s' "$EXAKIT_MCP_PACKAGE")"
     _mcp_version="$(manifest_get components.mcp_server.version 2>/dev/null || printf '%s' "$EXAKIT_MCP_VERSION")"
     _mcp_command="$(manifest_get components.mcp_server.command 2>/dev/null || true)"
@@ -8272,7 +8379,17 @@ exakit_print_mcp_ready_panel() {
     _exakit_log_file "DATA  MCP command: $_mcp_command $_mcp_package@$_mcp_version"
     _exakit_log_file "DATA  MCP managed state: $EXAKIT_MCP_DIR"
     _exakit_log_file "DATA  MCP TLS: ${_tls:-unknown}"
-    ok "MCP server 'exasol' — ${_dsn:-unknown} as ${_mcp_user:-mcp_readonly} (read-only), started by your AI client on demand"
+    # THE USER THAT WAS RESOLVED, not a default that assumes the good case.
+    # `${_mcp_user:-mcp_readonly}` printed the reassurance even when the
+    # resolution had fallen back to the admin account, which is precisely when
+    # the reader needed to know it had.
+    if [ "${_mcp_user_kind:-readonly}" = "admin-fallback" ]; then
+        warn "MCP server 'exasol' — ${_dsn:-unknown} as ${_mcp_user:-unknown} — this is the ADMIN account, NOT the read-only user."
+        info "No read-only MCP credential is recorded, so writes from your AI client would NOT be rejected by the database."
+        info "Fix it with: exakit mcp-setup"
+    else
+        ok "MCP server 'exasol' — ${_dsn:-unknown} as ${_mcp_user:-unknown} (read-only), started by your AI client on demand"
+    fi
     # Put the prompt straight onto the clipboard so the first interaction is a
     # paste, not a retype. Best-effort: silent when no clipboard tool exists.
     #
@@ -9109,7 +9226,7 @@ EXAKIT_MCP_STAMP_PY
             # rather than swallowed.
             _exakit_stamp_mcp_json "$_result_file" || cat "$_result_file"
         else
-            printf '{"installed": true, "status": "error", "remedy": "exakit logs setup", "error": "the MCP %s operation produced no result (see log)"}\n' "$_operation"
+            printf '{"installed": true, "status": "error", "remedy": "exakit logs setup", "error": "the MCP %s operation produced no result; what it printed is in: exakit logs setup"}\n' "$_operation"
             [ "$_operation_status" -eq 0 ] && _operation_status=1
         fi
         rm -f "$_result_file"

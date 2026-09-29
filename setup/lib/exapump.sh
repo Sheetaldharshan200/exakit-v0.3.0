@@ -92,7 +92,10 @@ exapump_pinned_sha256() {
 }
 
 exapump_release_digest_from_api() {
-    _json="$(curl -fsSL --retry 3 --connect-timeout 15 \
+    # --proto/--proto-redir: this response decides WHICH DIGEST the download
+    # below is verified against, so a redirect to http would weaken the
+    # verification chain at its root - and -L follows redirects.
+    _json="$(curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 --connect-timeout 15 \
         "https://api.github.com/repos/${EXAKIT_EXAPUMP_REPO}/releases/tags/v${EXAKIT_EXAPUMP_VERSION}" \
         2>/dev/null || true)"
     [ -n "$_json" ] || return 1
@@ -749,7 +752,13 @@ exapump_upload() {
         if [ -n "$_upl_why" ]; then
             die "Could not load $(basename "$1") into $2 — $_upl_why"
         fi
-        die "Could not load $(basename "$1") into $2. What exapump said: exakit logs setup. Check the database is up with: exakit status"
+        # "Upload failed:" ON PURPOSE, not the "Could not load X into Y" form
+        # used above. That form is reserved for the branch that HAS the
+        # engine's reason and appends it; reusing it here would tell the reader
+        # the kit knows why when it does not. The log command is named either
+        # way - that part was the NEW-03 defect, and it is fixed without
+        # flattening the distinction the two sentences carry.
+        die "Upload failed: $1 -> $2. What exapump said is in the log: exakit logs setup. Check the database is up with: exakit status"
     fi
     [ "${EXAKIT_UPLOAD_QUIET:-0}" = 1 ] || ok "$(basename "$1") loaded"
     # A CRLF file whose last column is text LOADS - and every value in that
@@ -2500,7 +2509,12 @@ exakit_load_dataset_dir() {
     _ld_markers="$(_exakit_dataset_conf_get markers "$_ld_dir/dataset.conf" 2>/dev/null)"
     if [ "$_ld_force" != "--force" ] && \
        exakit_dataset_loaded "$_ld_flag" "$_ld_markers" "$_ld_schema" "$_ld_id"; then
-        ok "Dataset '$_ld_id' already loaded (pass --force to re-run)"
+        # "re-run" and "reload" both sound additive. The schema scripts are
+        # CREATE OR REPLACE TABLE, so every table in the dataset's schema is
+        # dropped and rebuilt - and the kit teaches people to work in exactly
+        # those schemas (data/example-questions.md is entirely TPC-H). The word
+        # for "your changes are gone" is replace.
+        ok "Dataset '$_ld_id' already loaded (pass --force to REPLACE it: its tables are dropped and rebuilt)"
         return 0
     fi
 
@@ -2805,7 +2819,7 @@ exakit_data_load_select() {
     # apologising for itself. The logfile keeps the fact.
     if [ "$(exakit_data_table_row local)" = "$EXAKIT_TABLE_ROW_LOCAL" ] && \
        [ "$EXAKIT_TABLE_ROW_LOCAL" = "1" ]; then
-        _exakit_log_file "INFO  Every bundled dataset is already loaded (reload with: exakit data-load --force)."
+        _exakit_log_file "INFO  Every bundled dataset is already loaded (replace with: exakit data-load --force, which drops and rebuilds their tables)."
     fi
     UI_TABLE_TITLE="Datasets to load"
     printf '\n'

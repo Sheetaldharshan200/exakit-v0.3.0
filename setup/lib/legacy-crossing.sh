@@ -596,6 +596,7 @@ legacy_export() {
     : > "$_lex_dir/index"
     _lex_ok=0
     _lex_bad=0
+    _lex_bad_names=""
     _lex_total=$#
     _lex_n=0
     # A BAR, NOT A SPINNER PER TABLE. Copying a database out is the one long
@@ -650,6 +651,12 @@ legacy_export() {
             rm -f "$_lex_file"
             warn "Could not copy $_lex_t out of the old database — it is left there, untouched"
             _lex_bad=$(( _lex_bad + 1 ))
+            # The NAME, not just a tally. This warning is one line inside a
+            # progress bar during a long install, and it was the only place the
+            # table was ever mentioned; the closing screen then reported the
+            # crossing as done and offered to delete the container holding the
+            # only remaining copy.
+            _lex_bad_names="${_lex_bad_names} ${_lex_t}"
         fi
     done
     if [ "$_lex_live" = 1 ]; then
@@ -659,7 +666,14 @@ legacy_export() {
     [ -n "$_lex_state" ] && rm -f "$_lex_state"
     EXAKIT_ACTIVE_LABEL=""
     manifest_set legacy.exported "$_lex_ok"
-    [ "$_lex_bad" -gt 0 ] && manifest_set legacy.export_failed "$_lex_bad"
+    if [ "$_lex_bad" -gt 0 ]; then
+        manifest_set legacy.export_failed "$_lex_bad"
+        # Recorded so the closing report can name them. legacy.export_failed
+        # has been written since this function was introduced and read by
+        # NOTHING - written here, asserted in two test files, and never
+        # consulted by any product code.
+        manifest_set legacy.export_failed_names "${_lex_bad_names# }"
+    fi
     [ "$_lex_ok" -gt 0 ]
 }
 
@@ -1100,8 +1114,24 @@ legacy_report_restore() {
         warn "${EXAKIT_LEGACY_RESTORE_FAILED} table(s) did not restore — the copies are still at $(ui_tilde "$_lrs_dir")"
         return 1
     fi
-    # The copy is only removed once every table is accounted for, and the old
-    # container still has the original either way.
+    # TABLES THAT NEVER LEFT THE OLD DATABASE COUNT TOO. This function used to
+    # tally only RESTORED / SKIPPED / RESTORE_FAILED, so a table that failed at
+    # the EXPORT step was mentioned once, in a warn inside a progress bar,
+    # during a long install - and then never again. The screen said "Restored 9
+    # table(s)", called the copy no longer needed, and handed over the command
+    # to delete the container that held the only surviving copy of the tenth.
+    # The kit recorded the failure in legacy.export_failed and read it nowhere.
+    _lrs_exfail="$(manifest_get legacy.export_failed 2>/dev/null || true)"
+    if [ -n "$_lrs_exfail" ] && [ "$_lrs_exfail" -gt 0 ] 2>/dev/null; then
+        _lrs_exnames="$(manifest_get legacy.export_failed_names 2>/dev/null || true)"
+        warn "${_lrs_exfail} table(s) could NOT be copied out of the old database${_lrs_exnames:+: $_lrs_exnames}"
+        warn "Those tables exist ONLY in the old container. Do not remove it until you have them."
+        info "Try the copy again with: exakit migrate docker-nano"
+        return 1
+    fi
+    # The copy is only removed once every table is accounted for - which now
+    # means exported AND restored - and the old container still has the
+    # original either way.
     info "The copy at $(ui_tilde "$_lrs_dir") is no longer needed; remove it whenever you like."
     _lrs_rm="$(legacy_remove_command 2>/dev/null || true)"
     [ -n "$_lrs_rm" ] && info "The old container still holds the original. To remove it: $_lrs_rm"
@@ -1199,12 +1229,21 @@ legacy_migrate_now() {
             _legacy_migrate_fail "The waiting copy could not be restored; it is kept at $(ui_tilde "$_lmn_dir")."
             return 1
         fi
-        legacy_report_restore "$_lmn_dir" "the new database already had them" || true
+        # The report's verdict decides whether this WAS a crossing. `|| true`
+        # here used to discard it, so a run that left tables behind still set
+        # crossing_done and answered "done" - and crossing_done is what stops
+        # the installer ever offering the crossing again.
+        if legacy_report_restore "$_lmn_dir" "the new database already had them"; then
+            manifest_set legacy.choice "migrate"
+            manifest_set legacy.crossing_done true
+            info "Run the command again for a fresh copy of what is in the container now."
+            EXAKIT_LEGACY_MIGRATE_STATUS="done"
+            return 0
+        fi
         manifest_set legacy.choice "migrate"
-        manifest_set legacy.crossing_done true
-        info "Run the command again for a fresh copy of what is in the container now."
-        EXAKIT_LEGACY_MIGRATE_STATUS="done"
-        return 0
+        EXAKIT_LEGACY_MIGRATE_STATUS="partial"
+        EXAKIT_LEGACY_MIGRATE_REMEDY="exakit migrate docker-nano"
+        return 1
     fi
 
     # THE PORT. The container's published port against the deployment's.
@@ -1349,7 +1388,16 @@ legacy_migrate_now() {
         return 0
     fi
     EXAKIT_LEGACY_MIGRATE_STATUS="partial"
-    EXAKIT_LEGACY_MIGRATE_REASON="${EXAKIT_LEGACY_RESTORE_FAILED} table(s) did not restore"
+    # WHICHEVER HALF FAILED. This said "N table(s) did not restore"
+    # unconditionally, so a crossing that was partial because a table never
+    # came OUT of the old database reported "0 table(s) did not restore" - a
+    # sentence that is both wrong and reassuring.
+    _lmn_exfail="$(manifest_get legacy.export_failed 2>/dev/null || true)"
+    if [ -n "$_lmn_exfail" ] && [ "$_lmn_exfail" -gt 0 ] 2>/dev/null; then
+        EXAKIT_LEGACY_MIGRATE_REASON="${_lmn_exfail} table(s) could not be copied out of the old database and are still only there"
+    else
+        EXAKIT_LEGACY_MIGRATE_REASON="${EXAKIT_LEGACY_RESTORE_FAILED} table(s) did not restore"
+    fi
     EXAKIT_LEGACY_MIGRATE_REMEDY="exakit migrate docker-nano"
     return 1
 }

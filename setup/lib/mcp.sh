@@ -455,19 +455,34 @@ PY
 # mcp_credentials — prints "user<TAB>password_file" for the client configs.
 # Prefers the validated dedicated read-only user; falls back to the legacy
 # MCP default or, as a last resort, the runtime admin user.
+# A THIRD FIELD: which credential this is. The fallback below hands back the
+# ADMIN account, and it used to do so indistinguishably from the read-only one
+# - so every caller took it at face value and the status line went on printing
+# "(read-only)" about a full-privilege session. That inverts the kit's central
+# safety claim ("writes are rejected by the database itself") in the one
+# direction that matters: it degrades OPEN, and the single line a user would
+# check to catch it reassured them instead.
+#
+# Reaching it needs a manifest that lost those keys - a partially restored kit
+# home, a hand edit, a crossing from an older layout - not a clean install. So
+# the fallback stays (it is what lets a half-provisioned kit still be
+# repaired); what changes is that it can no longer pass itself off as the
+# read-only user. Consumers read fields 1 and 2 with `cut`, so appending a
+# third is compatible with every existing caller.
 mcp_credentials() {
     _connection_user="$(manifest_get components.mcp_server.connection.user 2>/dev/null || true)"
     _connection_pwfile="$(manifest_get components.mcp_server.connection.password_file 2>/dev/null || true)"
     if [ -n "$_connection_user" ] && [ -n "$_connection_pwfile" ]; then
-        printf '%s\t%s\n' "$_connection_user" "$_connection_pwfile"
+        printf '%s\t%s\t%s\n' "$_connection_user" "$_connection_pwfile" "readonly"
         return 0
     fi
     if [ -n "$(manifest_get components.mcp_server.user 2>/dev/null || true)" ]; then
-        printf '%s\t%s\n' "$EXAKIT_MCP_USER" "$EXAKIT_CREDS_DIR/mcp_readonly_password"
+        printf '%s\t%s\t%s\n' "$EXAKIT_MCP_USER" "$EXAKIT_CREDS_DIR/mcp_readonly_password" "readonly"
         return 0
     fi
-    printf '%s\t%s\n' "$(manifest_get runtime.user 2>/dev/null)" \
-        "$(manifest_get runtime.password_file 2>/dev/null)"
+    _exakit_log_file "WARN  No read-only MCP credential is recorded; falling back to the ADMIN account. Repair with: exakit mcp-setup"
+    printf '%s\t%s\t%s\n' "$(manifest_get runtime.user 2>/dev/null)" \
+        "$(manifest_get runtime.password_file 2>/dev/null)" "admin-fallback"
 }
 
 # mcp_resolve_creds — sets _mcp_user and _mcp_password for the caller.
@@ -476,6 +491,10 @@ mcp_resolve_creds() {
     _creds="$(mcp_credentials)"
     _mcp_user="$(printf '%s' "$_creds" | cut -f1)"
     _pwfile="$(printf '%s' "$_creds" | cut -f2)"
+    # "readonly" or "admin-fallback" - see mcp_credentials. Callers that tell
+    # the user what the AI client connects as must not describe the second as
+    # the first.
+    _mcp_user_kind="$(printf '%s' "$_creds" | cut -f3)"
     _mcp_password=""
     [ -n "$_pwfile" ] && [ -f "$_pwfile" ] && _mcp_password="$(cat "$_pwfile")"
 }

@@ -1290,11 +1290,15 @@ check "a launcher that says ready, with SQL answering, is running" "running" "$(
 # longer decide a kill). What has to stay true is that both spellings are
 # recognised as OURS - otherwise the reaper calls the kit's own process foreign
 # and refuses to clear the port.
-_rp_orphan="$(sed -n '/^personal_is_orphan_daemon()/,/^}/p' "$ROOT/setup/lib/runtime-personal.sh")"
+# The name test moved into _personal_is_runner_process when personal_starting
+# needed the same question answered (LIF-10) - one definition, so the reaper
+# and the status probe can never disagree about whose process it is. What has
+# to stay true is unchanged: both spellings are ours, anything else is not.
+_rp_orphan="$(sed -n '/^_personal_is_runner_process()/,/^}/p' "$ROOT/setup/lib/runtime-personal.sh")"
 has "the reaper knows the 2.3 runner" '*exasol-local-runner*' "$_rp_orphan"
 has "...and still knows the 2.2 one"  '*mac-runner*__daemon__*' "$_rp_orphan"
 # ...and anything that is neither is still refused outright.
-has "...and refuses anything else"    '*) return 1 ;;' "$_rp_orphan"
+has "...and refuses anything else"    'return 1' "$_rp_orphan"
 has "a stopped deployment holding its port is cleared before the start" \
     'Clearing a leftover Exasol runner still holding port' "$RP_SH"
 
@@ -1994,7 +1998,12 @@ for _sl_f in "$ROOT"/setup/lib/*.sh "$ROOT"/setup/exakit "$ROOT"/setup/lib/*.ps1
     [ -f "$_sl_f" ] || continue
     # Only lines that RAISE something - a comment about the old wording is not
     # a message anyone sees.
-    _sl_hits="$(grep -nE '(die|warn|Fail|Warn2)[ (]"' "$_sl_f" 2>/dev/null \
+    # Raised messages AND the JSON payloads, which are built with printf and
+    # Write-Output rather than a raiser - the first version of this lint
+    # scanned only the raisers and missed a "(see log)" sitting in a --json
+    # `error` field, which is a worse place for it: the human at least has a
+    # screen, the parser has only what the field says.
+    _sl_hits="$(grep -nE '(die|warn|Fail|Warn2)[ (]"|"(error|reason|remedy_hint)": ' "$_sl_f" 2>/dev/null \
                 | grep '(see log)' \
                 | grep -v 'exakit ' | cut -d: -f1 | tr '\n' ',' )"
     [ -n "$(printf '%s' "$_sl_hits" | tr -d ',')" ] || continue
@@ -2057,6 +2066,523 @@ for _jc_v in current update_pending missing; do
 done
 _jc_emits="$(grep -o '_skj_status="[a-z_]*"' "$ROOT/setup/lib/common.sh" | sed 's/.*="//;s/"//' | sort -u | tr '\n' ' ')"
 check "...and those are exactly what the code emits" "current missing update_pending " "$_jc_emits"
+
+echo
+echo "destructive commands say what they destroy, and declining is not success:"
+# AGK-12. AGENTS.md defines exit 5 as "a command you did not confirm".
+# repair-runtime implements it; the add-on removal thirty lines away answered
+# 0, which means "done" to anything reading the code. An agent removing an
+# add-on without a terminal - so confirm() takes its default of no - was told
+# the removal succeeded while the add-on was still there.
+_dc_w="$WORK/destructive"; rm -rf "$_dc_w"; mkdir -p "$_dc_w/kit/dash-server-venv/bin" "$_dc_w/bin"
+printf '{"components":{"dash_server":{"version":"0.1.0","validated":true}},"runtime":{"type":"personal"}}\n' \
+    > "$_dc_w/kit/manifest.json"
+# dash_server_installed_version wants the manifest record AND a venv that
+# answers, so the record alone cannot fake an install - which is deliberate.
+printf '#!/bin/sh\necho 0.1.0\n' > "$_dc_w/kit/dash-server-venv/bin/python"
+chmod +x "$_dc_w/kit/dash-server-venv/bin/python"
+_dc_run() { EXAKIT_HOME="$_dc_w/kit" EXAKIT_BIN_DIR="$_dc_w/bin" \
+    bash "$ROOT/setup/exakit" uninstall "$@" </dev/null >/dev/null 2>&1; echo $?; }
+check "declining an add-on removal exits 5, not 0" "5" "$(_dc_run dash-server)"
+check "...a dry run still exits 0"                 "0" "$(_dc_run dash-server --dry-run)"
+check "...an unknown target still exits 2"         "2" "$(_dc_run not-a-thing)"
+
+# LIF-05: --yes is what AGENTS.md documents for automation, so it is the path
+# an agent takes when a user says "uninstall the kit" - and it printed one warn
+# line and destroyed, leaving no record of WHAT went.
+_dc_yes="$(sed -n '/if \[ "\$_uni_yes" = 1 \]; then/,/^    fi/p' "$ROOT/setup/exakit")"
+has "a --yes uninstall prints the plan first" 'exakit_uninstall_run 1' "$_dc_yes"
+has "...and says there is no export step"     'no export step' "$_dc_yes"
+has "...and still performs the removal"       'exakit_uninstall_run 0' "$_dc_yes"
+
+# LIF-12: the rescue line printed before repair-runtime named `exakit sql
+# --json`, whose {"ok","rows","row_count"} envelope nothing in the kit ingests
+# - so the one instruction given before a command that destroys the database
+# produced a file its owner could not restore from.
+for _dc_f in setup/exakit setup/exakit.ps1; do
+    _dc_src="$(sed -n '/copy out anything you want to keep/,+3p' "$ROOT/$_dc_f")"
+    lacks "$_dc_f no longer advises an unloadable format" "sql --json 'SELECT" "$_dc_src"
+    has   "$_dc_f names a format the kit can load back"   "-f csv" "$_dc_src"
+    has   "...and the command that loads it"              "exakit data-load" "$_dc_src"
+done
+
+# NEW-10: --force is the one destructive verb in the kit with no gate at all,
+# and every place it was suggested called it "reload" - which sounds additive.
+# The schema scripts are CREATE OR REPLACE TABLE, and the kit teaches people to
+# work in exactly those schemas.
+for _dc_f in README.md setup/exakit setup/lib/exapump.sh setup/help/exakit.json; do
+    _dc_hits="$(grep -o '\-\-force[^."]\{0,40\}' "$ROOT/$_dc_f" 2>/dev/null | grep -ci 'reload' || true)"
+    check "$_dc_f no longer calls --force a reload" "0" "${_dc_hits:-0}"
+done
+has "the help document says what --force does to the tables" 'dropped and rebuilt' \
+    "$(cat "$ROOT/setup/help/exakit.json")"
+
+echo
+echo "the two entry points describe what they actually implement:"
+# DOC-02. setup/exakit.ps1's header is the one place the Windows entry point
+# describes itself, and it listed 22 of the 25 commands it dispatches. Missing:
+# sql - which AGENTS.md tells every agent to reach for first - repair-runtime,
+# the only exit from an interrupted database, and skills. It also documented
+# `uninstall` as the everything form only, so a reader wanting to remove ONE
+# add-on on Windows was told the only route was the one that takes the database
+# with it. Checked as a property, against the dispatch, so the next command
+# added has to appear in the header too.
+_hd_missing() { # _hd_missing <file> <header-last-line> -> names not in the header
+    ROOT="$ROOT" F="$1" N="$2" python3 -c '
+import io, os, re, sys
+path = os.path.join(os.environ["ROOT"], os.environ["F"])
+src = io.open(path, encoding="utf-8").read()
+hdr = "\n".join(src.split("\n")[:int(os.environ["N"])])
+if path.endswith(".ps1"):
+    body = re.search(r"switch \(\$Command\) \{(.*?)\n    \}\n", src, re.S).group(1)
+    names = {m.group(1) for m in re.finditer(r"^\s{8}\"([a-z0-9-]+)\"", body, re.M)}
+    for m in re.finditer(r"^\s{8}\{ \$_ -in @\(([^)]*)\)", body, re.M):
+        names |= set(re.findall(r"\"([a-z0-9-]+)\"", m.group(1)))
+else:
+    body = re.search(r"\ncase \"\$\{1:-help\}\" in\n(.*?)\nesac\n", src, re.S).group(1)
+    names = {n for m in re.finditer(r"^    ([a-z0-9|.-]+)\)", body, re.M) for n in m.group(1).split("|")}
+    names = {n for n in names if n and n != "*"}
+print(" ".join(sorted(n for n in names if not n.startswith("-") and n not in hdr)))'
+}
+check "every command the Windows CLI dispatches is in its header" "" "$(_hd_missing setup/exakit.ps1 75)"
+check "...and the same holds for the shell CLI"                   "" "$(_hd_missing setup/exakit 84)"
+_hd_ps="$(sed -n '4,75p' "$ROOT/setup/exakit.ps1")"
+has "the Windows header documents the add-on uninstall" 'uninstall [<addon-id>]' "$_hd_ps"
+
+# DOC-03: the shell header advertised the staged major-upgrade route with no
+# platform qualifier, and Windows rejects all three of its options - so a
+# Windows user meeting a major upgrade was pointed at a route that does not
+# exist there and got "Unknown option '--plan'".
+has "the staged-upgrade claim names its platforms" 'macOS, Linux and WSL only' \
+    "$(sed -n '1,84p' "$ROOT/setup/exakit")"
+if command -v pwsh >/dev/null 2>&1; then
+    _hd_plan="$(pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" update runtime --plan 2>&1)"
+    has "...and Windows says so instead of 'unknown option'" 'does not implement' "$_hd_plan"
+    lacks "...without calling it a typo"                     "Unknown option '--plan'" "$_hd_plan"
+    _hd_rc="$(pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" update runtime --plan >/dev/null 2>&1; echo $?)"
+    check "...still exit 2, it is still bad input here" "2" "$_hd_rc"
+    # A genuinely unknown option must still read as one.
+    has "an ordinary unknown option is unchanged" "Unknown option '--bogus-zz'" \
+        "$(pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" update --bogus-zz 2>&1)"
+fi
+
+# DOC-06: EXAKIT_LOCAL_KIT sat in a table headed "They work on all platforms"
+# with zero references anywhere on the PowerShell side - not rejected, just
+# unread, so a Windows CI job setting it got a silent download from GitHub.
+_hd_ips="$(cat "$ROOT/install.ps1")"
+# The ASSIGNMENT, not the name. A bare search for EXAKIT_LOCAL_KIT matches the
+# comment above it too, so gutting the read left this green - the
+# comment-as-assertion shape this very audit has a finding class for. Caught by
+# mutating the fix, which is the only way that shape ever shows up.
+has "install.ps1 reads EXAKIT_LOCAL_KIT"        '$LocalKit = $env:EXAKIT_LOCAL_KIT' "$_hd_ips"
+has "...validates it looks like a checkout"     'does not look like a kit checkout' "$_hd_ips"
+has "...and copies it instead of downloading"   'Using local kit checkout' "$_hd_ips"
+has "AGENTS.md says it works on Windows too"    'including Windows' "$(cat "$ROOT/AGENTS.md")"
+
+echo
+echo "the AI client's credential cannot pass itself off as the read-only one:"
+# SEC-09. mcp_credentials falls back to the ADMIN account when the manifest has
+# no recorded read-only connection - a degraded state (a partially restored kit
+# home, a hand edit, a crossing from an older layout), not the default path.
+# The fallback is wanted: it is what lets a half-provisioned kit be repaired.
+# What was not wanted is that it was INDISTINGUISHABLE from the real thing, so
+# every caller took it at face value and the one line a user would check went
+# on printing "(read-only)" about a full-privilege session - inverting the
+# kit's central safety claim in the one direction that matters, open.
+_sc_kind() { # _sc_kind <recorded|missing> -> user and kind
+    ROOT="$ROOT" MODE="$1" bash -c '
+        . "$ROOT/setup/lib/common.sh" >/dev/null 2>&1
+        . "$ROOT/setup/lib/mcp.sh" >/dev/null 2>&1
+        if [ "$MODE" = recorded ]; then
+            manifest_get() { case "$1" in
+                components.mcp_server.connection.user) echo mcp_readonly ;;
+                components.mcp_server.connection.password_file) echo /tmp/ro ;;
+            esac; }
+        else
+            manifest_get() { case "$1" in
+                runtime.user) echo sys ;;
+                runtime.password_file) echo /tmp/admin ;;
+            esac; }
+        fi
+        mcp_credentials | cut -f1,3 | tr "\t" " "' 2>/dev/null
+}
+check "a recorded read-only credential is labelled readonly" "mcp_readonly readonly" "$(_sc_kind recorded)"
+check "...and the admin fallback says which it is"           "sys admin-fallback"    "$(_sc_kind missing)"
+# The panel must read the resolver, not the manifest key directly - otherwise
+# it cannot tell the two apart at all.
+_sc_panel="$(sed -n '/_mcp_creds="\$(mcp_credentials/,+3p' "$ROOT/setup/lib/common.sh")"
+has "the ready panel resolves through mcp_credentials" 'cut -f3' "$_sc_panel"
+# CODE ONLY. The comment above the fix quotes the old expression to explain
+# what was wrong with it, so a whole-file search matches the explanation and
+# fails on the fixed file. Comment lines are stripped first - the same trap
+# that QAT-02 exists for, met a third time in this branch.
+lacks "...and no longer defaults the name to mcp_readonly" '${_mcp_user:-mcp_readonly}' \
+    "$(grep -v '^[[:space:]]*#' "$ROOT/setup/lib/common.sh")"
+has "...and warns when the resolution fell back"      'this is the ADMIN account' \
+    "$(cat "$ROOT/setup/lib/common.sh")"
+# The Windows twin had the identical silent fallback.
+_sc_ps="$(cat "$ROOT/setup/lib/mcp.ps1")"
+has "the Windows resolver labels its answer too"   'Kind = "admin-fallback"' "$_sc_ps"
+has "...and its panel warns on the fallback"       'NOT the read-only user' "$_sc_ps"
+lacks "...and no longer defaults to mcp_readonly"  '$userShown = "mcp_readonly"' "$_sc_ps"
+
+echo
+echo "one shape for the five state queries, and a token for which machine this is:"
+# AGK-06: mcp-status was the only state query whose not-installed answer came
+# from _require_install, so it alone lacked `manifest` and `reason` - and a
+# parser reading `reason` for the explanation got a KeyError on exactly one of
+# the five, against a document promising "one shape covers all of them".
+_js_home="$WORK/json-shape-none"
+for _js_cmd in status info version mcp-status mcp-doctor; do
+    check "$_js_cmd --json carries the shared keys when nothing is installed" "all present" \
+        "$(EXAKIT_HOME="$_js_home" bash "$ROOT/setup/exakit" "$_js_cmd" --json 2>/dev/null | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print("not json"); raise SystemExit
+need = ("installed", "status", "remedy", "manifest", "reason")
+print("all present" if all(k in d for k in need) else "MISSING: %s" % [k for k in need if k not in d])' 2>/dev/null)"
+done
+
+# WSL-08: every WSL remedy asks for an action on ANOTHER operating system, and
+# nothing in the payload said the host was WSL - so an agent could not tell a
+# remedy it can run from one it must hand to the user.
+_js_status="$(bash "$ROOT/setup/exakit" status --json 2>/dev/null)"
+check "status --json names the platform" "yes" \
+    "$(printf '%s' "$_js_status" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print("no"); raise SystemExit
+print("yes" if d.get("platform") in ("macos", "linux", "wsl", "windows") else "no: %r" % d.get("platform"))' 2>/dev/null)"
+check "...and carries wsl_version (null off WSL)" "yes" \
+    "$(printf '%s' "$_js_status" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print("no"); raise SystemExit
+print("yes" if "wsl_version" in d else "no")' 2>/dev/null)"
+has "AGENTS.md documents the platform key" '`platform` (`macos`' "$(cat "$ROOT/AGENTS.md")"
+has "...and warns that a WSL remedy may not be yours to run" 'not every `remedies` value is runnable in your shell' \
+    "$(cat "$ROOT/AGENTS.md")"
+
+# DOC-11: two adjacent bullets gave two tokens for one state - the JSON says
+# `ahead`, the human table prints `none`, and the more specific bullet named
+# the one that can never appear in JSON.
+_js_agents="$(cat "$ROOT/AGENTS.md")"
+has "the ahead state is documented by its JSON token" 'reports that row'"'"'s `status` as **`ahead`**' "$_js_agents"
+# AGK-08: the outcome vocabulary is a THIRD contract and was undocumented.
+has "the action outcomes have their own documented vocabulary" '**Outcomes**' "$_js_agents"
+for _js_v in repaired declined failed; do
+    has "...including \`$_js_v\`" "\`$_js_v\`" "$(printf '%s' "$_js_agents" | grep -A2 '^\*\*Outcomes\*\*')"
+done
+
+echo
+echo "version ordering, on both arms of the comparator:"
+# LIF-06: the old Python key() split on digit runs, so "2.3.0-rc1" sorted ABOVE
+# "2.3.0" - the release's list ends where the rc's carries on, and the longer
+# list wins. Anyone who installed a release candidate was told they were ahead
+# and `exakit update` refused to move them onto the real release, permanently.
+#
+# LIF-07: the no-Python fallback compared the MAJOR only and then returned "the
+# strings differ", so 2.3.0 was newer than 2.4.0 AND 2.4.0 newer than 2.3.0.
+# Both directions true made exakit_component_is_ahead read every same-major
+# component as ahead of its advertised version, and update skipped everything.
+#
+# Both arms are checked against the same table: a machine without Python must
+# not merely be safe, it must give the same ANSWER.
+_vc() { # _vc <a> <b> <python?> -> yes|no
+    ROOT="$ROOT" A="$1" B="$2" P="$3" bash -c '
+        . "$ROOT/setup/lib/common.sh" >/dev/null 2>&1
+        if [ "$P" = 1 ]; then exakit_can_run_python() { return 0; }
+        else exakit_can_run_python() { return 1; }; fi
+        exakit_version_newer "$A" "$B" && echo yes || echo no' 2>/dev/null
+}
+while IFS='|' read -r _vc_a _vc_b _vc_want; do
+    [ -n "$_vc_a" ] || continue
+    check "python:    $_vc_a > $_vc_b" "$_vc_want" "$(_vc "$_vc_a" "$_vc_b" 1)"
+    check "no-python: $_vc_a > $_vc_b" "$_vc_want" "$(_vc "$_vc_a" "$_vc_b" 0)"
+done <<'VCEOF'
+2.4.0|2.3.0|yes
+2.3.0|2.4.0|no
+2.3.0|2.3.0-rc1|yes
+2.3.0-rc1|2.3.0|no
+2.3.0-rc2|2.3.0-rc1|yes
+2.10.0|2.9.0|yes
+2.9.0|2.10.0|no
+0.13.0.post1|0.13.0|yes
+2.3.0|2.3.0|no
+2.3.0-beta1|2.3.0-rc1|no
+VCEOF
+# The property that made LIF-07 dangerous rather than merely wrong: it claimed
+# BOTH directions, so every comparison was true whichever way it was asked.
+check "no version is newer than one that is newer than it" "no" \
+    "$([ "$(_vc 2.3.0 2.4.0 0)" = yes ] && [ "$(_vc 2.4.0 2.3.0 0)" = yes ] && echo yes || echo no)"
+
+echo
+echo "every remote fetch pins its protocol:"
+# SEC-08's second half. Five curl calls fetched JSON from api.github.com or
+# pypi.org with -L (follow redirects) and no --proto/--proto-redir. Three of
+# them fetch the release document that decides WHICH DIGEST a download is then
+# verified against, so a redirect to http:// weakens the verification chain at
+# its root; one of those also attaches GITHUB_TOKEN as a bearer header, which a
+# plaintext redirect would put on the wire.
+#
+# Localhost health probes are excluded on purpose: they are meant to speak
+# http to 127.0.0.1, and pinning https there would break them.
+_pg_bad=""
+for _pg_f in "$ROOT"/setup/lib/*.sh "$ROOT"/install.sh; do
+    [ -f "$_pg_f" ] || continue
+    _pg_hits="$(grep -n 'curl ' "$_pg_f" 2>/dev/null \
+        | grep -vE '^[0-9]+:[[:space:]]*#' \
+        | grep -E 'https://(api\.github|pypi|raw\.github|github)' \
+        | grep -v -- '--proto' \
+        | grep -v '127.0.0.1' | cut -d: -f1 | tr '\n' ',')"
+    [ -n "$(printf '%s' "$_pg_hits" | tr -d ',')" ] || continue
+    _pg_bad="$_pg_bad ${_pg_f##*/}:${_pg_hits%,}"
+done
+check "no remote fetch follows redirects without pinning https" "" "${_pg_bad# }"
+# Non-vacuity: the sweep is actually finding curl calls to pin.
+_pg_guarded="$(grep -rc -- "--proto '=https'" "$ROOT"/setup/lib/*.sh "$ROOT"/install.sh 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')"
+check "...and it saw the guarded calls" "yes" \
+    "$([ "${_pg_guarded:-0}" -ge 8 ] && echo yes || echo no)"
+# The one that carries a credential is the one that must never be unguarded.
+has "the token-bearing lookup pins https" "--proto '=https' --proto-redir '=https'" \
+    "$(sed -n '/_esd_json="\$(curl/,+3p' "$ROOT/setup/lib/exasol-scheduler.sh")"
+
+echo
+echo "a booting database is not a port conflict:"
+# LIF-10. personal_status emitted no `starting`, so port-bound + launcher-alive
+# + SQL-not-answering-yet - which IS a deployment's startup window - came back
+# as `conflict`. Two consequences. common.sh already had a `starting` arm in
+# the post-update check that could never be reached, so it fell to the
+# catch-all and warned about a conflict for a database that was simply booting.
+# And `conflict` is the value that sends cmd_start into the reaper, which is
+# step one of the path that SIGKILLs a healthy starting runner (LIF-09).
+_ps_probe() { # _ps_probe <sql-answers 0|1> <launcher-state> <starting 0|1>
+    ROOT="$ROOT" A="$1" L="$2" S="$3" bash -c '
+        . "$ROOT/setup/lib/common.sh" >/dev/null 2>&1
+        . "$ROOT/setup/lib/runtime-personal.sh" >/dev/null 2>&1
+        personal_deployment_exists() { return 0; }
+        port_in_use() { return 0; }
+        personal_db_port() { echo 8563; }
+        personal_deployment_wedged() { return 1; }
+        EXAKIT_PERSONAL_BIN=/bin/sh
+        eval "personal_db_answers() { return $A; }"
+        eval "personal_launcher_state() { printf %s '"'"'$L'"'"'; }"
+        eval "personal_starting() { return $S; }"
+        personal_status' 2>/dev/null
+}
+check "SQL answering is running"                  "running"  "$(_ps_probe 0 running 1)"
+check "the launcher's own 'stopped' wins"         "stopped"  "$(_ps_probe 1 stopped 1)"
+check "our own young runner is starting"          "starting" "$(_ps_probe 1 running 0)"
+check "a port held by something else is conflict" "conflict" "$(_ps_probe 1 running 1)"
+# The two probes must agree about whose process it is, or a runner can be
+# "starting" to one and reapable to the other.
+has "one definition of 'this is our runner'" '_personal_is_runner_process' \
+    "$(sed -n '/^personal_is_orphan_daemon()/,/^}/p' "$ROOT/setup/lib/runtime-personal.sh")"
+has "...used by the starting probe too"      '_personal_is_runner_process' \
+    "$(sed -n '/^personal_starting()/,/^}/p' "$ROOT/setup/lib/runtime-personal.sh")"
+has "exakit start waits instead of reaping"  'already starting' "$(cat "$ROOT/setup/exakit")"
+
+echo
+echo "WSL is detected by more than one signal, and free disk means the real disk:"
+# WSL-02: /proc/version is built from the KERNEL's strings, so a WSL2 distro
+# booting a user-supplied kernel had no "microsoft" in it and was read as plain
+# linux - losing every WSL-specific remedy, including the only sentence that
+# tells the reader Docker Desktop on the Windows side does not count.
+for _wd_f in setup/lib/detect.sh install.sh; do
+    _wd_src="$(cat "$ROOT/$_wd_f")"
+    has "$_wd_f consults WSL_DISTRO_NAME" 'WSL_DISTRO_NAME' "$_wd_src"
+    has "$_wd_f consults /run/WSL"        '/run/WSL' "$_wd_src"
+    has "$_wd_f consults the interop handler" 'binfmt_misc/WSLInterop' "$_wd_src"
+done
+# WSL-07: a WSL2 root filesystem is a sparse VHDX formatted to WSL's maximum,
+# so df inside the distro answers against that, not against the Windows drive
+# holding it - and the 20 GB gate was inert on the one platform where free
+# space is indirect.
+_wd_disk() { # _wd_disk <distro GB> <windows GB> -> what the gate sees
+    ROOT="$ROOT" H="$1" C="$2" bash -c '
+        . "$ROOT/setup/lib/detect.sh" >/dev/null 2>&1
+        detect_os() { echo wsl; }
+        detect_wsl_backing_drive() { echo /mnt/c; }
+        eval "_detect_free_disk_gb_raw() { case \"\$1\" in /mnt/c) echo $C ;; *) echo $H ;; esac; }"
+        detect_free_disk_gb /home/sam' 2>/dev/null
+}
+check "the smaller of the two is what binds"   "6"  "$(_wd_disk 900 6)"
+check "...and the distro's figure when it is"  "40" "$(_wd_disk 40 800)"
+_wd_note="$(ROOT="$ROOT" bash -c '
+    . "$ROOT/setup/lib/detect.sh" >/dev/null 2>&1
+    detect_os() { echo wsl; }
+    detect_wsl_backing_drive() { echo /mnt/c; }
+    _detect_free_disk_gb_raw() { case "$1" in /mnt/c) echo 6 ;; *) echo 900 ;; esac; }
+    detect_free_disk_note /home/sam' 2>/dev/null)"
+has "...and the refusal explains where the number came from" 'sparse file on /mnt/c' "$_wd_note"
+# Off WSL nothing changes: the note is silent and the figure is the path's own.
+check "off WSL the note stays silent" "" \
+    "$(bash -c '. "'"$ROOT"'/setup/lib/detect.sh" >/dev/null 2>&1; detect_free_disk_note "$HOME" 2>/dev/null || true')"
+
+echo
+echo "the read-only posture check cannot be walked around with a role:"
+# SEC-07. A privilege held through a granted role is attributed to the ROLE in
+# EXA_DBA_SYS_PRIVS, not to the user - so every query in the posture check was
+# blind to `GRANT <role> TO MCP_READONLY`, while the function's own header
+# claimed it proved the user holds the read set "and nothing more". The live
+# write-probe catches a role conferring CREATE TABLE in the probe schema and is
+# genuinely load-bearing, but it is one CREATE TABLE in one schema: a role
+# granting SELECT ANY DICTIONARY - the privilege this repo singles out as
+# deliberately withheld, because it exposes audit logs, sessions and other
+# users - passed the whole check.
+for _rp_half in setup/lib/common.sh setup/lib/mcp.ps1; do
+    _rp_src="$(cat "$ROOT/$_rp_half")"
+    has "$_rp_half asks EXA_DBA_ROLE_PRIVS"    'EXA_DBA_ROLE_PRIVS' "$_rp_src"
+    has "...and refuses a user holding a role" 'EXAKIT_ROLE_SCOPE_OK' "$_rp_src"
+    has "...while excluding PUBLIC"            "GRANTED_ROLE NOT IN ('PUBLIC')" "$_rp_src"
+done
+# The header no longer claims more than the queries prove.
+lacks "the header no longer overclaims" 'user has no write/DDL/admin privilege (no INSERT ANY TABLE, CREATE USER,' \
+    "$(sed -n '/^_exakit_assert_mcp_readonly_posture()/,/_probe_schema=/p' "$ROOT/setup/lib/common.sh" | grep '^[[:space:]]*#')"
+
+echo
+echo "a skipped suite can be made to fail, so CI cannot mistake one for a pass:"
+# QAT-05/QAT-06. Every suite with a prerequisite handled a missing one by
+# printing "skipped" and exiting 0, so on a runner without it the suite
+# reported SUCCESS having asserted nothing. macos-latest has no pwsh, so the
+# PowerShell AST sweep - the guard credited with catching a shipped-broken
+# exasol-scheduler install - read nothing and passed on that leg; ubuntu-latest
+# was the only thing running it, on the implicit property that the hosted image
+# ships pwsh. And mcp-readonly-sql-matrix.sh, the ONLY suite that empirically
+# proves the MCP user can read and cannot write, would have printed SKIP and
+# passed if anyone had wired it in.
+_rq() { # _rq <env assignments> <suite> -> exit code
+    ROOT="$ROOT" bash -c "cd '$ROOT' && $1 bash $2 >/dev/null 2>&1; echo \$?"
+}
+check "a missing prerequisite still skips by default" "0" \
+    "$(_rq 'EXAKIT_PS_BIN=definitely-not-a-shell' tests/ps-undefined-functions.sh)"
+check "...and FAILS where the environment declared it required" "1" \
+    "$(_rq 'EXAKIT_REQUIRE_PS=1 EXAKIT_PS_BIN=definitely-not-a-shell' tests/ps-undefined-functions.sh)"
+check "...and a different requirement does not trigger it" "0" \
+    "$(_rq 'EXAKIT_REQUIRE_DB=1 EXAKIT_PS_BIN=definitely-not-a-shell' tests/ps-undefined-functions.sh)"
+check "EXAKIT_REQUIRE_ALL covers every kind" "1" \
+    "$(_rq 'EXAKIT_REQUIRE_ALL=1 EXAKIT_PS_BIN=definitely-not-a-shell' tests/ps-undefined-functions.sh)"
+# The security suite routes its skip through the same helper, so a maintainer
+# running it after an install cannot read a skip as proof.
+has "the read-only SQL matrix can be made to insist" 'exakit_require_skip DB' \
+    "$(cat "$ROOT/tests/mcp-readonly-sql-matrix.sh")"
+# And CI declares the requirement on the leg that is supposed to satisfy it.
+_rq_ci="$(cat "$ROOT/.github/workflows/versions.yml")"
+has "CI requires pwsh on the Linux leg"  "PowerShell available (required on Linux)" "$_rq_ci"
+has "...and passes the flag to the suites" 'EXAKIT_REQUIRE_PS' "$_rq_ci"
+# The skip branch STAYS - macOS is a real platform for the shell suites and has
+# no business failing over an engine it does not ship. What has to be true is
+# that it is now unreachable on the leg that declared the requirement.
+has "...while a required leg fails instead of skipping" \
+    'FAIL pwsh is missing on the runner that is supposed to have it' "$_rq_ci"
+has "...and the plain skip survives for the leg that may not have it" \
+    'pwsh not installed on this runner - PowerShell suites skipped' "$_rq_ci"
+
+echo
+echo "a long wait is distinguishable from a hang:"
+# AGK-09. The ready-wait loop's only narration is ui_spin_begin, which returns
+# immediately when stdout is not a terminal - so an agent's run printed NOTHING
+# for up to 150 s normally, and up to 900 s after a launcher update triggers
+# the guest rebuild. Fifteen minutes of silence is indistinguishable from a
+# hang, and AGENTS.md tells agents NOT to loop on `exakit start`, so there was
+# nothing to poll and no reason to keep waiting. The budget that governs the
+# long case, EXAKIT_PERSONAL_REBUILD_TIMEOUT, was undocumented.
+_aw_clock="$WORK/wait-clock"; echo 0 > "$_aw_clock"
+_aw_run() { # _aw_run -> the loop's stderr, with a fake clock and no real sleeps
+    ROOT="$ROOT" C="$_aw_clock" bash -c '
+        . "$ROOT/setup/lib/common.sh" >/dev/null 2>&1
+        . "$ROOT/setup/lib/runtime-personal.sh" >/dev/null 2>&1
+        ui_spin_begin() { :; }; ui_spin_end() { :; }; ok() { :; }; info() { :; }
+        personal_tls_answers() { return 1; }
+        personal_guest_rebuild_expected() { return 1; }
+        sleep() { :; }
+        date() { n=$(cat "$C"); n=$((n+5)); echo "$n" > "$C"; echo "$n"; }
+        EXAKIT_PERSONAL_READY_TIMEOUT=120
+        _personal_wait_ready_probe' 2>&1 >/dev/null
+}
+_aw_out="$(_aw_run)"
+check "a non-TTY wait reports progress" "4" \
+    "$(printf '%s\n' "$_aw_out" | grep -c 'Waiting for the database')"
+has "...naming how long it has waited"   '30s elapsed' "$_aw_out"
+has "...and the ceiling it is working to" 'ceiling 120s' "$_aw_out"
+has "...and the variable that raises it"  'EXAKIT_PERSONAL_READY_TIMEOUT' "$_aw_out"
+# stderr, not stdout: a caller composing a --json answer must not find progress
+# spliced into it.
+check "progress never touches stdout" "" \
+    "$(ROOT="$ROOT" C="$_aw_clock" bash -c 'echo 0 > "$C"
+        . "$ROOT/setup/lib/common.sh" >/dev/null 2>&1
+        . "$ROOT/setup/lib/runtime-personal.sh" >/dev/null 2>&1
+        ui_spin_begin() { :; }; ui_spin_end() { :; }; ok() { :; }; info() { :; }
+        personal_tls_answers() { return 1; }; personal_guest_rebuild_expected() { return 1; }
+        sleep() { :; }; date() { n=$(cat "$C"); n=$((n+5)); echo "$n" > "$C"; echo "$n"; }
+        EXAKIT_PERSONAL_READY_TIMEOUT=60
+        _personal_wait_ready_probe 2>/dev/null' | grep -c 'Waiting' | sed 's/^0$//')"
+# And the budget nobody could find is documented, with its default.
+_aw_doc="$(cat "$ROOT/AGENTS.md")"
+has "the rebuild budget is documented"     'EXAKIT_PERSONAL_REBUILD_TIMEOUT' "$_aw_doc"
+has "...with the default it actually uses" 'default `900`' "$_aw_doc"
+
+echo
+echo "a table that never left the old database is not a finished crossing:"
+# LIF-11. legacy_export returns success if ANY table came out, and a table that
+# failed to export got one warn inside a progress bar during a long install.
+# The closing screen then said "Restored 9 table(s)", called the copy no longer
+# needed, and handed over the docker rm command for the container holding the
+# ONLY surviving copy of the tenth. The kit recorded the failure in
+# legacy.export_failed - written by both halves, asserted by two test files,
+# and read by no product code anywhere.
+_lc_report() { # _lc_report <export_failed count> -> the closing screen
+    ROOT="$ROOT" N="$1" bash -c '
+        . "$ROOT/setup/lib/common.sh" >/dev/null 2>&1
+        . "$ROOT/setup/lib/legacy-crossing.sh" >/dev/null 2>&1
+        ui_tilde() { printf "%s" "$1"; }
+        legacy_remove_command() { echo "docker rm -f exasol-nano"; }
+        EXAKIT_LEGACY_RESTORED=9; EXAKIT_LEGACY_SKIPPED=0; EXAKIT_LEGACY_RESTORE_FAILED=0
+        if [ "$N" -gt 0 ]; then
+            manifest_get() {
+                case "$1" in
+                    legacy.export_failed)       printf %s "$N" ;;
+                    legacy.export_failed_names) printf %s "SALES.ORDERS" ;;
+                    *) return 1 ;;
+                esac
+            }
+        else
+            manifest_get() { return 1; }
+        fi
+        legacy_report_restore /tmp/copy "sample"' 2>&1
+}
+_lc_full="$(_lc_report 0)"
+_lc_part="$(_lc_report 1)"
+has  "a complete crossing offers to remove the copy" 'no longer needed' "$_lc_full"
+has  "...and the command that removes the container" 'docker rm -f' "$_lc_full"
+has  "a partial crossing names the table left behind" 'SALES.ORDERS' "$_lc_part"
+has  "...and says where it still lives"               'ONLY in the old container' "$_lc_part"
+lacks "...and does NOT offer to remove the container" 'docker rm -f' "$_lc_part"
+lacks "...nor call the copy no longer needed"         'no longer needed' "$_lc_part"
+# The verdict has to reach the caller, because crossing_done is what stops the
+# installer ever offering the crossing again.
+_lc_rc="$(ROOT="$ROOT" bash -c '
+    . "$ROOT/setup/lib/common.sh" >/dev/null 2>&1
+    . "$ROOT/setup/lib/legacy-crossing.sh" >/dev/null 2>&1
+    ui_tilde() { printf "%s" "$1"; }; legacy_remove_command() { echo x; }
+    EXAKIT_LEGACY_RESTORED=9; EXAKIT_LEGACY_SKIPPED=0; EXAKIT_LEGACY_RESTORE_FAILED=0
+    manifest_get() { case "$1" in legacy.export_failed) echo 1 ;; *) return 1 ;; esac; }
+    legacy_report_restore /tmp/copy "sample" >/dev/null 2>&1; echo $?')"
+check "a partial crossing reports failure to its caller" "1" "$_lc_rc"
+lacks "...so the install path no longer discards that verdict" \
+    'legacy_report_restore "$_lmn_dir" "the new database already had them" || true' \
+    "$(cat "$ROOT/setup/lib/legacy-crossing.sh")"
+# Both halves, or Windows keeps the silent version.
+has "the Windows twin reports it too" 'could NOT be copied out of the old database' \
+    "$(cat "$ROOT/setup/lib/legacy-crossing.ps1")"
+has "...and records which tables"      'legacy.export_failed_names' \
+    "$(cat "$ROOT/setup/lib/legacy-crossing.ps1")"
 
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]

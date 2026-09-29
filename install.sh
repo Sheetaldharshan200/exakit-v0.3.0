@@ -139,7 +139,15 @@ main() {
             setup_script="setup/setup-macos.sh"
             ;;
         Linux)
-            if grep -qi microsoft /proc/version 2>/dev/null; then
+            # THE SAME UNION AS detect_os, and duplicated for the same reason
+            # it always was: this runs before the kit is on disk, so detect.sh
+            # cannot be sourced yet. Keeping the two in step is what
+            # tests/agent-operability.sh now asserts - a fix to one of them
+            # used to leave the other wrong, silently, on the platform where
+            # the answer changes the most.
+            if [ -n "${WSL_DISTRO_NAME:-}" ] || [ -e /run/WSL ] ||
+               [ -e /proc/sys/fs/binfmt_misc/WSLInterop ] ||
+               grep -qi microsoft /proc/version 2>/dev/null; then
                 platform="wsl"
             else
                 platform="linux"

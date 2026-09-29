@@ -264,7 +264,9 @@ exasol_vscode_pinned_sha256() {
 }
 
 exasol_vscode_release_digest_from_api() {
-    _era_json="$(curl -fsSL --retry 3 --connect-timeout 15 \
+    # --proto/--proto-redir: as in exapump.sh, this response decides which
+    # digest the download is verified against.
+    _era_json="$(curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 --connect-timeout 15 \
         "https://api.github.com/repos/${EXAKIT_EXASOL_VSCODE_REPO}/releases/tags/v$1" \
         2>/dev/null || true)"
     [ -n "$_era_json" ] || return 1

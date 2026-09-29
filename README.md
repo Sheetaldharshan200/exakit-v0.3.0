@@ -143,8 +143,8 @@ The kit ships **three bundled datasets**, each in its own schema, so your AI cli
 
 ```bash
 exakit data-load             # bundled datasets not yet loaded, or your own data
-exakit data-load --force     # reload TPC-H
-EXAKIT_DATASETS=tpch,energy,weather exakit data-load --force   # reload all three
+exakit data-load --force     # REPLACE TPC-H: drops and rebuilds its tables
+EXAKIT_DATASETS=tpch,energy,weather exakit data-load --force   # replace all three the same way
 ```
 
 Your own data can be CSV, Parquet or JSON files (`.geojson` included), or a folder of them, one table each (JSON through the JSON Tables add-on, offered when needed). The kit hands files to the loaders as they are: a `;`-separated CSV is passed on with its delimiter, and a `.tsv` or `.txt` table is named for a rename to `.csv`, which is the one format exapump reads. Uploads land in the `STARTER_KIT` schema. Details: [what's included](data/README.md) · [data dictionary](data/data-dictionary.md) · [14 example questions with reference SQL](data/example-questions.md)

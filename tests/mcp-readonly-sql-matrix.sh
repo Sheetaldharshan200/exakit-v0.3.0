@@ -21,7 +21,15 @@ MANIFEST="$EXAKIT_HOME/manifest.json"
 # grant-coverage probe also lands here (any granted dataset schema would do).
 S=TPCH
 
-skip() { echo "SKIP: $1"; exit 0; }
+# This is the ONLY suite that empirically proves the MCP user can read and
+# cannot write - every other guard on that user is a grep over the GRANT SQL.
+# It needs a live database, no CI job starts one, and a bare `exit 0` meant
+# that wiring it into CI would have printed SKIP and passed: the kit's central
+# security claim would have looked covered by 40 assertions, none of which can
+# fire. EXAKIT_REQUIRE_DB=1 is how a maintainer running it deliberately after
+# an install cannot mistake a skip for a pass. See tests/lib/require.sh.
+. "$(dirname "$0")/lib/require.sh"
+skip() { exakit_require_skip DB "$1"; }
 
 EXAPUMP="$(command -v exapump || echo "$HOME/.local/bin/exapump")"
 [ -x "$EXAPUMP" ] || skip "exapump not found (kit not installed)"

@@ -15,7 +15,27 @@ detect_os() {
             echo "macos"
             ;;
         Linux)
-            if grep -qi microsoft /proc/version 2>/dev/null; then
+            # A UNION OF SIGNALS, not one grep. /proc/version is built from
+            # the KERNEL's own strings, so a WSL2 distro booting a
+            # user-supplied kernel (`kernel=` in .wslconfig - the normal route
+            # for anyone needing a module the stock kernel lacks) has no
+            # "microsoft" in it and was classified plain linux. Everything
+            # WSL-specific then silently reverted to Linux advice that cannot
+            # be followed there: a GRUB remedy for a distro with no GRUB, a
+            # boot-flag remedy for a kernel it does not boot, and the loss of
+            # "inside this distro; Docker Desktop on the Windows side does not
+            # count" - the one sentence that matters most on this platform.
+            # The reverse misfires too: an Azure-built Linux whose version
+            # string carries "microsoft" was handed .wslconfig instructions for
+            # a file it does not have.
+            #
+            # The other three signals come from WSL's init rather than the
+            # kernel, so they survive a custom kernel: WSL_DISTRO_NAME is
+            # exported into every login shell, and /run/WSL and the WSLInterop
+            # binfmt handler are created by wsl-init regardless.
+            if [ -n "${WSL_DISTRO_NAME:-}" ] || [ -e /run/WSL ] ||
+               [ -e /proc/sys/fs/binfmt_misc/WSLInterop ] ||
+               grep -qi microsoft /proc/version 2>/dev/null; then
                 echo "wsl"
             else
                 echo "linux"
@@ -178,12 +198,81 @@ detect_ram_gb() {
 
 # detect_free_disk_gb <path> — free space in whole GB. Same fail-closed
 # contract as detect_ram_gb: always a non-negative integer, 0 if unknown.
-detect_free_disk_gb() {
+_detect_free_disk_gb_raw() {
     _dd="$(df -Pk "${1:-$HOME}" 2>/dev/null | awk 'NR == 2 { printf "%d", $4 / 1048576 }')"
     case "$_dd" in
         ''|*[!0-9]*) echo 0 ;;
         *)           echo "$_dd" ;;
     esac
+}
+
+# detect_wsl_backing_drive - the Windows drive whose free space actually binds
+# a path inside a WSL2 distro, or nothing when it cannot be determined.
+#
+# A WSL2 distro's root filesystem is a SPARSE ext4 VHDX sitting on a Windows
+# drive, formatted to the maximum size WSL permits (1 TB on current builds).
+# `df` inside the distro reports free space against that formatted size, not
+# against the physical space left on C:. So on a Windows machine with 6 GB free,
+# a check on $HOME answered something like 900 GB, the 20 GB gate passed, and
+# the database failed partway through writing its data with an ENOSPC naming a
+# filesystem that appears to have hundreds of gigabytes free. The gate exists
+# precisely to prevent that failure, and it was inert on the one platform where
+# free space is indirect.
+detect_wsl_backing_drive() {
+    [ "$(detect_os 2>/dev/null)" = "wsl" ] || return 1
+    for _dwb in /mnt/c /mnt/d; do
+        [ -d "$_dwb" ] || continue
+        # DrvFs only: a directory of that name on the ext4 side is not a
+        # Windows drive and would answer the same wrong number again.
+        case "$(df -PT "$_dwb" 2>/dev/null | awk 'NR == 2 { print $2 }')" in
+            drvfs|9p|virtiofs) printf '%s\n' "$_dwb"; return 0 ;;
+        esac
+    done
+    return 1
+}
+
+# detect_free_disk_gb <path> - free GB that actually constrain <path>.
+#
+# On WSL that is the SMALLER of the distro's own figure and the Windows drive
+# behind it; anywhere else it is just the path's filesystem. Reporting the
+# smaller is the whole point: it is the one that will stop the install.
+detect_free_disk_gb() {
+    _dfg_here="$(_detect_free_disk_gb_raw "${1:-$HOME}")"
+    _dfg_drive="$(detect_wsl_backing_drive 2>/dev/null || true)"
+    [ -n "$_dfg_drive" ] || { echo "$_dfg_here"; return 0; }
+    # A path already ON the Windows drive is measured correctly by df; only the
+    # distro's own virtual disk needs the cross-check.
+    case "${1:-$HOME}" in
+        /mnt/*) echo "$_dfg_here"; return 0 ;;
+    esac
+    _dfg_backing="$(_detect_free_disk_gb_raw "$_dfg_drive")"
+    [ "$_dfg_backing" -gt 0 ] 2>/dev/null || { echo "$_dfg_here"; return 0; }
+    if [ "$_dfg_backing" -lt "$_dfg_here" ]; then
+        echo "$_dfg_backing"
+    else
+        echo "$_dfg_here"
+    fi
+}
+
+# detect_free_disk_note <path> - one sentence when the number above did NOT
+# come from the path's own filesystem, or nothing when it did.
+#
+# A separate function rather than a variable the caller reads: every caller
+# invokes detect_free_disk_gb in a command substitution, so anything it
+# exported would die with that subshell. Without this the reader sees a refusal
+# quoting a figure that `df` inside their distro flatly contradicts.
+detect_free_disk_note() {
+    _dfn_drive="$(detect_wsl_backing_drive 2>/dev/null || true)"
+    [ -n "$_dfn_drive" ] || return 1
+    case "${1:-$HOME}" in
+        /mnt/*) return 1 ;;
+    esac
+    _dfn_here="$(_detect_free_disk_gb_raw "${1:-$HOME}")"
+    _dfn_backing="$(_detect_free_disk_gb_raw "$_dfn_drive")"
+    [ "$_dfn_backing" -gt 0 ] 2>/dev/null || return 1
+    [ "$_dfn_backing" -lt "$_dfn_here" ] || return 1
+    printf "this distro's virtual disk reports %s GB free, but it is a sparse file on %s, which has %s GB - that is the real limit\n" \
+        "$_dfn_here" "$_dfn_drive" "$_dfn_backing"
 }
 
 
@@ -429,6 +518,11 @@ preflight_report() {
         else _pf_bad "Memory: ${_ram} GB — Exasol Personal needs at least 8 GB"; fi
         if [ "$_disk" -ge 20 ]; then _pf_ok "Free disk at $HOME: ${_disk} GB (20+ recommended)"
         else _pf_bad "Free disk at $HOME: ${_disk} GB — free up space (20 GB recommended for the local database)"; fi
+        # Where that number came from, when it did NOT come from this
+        # filesystem. Without it the reader is refused on a figure `df` inside
+        # their own distro flatly contradicts.
+        _pf_disk_note="$(detect_free_disk_note "$HOME" 2>/dev/null || true)"
+        [ -n "$_pf_disk_note" ] && _pf_note "Free disk: $_pf_disk_note"
     fi
 
     # base tools. bash is one of them: install.sh is POSIX sh, but every setup

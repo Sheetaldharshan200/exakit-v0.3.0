@@ -249,11 +249,21 @@ function Install-Mcp {
 # Get-McpCredentials - "user, password_file" for the client configs. Prefers
 # the validated dedicated read-only user; falls back to the runtime admin
 # user if MCP read-only provisioning has not run.
+# A THIRD FIELD, Kind: which credential this actually is. The fallback below
+# hands back the ADMIN account, and it did so indistinguishably from the
+# read-only one - so the status line went on printing "(read-only)" about a
+# full-privilege session, inverting the kit's central safety claim in the one
+# direction that matters. The fallback stays, because it is what lets a
+# half-provisioned kit still be repaired; it just can no longer pass itself off
+# as the read-only user. Twin of mcp_credentials in mcp.sh.
 function Get-McpCredentials {
     $connectionUser = Get-ExakitManifestValue "components.mcp_server.connection.user"
     $connectionPwFile = Get-ExakitManifestValue "components.mcp_server.connection.password_file"
-    if ($connectionUser -and $connectionPwFile) { return @{ User = $connectionUser; PasswordFile = $connectionPwFile } }
-    return @{ User = (Get-ExakitManifestValue "runtime.user"); PasswordFile = (Get-ExakitManifestValue "runtime.password_file") }
+    if ($connectionUser -and $connectionPwFile) {
+        return @{ User = $connectionUser; PasswordFile = $connectionPwFile; Kind = "readonly" }
+    }
+    Write-ExakitLog "WARN" "No read-only MCP credential is recorded; falling back to the ADMIN account. Repair with: exakit mcp-setup"
+    return @{ User = (Get-ExakitManifestValue "runtime.user"); PasswordFile = (Get-ExakitManifestValue "runtime.password_file"); Kind = "admin-fallback" }
 }
 
 function Resolve-McpCredentials {
@@ -262,7 +272,7 @@ function Resolve-McpCredentials {
     if ($creds.PasswordFile -and (Test-Path $creds.PasswordFile)) {
         $password = (Get-Content $creds.PasswordFile -Raw).TrimEnd("`r", "`n")
     }
-    return @{ User = $creds.User; Password = $password }
+    return @{ User = $creds.User; Password = $password; Kind = $creds.Kind }
 }
 
 # Show-McpHandshakeDetail <text> - show what the failed handshake actually said.
@@ -595,6 +605,15 @@ function Assert-McpReadonlyPosture {
     }
     if (-not (Test-ExapumpSqlHasToken $ConfigPath "admin" "SELECT CASE WHEN COUNT(*) = 0 THEN 'EXAKIT_SYS_PRIV_SCOPE_OK' ELSE 'EXAKIT_SYS_PRIV_SCOPE_TOO_WIDE' END AS STATUS FROM EXA_DBA_SYS_PRIVS WHERE GRANTEE = '$identifierLit' AND PRIVILEGE NOT IN ('CREATE SESSION', 'USE ANY SCHEMA', 'SELECT ANY TABLE')" "EXAKIT_SYS_PRIV_SCOPE_OK")) {
         Fail "The MCP read-only user has system privileges beyond the read-only set (CREATE SESSION, USE ANY SCHEMA, SELECT ANY TABLE)."
+    }
+
+    # NOR MAY IT REACH ANYTHING THROUGH A ROLE. A privilege held via a granted
+    # role is attributed to the ROLE, not to the user, so every check above is
+    # blind to `GRANT <role> TO MCP_READONLY`. Twin of the role query in
+    # _exakit_assert_mcp_readonly_posture; PUBLIC is excluded because every
+    # user holds it by definition.
+    if (-not (Test-ExapumpSqlHasToken $ConfigPath "admin" "SELECT CASE WHEN COUNT(*) = 0 THEN 'EXAKIT_ROLE_SCOPE_OK' ELSE 'EXAKIT_ROLE_SCOPE_TOO_WIDE' END AS STATUS FROM EXA_DBA_ROLE_PRIVS WHERE GRANTEE = '$identifierLit' AND GRANTED_ROLE NOT IN ('PUBLIC')" "EXAKIT_ROLE_SCOPE_OK")) {
+        Fail "The MCP read-only user holds a database ROLE, which can carry privileges these checks cannot see. Rebuild it with: exakit mcp-setup"
     }
 
     # No object privilege may be anything other than SELECT.
@@ -1157,7 +1176,14 @@ function Show-McpSetupSummary {
 function Show-McpReadyPanel {
     param([string]$Mode = "")
     $dsn = Get-ExakitManifestValue "runtime.dsn"
-    $mcpUser = Get-ExakitManifestValue "components.mcp_server.connection.user"
+    # THROUGH THE RESOLVER, not a direct manifest read. Reading
+    # connection.user here meant this panel could not tell "the read-only user
+    # is recorded" from "there is none and the client is about to be handed the
+    # admin account" - the two cases whose difference this line exists to
+    # report. Get-McpCredentials answers both in one call.
+    $mcpCreds = Get-McpCredentials
+    $mcpUser = $mcpCreds.User
+    $mcpUserKind = $mcpCreds.Kind
     $mcpPackage = Get-ExakitManifestValue "components.mcp_server.package"
     if (-not $mcpPackage) { $mcpPackage = $script:McpPackage }
     $mcpVersion = Get-ExakitManifestValue "components.mcp_server.version"
@@ -1177,8 +1203,17 @@ function Show-McpReadyPanel {
         "DATA  MCP TLS: $tls" | Add-Content -Path $script:LogFile
     }
     if ($dsn) { $dsnShown = $dsn } else { $dsnShown = "unknown" }
-    if ($mcpUser) { $userShown = $mcpUser } else { $userShown = "mcp_readonly" }
-    Ok "MCP server 'exasol' - $dsnShown as $userShown (read-only), started by your AI client on demand"
+    # The user that was RESOLVED, not a default that assumes the good case:
+    # "mcp_readonly" was printed even when the resolution had fallen back to
+    # the admin account, which is exactly when the reader needed to know.
+    if ($mcpUser) { $userShown = $mcpUser } else { $userShown = "unknown" }
+    if ($mcpUserKind -eq "admin-fallback") {
+        Warn2 "MCP server 'exasol' - $dsnShown as $userShown - this is the ADMIN account, NOT the read-only user."
+        Info "No read-only MCP credential is recorded, so writes from your AI client would NOT be rejected by the database."
+        Info "Fix it with: exakit mcp-setup"
+    } else {
+        Ok "MCP server 'exasol' - $dsnShown as $userShown (read-only), started by your AI client on demand"
+    }
 
     # The prompt is only PRINTED when it could not be handed over: on the
     # clipboard it is four lines nobody has to read, and off a console (an

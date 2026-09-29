@@ -452,8 +452,20 @@ print('skills' in [g for g in doc['groups'] if g['title'] == 'Reference'][0]['co
 lacks "the overview screen does not list skills-install" "skills-install" "$(bash "$ROOT/setup/exakit" help 2>/dev/null)"
 lacks "neither does exakit help --all" "skills-install" "$(bash "$ROOT/setup/exakit" help --all 2>/dev/null)"
 lacks "nor the catalogue" "skills-install" "$(bash "$ROOT/setup/exakit" catalog 2>/dev/null)"
-check "nor catalog --json (as a command; the skills entry may still name it as the repair)" "0" \
-    "$(bash "$ROOT/setup/exakit" catalog --json 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print(sum(1 for c in d["commands"] if c["command"]=="skills-install") + sum(1 for c in d["documents"]["exakit"]["commands"] if c["command"]=="skills-install"))' 2>/dev/null)"
+# MARKED HIDDEN, NOT ABSENT. This asserted that catalog --json contained no
+# skills-install at all, which is what the code did and what AGENTS.md
+# contradicts: it describes catalog --json as "every supported command (a
+# handful of internal upgrade paths are marked hidden)". Deleting the entries
+# meant no row carried a hidden key and three dispatchable commands were
+# missing outright - skills-install among them, which `exakit skills --json`
+# hands a machine as its own "next", so an agent holding both documents had to
+# conclude one of them was lying. The screens above still must not advertise
+# it; the machine surface must disclose it with the flag.
+check "catalog --json discloses skills-install, marked hidden" "True" \
+    "$(bash "$ROOT/setup/exakit" catalog --json 2>/dev/null | python3 -c 'import json, sys
+d = json.load(sys.stdin)
+rows = [c for c in d["commands"] if c["invocation"] == "exakit skills-install"]
+print(bool(rows) and rows[0].get("hidden") is True)' 2>/dev/null)"
 has "but exakit skills-install --help still renders its page" "The installer already does this" "$(bash "$ROOT/setup/exakit" skills-install --help 2>/dev/null)"
 has "the PowerShell renderer filters hidden entries the same way" 'Get-ExakitHelpVisibleCommands' "$(cat "$ROOT/setup/lib/help.ps1")"
 has "exakit skills names the repair only when a skill is missing" 'exakit skills-install' "$(sed -n '/^exakit_skills_list()/,/^}/p' "$ROOT/setup/lib/common.sh")"

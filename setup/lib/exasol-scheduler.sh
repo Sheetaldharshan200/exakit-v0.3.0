@@ -207,7 +207,11 @@ _exasol_scheduler_digest() {
         fi
     fi
     exakit_can_run_python || return 1
-    _esd_json="$(curl -sSL --retry 3 --connect-timeout 15 \
+    # --proto/--proto-redir, and here it matters most: this call attaches
+    # GITHUB_TOKEN as a bearer header and -L follows redirects, so without the
+    # guard a redirect to http:// would put the token on the wire in clear -
+    # and the response it fetches decides which digest is checked.
+    _esd_json="$(curl -sSL --proto '=https' --proto-redir '=https' --retry 3 --connect-timeout 15 \
         ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} \
         "https://api.github.com/repos/$(exasol_scheduler_mirror_repo)/releases/tags/$(exasol_scheduler_release_tag)" \
         2>/dev/null || true)"

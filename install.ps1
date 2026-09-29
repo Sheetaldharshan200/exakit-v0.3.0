@@ -363,7 +363,24 @@ foreach ($check in $RequirementChecks) {
 
 # --- 2. fetch the kit ----------------------------------------------------------
 $InstallPhase = "download"
-Write-Host "  * Downloading the starter kit ($Repo@$Ref)" -ForegroundColor Blue
+# EXAKIT_LOCAL_KIT IS READ HERE, on this platform too. AGENTS.md lists it in a
+# table whose own heading says "They work on all platforms; on Windows set them
+# with $env: before irm ... | iex" - and nothing on the PowerShell side had
+# ever looked at it. It was not rejected either, just unread, so a Windows
+# developer or CI job told to install from a checkout got a silent full
+# download from GitHub instead: on an air-gapped or proxy-restricted machine, a
+# failed install with nothing to connect it to the variable they set. A silent
+# no-op is the worst shape an env-var contract can take.
+$LocalKit = $env:EXAKIT_LOCAL_KIT
+if ($LocalKit) {
+    if (-not (Test-Path (Join-Path $LocalKit "setup\exakit.ps1"))) {
+        throw "EXAKIT_LOCAL_KIT does not look like a kit checkout (no setup\exakit.ps1 in it): $LocalKit"
+    }
+    $LocalKit = (Resolve-Path $LocalKit).Path
+    Write-Host "  * Using local kit checkout: $LocalKit" -ForegroundColor Blue
+} else {
+    Write-Host "  * Downloading the starter kit ($Repo@$Ref)" -ForegroundColor Blue
+}
 $tmpZip = Join-Path ([System.IO.Path]::GetTempPath()) "exakit-src-$([System.Guid]::NewGuid().ToString('N')).zip"
 $urls = @(
     "https://github.com/$Repo/archive/refs/heads/$Ref.zip",
@@ -382,7 +399,7 @@ if ($env:HTTPS_PROXY) {
 }
 $fetched = $false
 $proxyDenied = $false
-foreach ($url in $urls) {
+foreach ($url in $(if ($LocalKit) { @() } else { $urls })) {
     try {
         Invoke-WebRequest -Uri $url -OutFile $tmpZip -UseBasicParsing -TimeoutSec 300 @webArgs
         $fetched = $true
@@ -391,7 +408,7 @@ foreach ($url in $urls) {
         if ("$_" -match "407") { $proxyDenied = $true }
     }
 }
-if (-not $fetched) {
+if (-not $fetched -and -not $LocalKit) {
     if ($proxyDenied) {
         # A 407 is the PROXY refusing, not GitHub: name it, or the reader
         # debugs their internet connection while the proxy wants credentials.
@@ -418,8 +435,21 @@ $incoming  = Join-Path $ExakitHome "kit.incoming-$([System.Guid]::NewGuid().ToSt
 $kitBackup = Join-Path $ExakitHome "kit.previous-$([System.Guid]::NewGuid().ToString('N').Substring(0, 8))"
 try {
     try {
-        Expand-Archive -Path $tmpZip -DestinationPath $incoming
+        if ($LocalKit) {
+            # Copied into a subdirectory so $inner below resolves the same way
+            # it does for an archive, which unpacks into one top-level folder.
+            $localDest = Join-Path $incoming "kit"
+            New-Item -ItemType Directory -Force -Path $localDest | Out-Null
+            Copy-Item -Path (Join-Path $LocalKit "*") -Destination $localDest -Recurse -Force
+            # .git is the checkout's, not the kit's, and it is large.
+            Remove-Item -Recurse -Force (Join-Path $localDest ".git") -ErrorAction SilentlyContinue
+        } else {
+            Expand-Archive -Path $tmpZip -DestinationPath $incoming
+        }
     } catch {
+        if ($LocalKit) {
+            throw "Could not copy the local kit checkout from ${LocalKit}: $_"
+        }
         throw "The downloaded kit archive could not be extracted (a partial or corrupt download). Re-run to download it again."
     }
     $inner = Get-ChildItem $incoming | Select-Object -First 1
@@ -432,6 +462,9 @@ try {
     # instead of a broken install.
     foreach ($sentinel in @("setup\exakit.ps1", "setup\lib\exakit-common.ps1", "versions.json")) {
         if (-not (Test-Path (Join-Path $inner.FullName $sentinel))) {
+            if ($LocalKit) {
+                throw "The local kit checkout is incomplete ($sentinel is missing from $LocalKit), so it was not installed and your existing kit is untouched."
+            }
             throw "The downloaded kit is incomplete ($sentinel is missing), so it was not installed and your existing kit is untouched. Re-run to download it again."
         }
     }
