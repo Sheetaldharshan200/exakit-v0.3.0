@@ -86,7 +86,7 @@ The database is **Exasol Personal** on every platform, set up by the same launch
 | Your machine | Minimum Requirements | That's all |
 |---|---|---|
 | **macOS** | 8 GB+ RAM, 20 GB free disk | Runs in a lightweight managed VM. Nothing to install first |
-| **Linux** | Podman (rootless is fine), 8 GB+ RAM, 20 GB free disk | If Podman is missing, the installer installs it without stopping to ask. It uses `sudo`, so expect a password prompt. To install Podman yourself, set `EXAKIT_INSTALL_PODMAN=0` |
+| **Linux** | Podman (rootless is fine), 8 GB+ RAM, 20 GB free disk | If Podman is missing, the installer installs it without stopping to ask. It uses `sudo`, so expect a password prompt |
 | **Windows x86_64** | 8 GB+ RAM, 20 GB free disk | Runs through host Podman, which the launcher offers to install (may need administrator approval). An existing Podman Desktop machine must be **rootless** (`podman machine set --rootful=false`), or the database port cannot reach Windows |
 
 Already running the kit's database in a container? Re-run the install command to migrate your data, or run `exakit migrate docker-nano` later. Nothing is deleted. The sample data is not copied, because the kit loads it itself.
@@ -144,7 +144,6 @@ The kit ships **three bundled datasets**, each in its own schema, so your AI cli
 ```bash
 exakit data-load             # bundled datasets not yet loaded, or your own data
 exakit data-load --force     # REPLACE TPC-H: drops and rebuilds its tables
-EXAKIT_DATASETS=tpch,energy,weather exakit data-load --force   # replace all three the same way
 ```
 
 Your own data can be CSV, Parquet or JSON files (`.geojson` included), or a folder of them, one table each (JSON through the JSON Tables add-on, offered when needed). The kit hands files to the loaders as they are: a semicolon-separated CSV is passed on with its delimiter, and a `.tsv` or `.txt` table is named for a rename to `.csv`, which is the one format exapump reads. Uploads land in the `STARTER_KIT` schema. Details: [what's included](data/README.md) · [data dictionary](data/data-dictionary.md) · [14 example questions with reference SQL](data/example-questions.md)
@@ -200,7 +199,7 @@ exakit version    # installed, recommended and status, one row per component
 exakit update     # apply what is pending (asks before it stops the database)
 ```
 
-`exakit update` refreshes the kit scripts, exapump, the MCP server, pyexasol, the agent skills and installed add-ons in seconds, with no downtime. When any update is pending, one dim line appears after other commands. Silence it for good with `EXAKIT_NO_UPDATE_NOTICE=1`, or throttle it with `EXAKIT_NOTICE_INTERVAL=86400` for at most one notice a day. A database runtime update stops the database for a minute or two, so it asks first and never runs unattended (opt in with `exakit update --yes`). Data, credentials and MCP configs are never touched, the previous kit copy is kept, and the kit never moves a component backwards.
+`exakit update` refreshes the kit scripts, exapump, the MCP server, pyexasol, the agent skills and installed add-ons in seconds, with no downtime. When any update is pending, one dim line appears after other commands. A database runtime update stops the database for a minute or two, so it asks first and never runs unattended (opt in with `exakit update --yes`). Data, credentials and MCP configs are never touched, the previous kit copy is kept, and the kit never moves a component backwards.
 
 ## Safety and operations
 
@@ -210,7 +209,7 @@ exakit update     # apply what is pending (asks before it stops the database)
 - **Repo stays pure source.** Runtime state, logs, credentials, backups, and generated configs live under `~/.exasol-starter-kit/`, never in this repo.
 - **Everything is inspectable.** Install scripts, MCP configs, backups, and logs remain available on disk.
 - **Local only.** The database listens on `127.0.0.1` only, passwords live in local files and are never shown on screen, and AI client configs are backed up before every change.
-- **One edit outside its own home.** The installer appends a PATH line to your shell profile, marked with a kit comment so you can find it, and says so when it does. Set `EXAKIT_NO_PROFILE_EDIT=1` to keep it out and put `~/.local/bin` on PATH yourself.
+- **One edit outside its own home.** The installer appends a PATH line to your shell profile, marked with a kit comment so you can find it, and says so when it does.
 - **Reversible lifecycle.** `exakit` manages the kit end to end: `status`, `start`/`stop`, `data-load`, MCP setup and maintenance (`mcp-setup`, `mcp-doctor`), `logs`, and a guarded `uninstall`. Run `exakit help` (or `exakit catalog`) to see the commands it offers. A few maintenance commands are deliberately left off both lists, but `exakit help <name>` still answers for them.
 
 ## See it in action

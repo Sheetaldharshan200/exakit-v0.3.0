@@ -4,7 +4,7 @@ Gets you from a Linux machine to a local Exasol database with an AI assistant co
 
 ## What you need
 
-- **Podman** (rootless is fine) — the database runs through it. You do not have to install it first: if it is missing, the installer says so and installs it between the launcher step and the database step, without stopping to ask — you asked for the database, and the database needs it. It runs one package-manager command through `sudo`, and asks for your password only if `sudo` actually wants one; the command's output goes to the logfile rather than the screen. A run that must not install packages sets `EXAKIT_INSTALL_PODMAN=0`, and the install still carries on: everything that does not need a database is installed, and `exakit update` finishes the job once Podman is there. Podman also has to **work**, not just be installed — the kit runs `podman info` before deploying and tells you what Podman said if it cannot.
+- **Podman** (rootless is fine) — the database runs through it. You do not have to install it first: if it is missing, the installer says so and installs it between the launcher step and the database step, without stopping to ask — you asked for the database, and the database needs it. It runs one package-manager command through `sudo`, and asks for your password only if `sudo` actually wants one; the command's output goes to the logfile rather than the screen. Podman also has to **work**, not just be installed — the kit runs `podman info` before deploying and tells you what Podman said if it cannot.
 - 8 GB+ RAM, 20 GB free disk
 - **No Python install needed.** The kit uses a system Python 3.11+ if it finds one, and otherwise installs a managed Python for its own use.
 
@@ -63,7 +63,7 @@ exakit status      # is everything running? (exit 0 = yes)
 exakit start       # start the database and services
 exakit stop        # stop them
 exakit sql 'SELECT 1'
-exakit autostart   # asks, then flips start-at-boot; EXAKIT_AUTOSTART_CHANGE=1 pre-answers
+exakit autostart   # asks, then flips start-at-boot
 exakit update      # bring the kit and its components up to date
 ```
 
@@ -71,7 +71,7 @@ exakit update      # bring the kit and its components up to date
 
 | Situation | What to know |
 |---|---|
-| No Podman | The installer installs it for you at the database step (apt, dnf, yum, zypper, pacman or apk), without stopping to ask — the database cannot run without it. It uses `sudo`, so you will be asked for your password. To keep package installs out of the kit's hands, set `EXAKIT_INSTALL_PODMAN=0` before you run it. If you did that, or your package manager is not one it knows, the database step is skipped and named in the closing summary — the rest of the install still completes. Install Podman yourself (`sudo apt-get install -y podman uidmap`, `sudo dnf install -y podman`) and run `exakit update` to finish. Podman specifically: no other container engine substitutes, because the launcher only drives Podman. |
+| No Podman | The installer installs it for you at the database step (apt, dnf, yum, zypper, pacman or apk), without stopping to ask — the database cannot run without it. It uses `sudo`, so you will be asked for your password. If your package manager is not one it knows, the database step is skipped and named in the closing summary — the rest of the install still completes. Install Podman yourself (`sudo apt-get install -y podman uidmap`, `sudo dnf install -y podman`) and run `exakit update` to finish. Podman specifically: no other container engine substitutes, because the launcher only drives Podman. |
 | Podman is installed but nothing works | The kit asks `podman info` before it deploys, so this is caught up front rather than minutes into the launcher. The commonest cause is a missing subordinate id range, which the kit offers to repair; otherwise fix what `podman info` reports and run `exakit update`. |
 | "Reusing the existing Exasol deployment (started)" and then nothing | Fixed. The launcher accepts a start for a deployment it has only initialized, does nothing, and says so in a warning the installer used to pass over — the kit now asks the database instead of the record, runs the launcher's own deploy when nothing answers, and asks again. |
 | The database step failed but the install continued | By design. Declining to reuse a running database, declining to delete a stopped one, a foreign process on port 8563 and a deploy that could not finish are all recorded rather than fatal: everything that does not need a database still installs, and the closing summary names the one command that finishes the job. |
