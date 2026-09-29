@@ -81,19 +81,19 @@ You already use AI. The hard part is trusting it with your data. This kit gives 
 
 ### Will it run on my machine?
 
-The database is **Exasol Personal** on every platform, with the same launcher-managed local deployment everywhere.
+The database is **Exasol Personal** on every platform, set up by the same launcher.
 
 | Your machine | Minimum Requirements | That's all |
 |---|---|---|
 | **macOS** | 8 GB+ RAM, 20 GB free disk | Runs in a lightweight managed VM. Nothing to install first |
-| **Linux** | Podman (rootless is fine), 8 GB+ RAM, 20 GB free disk | Nothing to install first: if Podman is missing the installer says so and installs it for you, between the launcher and the database, without stopping to ask, because the database cannot run without it. It needs `sudo`, so you will be asked for your password. Set `EXAKIT_INSTALL_PODMAN=0` to skip it and install Podman yourself |
-| **Windows x86_64** | 8 GB+ RAM, 20 GB free disk | Runs through host Podman. The launcher offers to install Podman itself (may ask for administrator approval). If Podman Desktop already made the default machine, it must be **rootless** (`podman machine set --rootful=false`). A rootful machine cannot publish the database port to Windows, and the installer says so |
+| **Linux** | Podman (rootless is fine), 8 GB+ RAM, 20 GB free disk | If Podman is missing, the installer installs it without stopping to ask. It uses `sudo`, so expect a password prompt. To install Podman yourself, set `EXAKIT_INSTALL_PODMAN=0` |
+| **Windows x86_64** | 8 GB+ RAM, 20 GB free disk | Runs through host Podman, which the launcher offers to install (may need administrator approval). An existing Podman Desktop machine must be **rootless** (`podman machine set --rootful=false`), or the database port cannot reach Windows |
 
-Already have the kit with its database in a container? Re-run the install command. It asks whether to migrate your data or continue without it, and deletes nothing either way. Skipped that, or the installer never saw the container? `exakit migrate docker-nano` does the same copy later, into the running database. On both roads the kit's own sample data (TPC-H and friends) is left out, because the kit loads that itself.
+Already running the kit's database in a container? Re-run the install command to migrate your data, or run `exakit migrate docker-nano` later. Nothing is deleted. The sample data is not copied, because the kit loads it itself.
 
-**WSL** is supported and takes the Linux road: a WSL2 distro is Linux to the launcher, and the installer offers to install Podman inside the distro for you if it is missing (`podman` and `uidmap` together), so run the same command. Podman or Docker Desktop on the Windows side does not count, because the kit runs in the distro and looks on its PATH. One database per laptop, though: Windows and WSL share one network stack, so a deployment on either side holds port 8563 for both. The kit never adopts the other side's database. It names it and asks you to stop it there first. Exasol Personal does not support **Windows arm64**. The installer says so and exits without changing anything, so use a Linux VM there.
+**WSL** is supported and takes the Linux road: run the same command inside a WSL2 distro. Podman or Docker Desktop on the Windows side does not count. Windows and WSL share port 8563, so run the database on one side only. The kit asks you to stop the other side's database rather than adopt it. **Windows arm64** is not supported, so use a Linux VM there.
 
-**No Python install needed** on any platform: the kit uses a system Python 3.11+ when it finds one, and otherwise installs a managed Python for its own use.
+**No Python install needed** on any platform. The kit uses Python 3.11+ if it finds it, and otherwise installs its own.
 
 Step-by-step guides: [QUICKSTART](QUICKSTART.md) · [macOS](quickstarts/macos.md) · [Linux](quickstarts/linux.md) · [Windows](quickstarts/windows.md)
 
