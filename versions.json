@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-09-24",
+  "updated": "2026-09-29",
   "kit": {
     "version": "0.2.0"
   },
@@ -36,7 +36,7 @@
       "severity": "normal"
     },
     "dash-server": {
-      "version": "0.1.0",
+      "version": "0.1.1",
       "repo": "exasol-labs/dash-server",
       "package": "dash-server",
       "severity": "normal"
