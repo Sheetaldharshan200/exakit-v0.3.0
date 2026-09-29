@@ -92,7 +92,10 @@ exapump_pinned_sha256() {
 }
 
 exapump_release_digest_from_api() {
-    _json="$(curl -fsSL --retry 3 --connect-timeout 15 \
+    # --proto/--proto-redir: this response decides WHICH DIGEST the download
+    # below is verified against, so a redirect to http would weaken the
+    # verification chain at its root - and -L follows redirects.
+    _json="$(curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 --connect-timeout 15 \
         "https://api.github.com/repos/${EXAKIT_EXAPUMP_REPO}/releases/tags/v${EXAKIT_EXAPUMP_VERSION}" \
         2>/dev/null || true)"
     [ -n "$_json" ] || return 1

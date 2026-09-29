@@ -2318,5 +2318,36 @@ VCEOF
 check "no version is newer than one that is newer than it" "no" \
     "$([ "$(_vc 2.3.0 2.4.0 0)" = yes ] && [ "$(_vc 2.4.0 2.3.0 0)" = yes ] && echo yes || echo no)"
 
+echo
+echo "every remote fetch pins its protocol:"
+# SEC-08's second half. Five curl calls fetched JSON from api.github.com or
+# pypi.org with -L (follow redirects) and no --proto/--proto-redir. Three of
+# them fetch the release document that decides WHICH DIGEST a download is then
+# verified against, so a redirect to http:// weakens the verification chain at
+# its root; one of those also attaches GITHUB_TOKEN as a bearer header, which a
+# plaintext redirect would put on the wire.
+#
+# Localhost health probes are excluded on purpose: they are meant to speak
+# http to 127.0.0.1, and pinning https there would break them.
+_pg_bad=""
+for _pg_f in "$ROOT"/setup/lib/*.sh "$ROOT"/install.sh; do
+    [ -f "$_pg_f" ] || continue
+    _pg_hits="$(grep -n 'curl ' "$_pg_f" 2>/dev/null \
+        | grep -vE '^[0-9]+:[[:space:]]*#' \
+        | grep -E 'https://(api\.github|pypi|raw\.github|github)' \
+        | grep -v -- '--proto' \
+        | grep -v '127.0.0.1' | cut -d: -f1 | tr '\n' ',')"
+    [ -n "$(printf '%s' "$_pg_hits" | tr -d ',')" ] || continue
+    _pg_bad="$_pg_bad ${_pg_f##*/}:${_pg_hits%,}"
+done
+check "no remote fetch follows redirects without pinning https" "" "${_pg_bad# }"
+# Non-vacuity: the sweep is actually finding curl calls to pin.
+_pg_guarded="$(grep -rc -- "--proto '=https'" "$ROOT"/setup/lib/*.sh "$ROOT"/install.sh 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')"
+check "...and it saw the guarded calls" "yes" \
+    "$([ "${_pg_guarded:-0}" -ge 8 ] && echo yes || echo no)"
+# The one that carries a credential is the one that must never be unguarded.
+has "the token-bearing lookup pins https" "--proto '=https' --proto-redir '=https'" \
+    "$(sed -n '/_esd_json="\$(curl/,+3p' "$ROOT/setup/lib/exasol-scheduler.sh")"
+
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]

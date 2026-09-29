@@ -2629,7 +2629,7 @@ exakit_update_actual_target() {
 
 exakit_latest_github_release_version() {
     _repo="$1"
-    _json="$(curl -fsSL --retry 1 --connect-timeout "$EXAKIT_VERSION_LOOKUP_CONNECT_TIMEOUT" --max-time "$EXAKIT_VERSION_LOOKUP_MAX_TIME" \
+    _json="$(curl -fsSL --proto '=https' --proto-redir '=https' --retry 1 --connect-timeout "$EXAKIT_VERSION_LOOKUP_CONNECT_TIMEOUT" --max-time "$EXAKIT_VERSION_LOOKUP_MAX_TIME" \
         "https://api.github.com/repos/${_repo}/releases/latest" 2>/dev/null || true)"
     [ -n "$_json" ] || return 1
     if exakit_can_run_python; then
@@ -2641,7 +2641,7 @@ exakit_latest_github_release_version() {
 
 exakit_latest_pypi_version() {
     _package="$1"
-    _json="$(curl -fsSL --retry 1 --connect-timeout "$EXAKIT_VERSION_LOOKUP_CONNECT_TIMEOUT" --max-time "$EXAKIT_VERSION_LOOKUP_MAX_TIME" \
+    _json="$(curl -fsSL --proto '=https' --proto-redir '=https' --retry 1 --connect-timeout "$EXAKIT_VERSION_LOOKUP_CONNECT_TIMEOUT" --max-time "$EXAKIT_VERSION_LOOKUP_MAX_TIME" \
         "https://pypi.org/pypi/${_package}/json" 2>/dev/null || true)"
     [ -n "$_json" ] || return 1
     if exakit_can_run_python; then
