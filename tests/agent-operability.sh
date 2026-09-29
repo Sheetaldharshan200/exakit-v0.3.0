@@ -1904,8 +1904,9 @@ _pd_podman_row="$(grep -n 'Podman (rootless is fine)' "$ROOT/README.md")"
 lacks "README does not promise a prompt that is not there" 'it asks first' "$_pd_podman_row"
 lacks "...nor does the Linux quickstart"                   'offers to install it for you' "$_pd_quick"
 has "README says what actually happens"                    'without stopping to ask' "$_pd_readme"
-has "...and names the way out"                             'EXAKIT_INSTALL_PODMAN=0' "$_pd_readme"
-has "...the quickstart names it too"                       'EXAKIT_INSTALL_PODMAN=0' "$_pd_quick"
+# The opt-out is for scripts and managed machines, not a person reading the
+# README or a quickstart, so it is named where those readers look: AGENTS.md.
+has "...and AGENTS.md names the way out"                   'EXAKIT_INSTALL_PODMAN=0' "$(cat "$ROOT/AGENTS.md")"
 has "the opt-out is real code, not just documentation"     'EXAKIT_INSTALL_PODMAN:-' "$_pd_code"
 # The prompt has to size the request: a reusable sudo timestamp running a root
 # shell, not "one command".
