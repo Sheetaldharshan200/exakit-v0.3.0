@@ -87,7 +87,7 @@ The database is **Exasol Personal** on every platform, set up by the same launch
 |---|---|---|
 | **macOS** | 8 GB+ RAM, 20 GB free disk | Runs in a lightweight managed VM. Nothing to install first |
 | **Linux** | Podman (rootless is fine), 8 GB+ RAM, 20 GB free disk | If Podman is missing, the installer installs it without stopping to ask. It uses `sudo`, so expect a password prompt |
-| **Windows x86_64** | 8 GB+ RAM, 20 GB free disk | Runs through host Podman, which the launcher offers to install (may need administrator approval). An existing Podman Desktop machine must be **rootless** (`podman machine set --rootful=false`), or the database port cannot reach Windows |
+| **Windows** | 8 GB+ RAM, 20 GB free disk | Runs through host Podman, which the launcher offers to install (may need administrator approval). An existing Podman Desktop machine must be **rootless** (`podman machine set --rootful=false`), or the database port cannot reach Windows |
 
 Already running the kit's database in a container? Re-run the install command to migrate your data, or run `exakit migrate docker-nano` later. Nothing is deleted. The sample data is not copied, because the kit loads it itself.
 
