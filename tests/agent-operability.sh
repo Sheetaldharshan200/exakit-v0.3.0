@@ -2615,5 +2615,24 @@ check "...and the enum was really read" "6" "$_ov_count"
 has "AGENTS.md says which commands answer from that set" 'not from the liveness set' \
     "$(cat "$ROOT/AGENTS.md")"
 
+echo
+echo "the rescue advice names a file that can actually be loaded back:"
+# FOUND BY FOLLOWING IT ON A REAL MACHINE. LIF-12 replaced advice that produced
+# an unloadable file (`exakit sql --json > table.json`) with a CSV round trip -
+# and the replacement was ALSO broken, for a different reason. `exakit
+# data-load` derives the target table from the FILE NAME, so the literal
+# "table.csv" in the example became table TABLE, which Exasol rejects as a
+# reserved keyword:
+#   Protocol error: table name not allowed since it is a keyword: TABLE
+# Exporting worked; the load in the very next line of the same message did not.
+# Proven on a live Linux install: <TABLE>.csv round-trips 5 rows out and 5 back.
+for _rs_f in setup/exakit setup/exakit.ps1; do
+    _rs_src="$(cat "$ROOT/$_rs_f")"
+    lacks "$_rs_f does not name a file that becomes a keyword" 'data-load table.csv' "$_rs_src"
+    has   "$_rs_f names the file after the table"              '<TABLE>.csv' "$_rs_src"
+done
+has "...and says why the name matters" 'file name becomes the table name' \
+    "$(cat "$ROOT/setup/exakit")"
+
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]
