@@ -170,6 +170,15 @@ main() {
     esac
 
     # --- 3. fetch the kit ----------------------------------------------------
+    # A DRY RUN WRITES NOTHING UNDER EXAKIT_HOME. It used to unpack into
+    # $EXAKIT_HOME/kit, which first empties the copy an installed exakit loads
+    # its code from, and then said "nothing was installed". It unpacks into a
+    # scratch directory instead, so a dry run over a working install changes
+    # nothing about it.
+    if [ "${EXAKIT_DRY_RUN:-0}" = "1" ]; then
+        kit_dir="$(mktemp -d "${TMPDIR:-/tmp}/exakit-dry-run.XXXXXX")" \
+            || fail "Could not create a temporary directory for the dry run. Check that ${TMPDIR:-/tmp} is writable and the disk is not full."
+    fi
     # The failure text names the OWNERSHIP case explicitly. "Check that it is
     # writable" is not an action, and the documented escape hatch for a
     # /mnt/c or cloud-synced HOME (EXAKIT_HOME=/opt/exakit) lands here on every
@@ -227,9 +236,9 @@ main() {
     render_banner_plan
 
     if [ "${EXAKIT_DRY_RUN:-0}" = "1" ]; then
-        say "Dry run requested (EXAKIT_DRY_RUN=1) — nothing was installed."
-        say "Inspect the scripts under $kit_dir, then run:"
-        printf '    bash %s/%s\n\n' "$kit_dir" "$setup_script"
+        say "Dry run requested (EXAKIT_DRY_RUN=1) — nothing was installed, and nothing under $EXAKIT_HOME was changed."
+        say "The kit is unpacked for inspection in a temporary folder: $kit_dir"
+        say "To install, run the same command again without EXAKIT_DRY_RUN=1."
         exit 0
     fi
 

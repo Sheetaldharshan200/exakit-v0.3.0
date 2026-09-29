@@ -137,9 +137,9 @@ restores a waiting copy first) · `2` bad input · `3` no deployment to copy int
 ```bash
 exakit logs                     # every log target, with size and last-updated
 exakit logs --json              # the same list, machine-readable
-exakit logs install             # one target
-exakit logs install -f          # follow it live
-exakit logs install --lines 200 # the last N lines
+exakit logs setup               # one target (setup = the installer run)
+exakit logs setup -f            # follow it live
+exakit logs setup --lines 200   # the last N lines
 exakit logs dash-server --path  # just the path, for piping
 ```
 

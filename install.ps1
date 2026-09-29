@@ -124,6 +124,15 @@ $env:EXAKIT_HOME = $ExakitHome
 $Repo       = if ($env:EXAKIT_REPO) { $env:EXAKIT_REPO } else { "krishna-exasol/update-path" }
 $Ref        = if ($env:EXAKIT_REF)  { $env:EXAKIT_REF }  else { "main" }
 $KitDir     = Join-Path $ExakitHome "kit"
+# A DRY RUN WRITES NOTHING UNDER EXAKIT_HOME. It used to swap the download into
+# $ExakitHome\kit - the copy an installed exakit loads its code from - and then
+# say "nothing was installed". It stages under a temp folder instead, so a dry
+# run over a working install changes nothing about it. Twin of install.sh.
+$StageBase  = $ExakitHome
+if ($env:EXAKIT_DRY_RUN -eq "1") {
+    $StageBase = Join-Path ([System.IO.Path]::GetTempPath()) "exakit-dry-run-$([System.Guid]::NewGuid().ToString('N').Substring(0, 8))"
+    $KitDir    = Join-Path $StageBase "kit"
+}
 
 # --- 1. requirements ---------------------------------------------------------
 if ($env:OS -notlike "*Windows*") {
@@ -430,9 +439,9 @@ if (-not $fetched -and -not $LocalKit) {
 # Move-Item cannot rename a directory across volumes, and a redirected TEMP or
 # a small system SSD puts %TEMP% on another drive often enough that staging
 # there would have traded one failure mode for another.
-New-Item -ItemType Directory -Force -Path $ExakitHome | Out-Null
-$incoming  = Join-Path $ExakitHome "kit.incoming-$([System.Guid]::NewGuid().ToString('N').Substring(0, 8))"
-$kitBackup = Join-Path $ExakitHome "kit.previous-$([System.Guid]::NewGuid().ToString('N').Substring(0, 8))"
+New-Item -ItemType Directory -Force -Path $StageBase | Out-Null
+$incoming  = Join-Path $StageBase "kit.incoming-$([System.Guid]::NewGuid().ToString('N').Substring(0, 8))"
+$kitBackup = Join-Path $StageBase "kit.previous-$([System.Guid]::NewGuid().ToString('N').Substring(0, 8))"
 try {
     try {
         if ($LocalKit) {
@@ -544,9 +553,9 @@ if (-not $uiLoaded) {
 }
 
 if ($env:EXAKIT_DRY_RUN -eq "1") {
-    Write-Host "  * Dry run requested (EXAKIT_DRY_RUN=1) - nothing was installed." -ForegroundColor Blue
-    Write-Host "    Inspect the scripts under $KitDir, then run:"
-    Write-Host "      powershell -File `"$KitDir\setup\setup-windows.ps1`""
+    Write-Host "  * Dry run requested (EXAKIT_DRY_RUN=1) - nothing was installed, and nothing under $ExakitHome was changed." -ForegroundColor Blue
+    Write-Host "    The kit is unpacked for inspection in a temporary folder: $KitDir"
+    Write-Host "    To install, run the same command again without EXAKIT_DRY_RUN."
     Write-Host ""
     return
 }

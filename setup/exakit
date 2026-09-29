@@ -227,6 +227,25 @@ _require_install() {
 # parser gets "Expecting value: line 1 column 1" on precisely the path where
 # structured signal matters most. `status --json` always answered with an
 # object; the other state queries did not, and the three disagreed.
+# _exakit_platform_json_fields — `"platform": …, "wsl_version": …` for the
+# answers printed without the status Python (not installed, no interpreter).
+# AGENTS.md tells agents to branch on `platform` to tell a remedy they can run
+# from one they must hand to the user, and it was missing from exactly the
+# answers an agent sees first. Same values as the installed-state answer.
+_exakit_platform_json_fields() {
+    _pj_os="$(detect_os 2>/dev/null || true)"
+    _pj_wsl="$(detect_wsl_version 2>/dev/null || true)"
+    case "$_pj_os" in
+        ""|*[!a-z0-9_-]*) _pj_os_json="null" ;;
+        *)                _pj_os_json="\"$_pj_os\"" ;;
+    esac
+    case "$_pj_wsl" in
+        ""|*[!0-9]*) _pj_wsl_json="null" ;;
+        *)           _pj_wsl_json="$_pj_wsl" ;;
+    esac
+    printf '"platform": %s, "wsl_version": %s' "$_pj_os_json" "$_pj_wsl_json"
+}
+
 _not_installed_answer() {
     if [ "${1:-0}" -eq 1 ]; then
         # `installed`, `status` and `remedy` appear in EVERY --json answer these
@@ -234,8 +253,8 @@ _not_installed_answer() {
         # cmd_mcp_doctor). They used to differ per state with no key in common,
         # so a parser that read .status off the healthy shape hit a KeyError on
         # exactly the two states worth branching on.
-        printf '{"installed": false, "status": "not installed", "manifest": "%s", "reason": "no install record", "remedy": "%s"}\n' \
-            "$EXAKIT_MANIFEST" "$(exakit_install_command)"
+        printf '{"installed": false, "status": "not installed", "manifest": "%s", "reason": "no install record", "remedy": "%s", %s}\n' \
+            "$EXAKIT_MANIFEST" "$(exakit_install_command)" "$(_exakit_platform_json_fields)"
     else
         printf 'Not installed (no manifest at %s). Run the installer first.\n' "$EXAKIT_MANIFEST" >&2
     fi
@@ -409,8 +428,8 @@ cmd_status() {
         # command which puts a Python runtime back — never a corrupt answer and
         # never a silent side effect.
         if ! exakit_can_run_python_any; then
-            printf '{"installed": true, "status": "unknown", "remedy": "exakit update", "remedy_hint": "no Python runtime is available on this machine, so the kit cannot read its own install record; exakit update restores it", "installing": false, "install_step": null, "runtime": {"type": null, "status": "unknown"}, "running": false, "remedies": {}, "remedy_hints": {}, "manifest": "%s"}\n' \
-                "$EXAKIT_MANIFEST"
+            printf '{"installed": true, "status": "unknown", "remedy": "exakit update", "remedy_hint": "no Python runtime is available on this machine, so the kit cannot read its own install record; exakit update restores it", "installing": false, "install_step": null, "runtime": {"type": null, "status": "unknown"}, "running": false, "remedies": {}, "remedy_hints": {}, "manifest": "%s", %s}\n' \
+                "$EXAKIT_MANIFEST" "$(_exakit_platform_json_fields)"
             exit 3
         fi
         run_python_any - "$(manifest_get kit_level 2>/dev/null)" "${_type:-}" "$_cs_db"             "${_cs_autostart:-false}" "$_cs_datasets" "${_cs_pyx:-}" "$EXAKIT_MANIFEST"             "$(manifest_get steps_completed 2>/dev/null)" "$_cs_services" "$_cs_note" "$_cs_note_at" \
@@ -1284,10 +1303,13 @@ cmd_migrate() {
 # other prompt in the kit uses; without a terminal the default is NO CHANGE, so
 # a scripted run can never silently flip a boot setting.
 cmd_autostart() {
-    _require_install
-    exakit_init_logging 2>/dev/null || true
+    # Bad input first: AGENTS.md promises exit 2 for it on ANY command, and
+    # checking the install first answered `exakit autostart off` with 4 ("not
+    # installed") wherever no kit was present - the wrong class of answer.
     [ "$#" -eq 0 ] || \
         reject "autostart takes no arguments — run 'exakit autostart' and answer the question."
+    _require_install
+    exakit_init_logging 2>/dev/null || true
 
     exakit_autostart_print
 
@@ -1343,7 +1365,11 @@ cmd_uninstall() {
             exit 0
         fi
         if [ "$_uni_dry" = 1 ]; then
-            info "Dry run — would remove the $_uni_addon add-on (its service, binary and credential; nothing else)."
+            # The add-on's own hook narrates its plan: a fixed sentence here
+            # said "nothing else" while dash-server's hook deleted every
+            # dashboard, so the preview has to come from the code that removes.
+            info "Dry run — removing the $_uni_addon add-on would:"
+            _exakit_uninstall_component "$_uni_addon" 1
             exit 0
         fi
         if [ "$_uni_yes" -ne 1 ]; then

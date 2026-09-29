@@ -72,7 +72,8 @@ function Install-Pyexasol {
         $script:ExakitActiveLabel = "Installing pyexasol $($script:PyexasolVersion)"
         Info "Installing pyexasol $($script:PyexasolVersion) (Exasol Python driver)"
         if (-not (Test-Path $python)) {
-            $code = Invoke-ExakitLogged $uv "venv" "--python" $script:ManagedPythonVersion $script:PyexasolVenv
+            # --seed puts pip in the venv (uv leaves it out). Twin of pyexasol.sh.
+            $code = Invoke-ExakitLogged $uv "venv" "--seed" "--python" $script:ManagedPythonVersion $script:PyexasolVenv
             if ($code -ne 0) {
                 return (Write-PyexasolNotInstalled "the virtual environment at $script:PyexasolVenv could not be created (see log)")
             }
