@@ -230,23 +230,15 @@ class LoadWiringTests(unittest.TestCase):
         # one-word opt-out.
         self.assertIn('exakit_data_load_select "Skip"', bash)
         self.assertIn('Select-ExakitDataLoad -FinalLabel "Skip"', ps1)
-        # The selector offers the local-file source on both platforms, but the
-        # LABEL still differs, for a reason that has CHANGED and is worth
-        # stating precisely.
-        #
-        # It used to be that JSON Tables could not run on Windows at all
-        # (Test-JsonTablesApplicable returned $false unconditionally), so a
-        # PowerShell label mentioning JSON would have offered what it could not
-        # do. That is no longer true: the add-on ships a compiled cargo shim and
-        # installs on Windows now.
-        #
-        # What has NOT been done yet is the PowerShell half of the data-load
-        # ROUTING - exapump.ps1 does not detect a .json file and hand it to the
-        # add-on the way exapump.sh does. So the label stays accurate by staying
-        # narrow. When that routing lands, this assertion is the one to update,
-        # together with the label; until then, do not widen the label alone.
+        # The selector offers the local-file source on both platforms, with the
+        # SAME label. The PowerShell label used to stay narrow ("A local
+        # CSV/Parquet file") because exapump.ps1 had no twin of the shell's JSON
+        # load path; that routing has landed (a .json pick goes to
+        # Import-ExakitLocalJson), and the label was widened with it in
+        # b792369. This assertion is the one that had to move with them.
         self.assertIn("A local CSV / Parquet / JSON file", bash)
-        self.assertIn("A local CSV/Parquet file", ps1)
+        self.assertIn("A local CSV / Parquet / JSON file", ps1)
+        self.assertIn("Import-ExakitLocalJson -Path $path -Target $target", ps1)
         for text, name in ((bash, "exapump.sh"), (ps1, "exapump.ps1")):
             with self.subTest(menu=name):
                 for removed_option in (
