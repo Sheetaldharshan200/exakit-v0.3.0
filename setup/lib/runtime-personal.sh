@@ -1643,6 +1643,17 @@ _personal_wait_ready_probe() {
     _pwr_elapsed=0
     _pwr_maxtries=$(( _pwr_budget / 5 + 1 ))
     _tries=0
+    # SOMETHING HAS TO BE SAID WITHOUT A TTY. The only narration here is
+    # ui_spin_begin, and that returns immediately when stdout is not a
+    # terminal - so an agent's run printed NOTHING for up to 150 seconds
+    # normally, and up to 900 after a launcher update triggers the guest
+    # rebuild. Fifteen minutes of silence is indistinguishable from a hang, and
+    # the documented advice is not to loop on `exakit start`, so the agent has
+    # nothing to poll and no reason to keep waiting.
+    #
+    # To STDERR: a caller composing a --json answer on stdout must not find
+    # progress lines spliced into it.
+    _pwr_last_note=0
     while [ "$_pwr_elapsed" -lt "$_pwr_budget" ] && [ "$_tries" -lt "$_pwr_maxtries" ]; do
         # A HANDSHAKE, NOT AN OPEN PORT. Under rootless Podman the port is
         # pasta's from the moment the container starts, and `exasol info`
@@ -1663,6 +1674,11 @@ _personal_wait_ready_probe() {
         _tries=$((_tries + 1))
         _pwr_elapsed=$(( $(date +%s 2>/dev/null || echo 0) - _pwr_t0 ))
         [ "$_pwr_elapsed" -ge 0 ] || _pwr_elapsed=0
+        if [ ! -t 1 ] && [ $(( _pwr_elapsed - _pwr_last_note )) -ge 30 ]; then
+            _pwr_last_note="$_pwr_elapsed"
+            printf '  ... %s (%ss elapsed, ceiling %ss; raise it with %s)\n' \
+                "$_pwr_what" "$_pwr_elapsed" "$_pwr_budget" "$_pwr_raise" >&2
+        fi
     done
     ui_spin_end
     # The number the user actually waited, not the number the loop intended.

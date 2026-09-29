@@ -2484,5 +2484,49 @@ has "...while a required leg fails instead of skipping" \
 has "...and the plain skip survives for the leg that may not have it" \
     'pwsh not installed on this runner - PowerShell suites skipped' "$_rq_ci"
 
+echo
+echo "a long wait is distinguishable from a hang:"
+# AGK-09. The ready-wait loop's only narration is ui_spin_begin, which returns
+# immediately when stdout is not a terminal - so an agent's run printed NOTHING
+# for up to 150 s normally, and up to 900 s after a launcher update triggers
+# the guest rebuild. Fifteen minutes of silence is indistinguishable from a
+# hang, and AGENTS.md tells agents NOT to loop on `exakit start`, so there was
+# nothing to poll and no reason to keep waiting. The budget that governs the
+# long case, EXAKIT_PERSONAL_REBUILD_TIMEOUT, was undocumented.
+_aw_clock="$WORK/wait-clock"; echo 0 > "$_aw_clock"
+_aw_run() { # _aw_run -> the loop's stderr, with a fake clock and no real sleeps
+    ROOT="$ROOT" C="$_aw_clock" bash -c '
+        . "$ROOT/setup/lib/common.sh" >/dev/null 2>&1
+        . "$ROOT/setup/lib/runtime-personal.sh" >/dev/null 2>&1
+        ui_spin_begin() { :; }; ui_spin_end() { :; }; ok() { :; }; info() { :; }
+        personal_tls_answers() { return 1; }
+        personal_guest_rebuild_expected() { return 1; }
+        sleep() { :; }
+        date() { n=$(cat "$C"); n=$((n+5)); echo "$n" > "$C"; echo "$n"; }
+        EXAKIT_PERSONAL_READY_TIMEOUT=120
+        _personal_wait_ready_probe' 2>&1 >/dev/null
+}
+_aw_out="$(_aw_run)"
+check "a non-TTY wait reports progress" "4" \
+    "$(printf '%s\n' "$_aw_out" | grep -c 'Waiting for the database')"
+has "...naming how long it has waited"   '30s elapsed' "$_aw_out"
+has "...and the ceiling it is working to" 'ceiling 120s' "$_aw_out"
+has "...and the variable that raises it"  'EXAKIT_PERSONAL_READY_TIMEOUT' "$_aw_out"
+# stderr, not stdout: a caller composing a --json answer must not find progress
+# spliced into it.
+check "progress never touches stdout" "" \
+    "$(ROOT="$ROOT" C="$_aw_clock" bash -c 'echo 0 > "$C"
+        . "$ROOT/setup/lib/common.sh" >/dev/null 2>&1
+        . "$ROOT/setup/lib/runtime-personal.sh" >/dev/null 2>&1
+        ui_spin_begin() { :; }; ui_spin_end() { :; }; ok() { :; }; info() { :; }
+        personal_tls_answers() { return 1; }; personal_guest_rebuild_expected() { return 1; }
+        sleep() { :; }; date() { n=$(cat "$C"); n=$((n+5)); echo "$n" > "$C"; echo "$n"; }
+        EXAKIT_PERSONAL_READY_TIMEOUT=60
+        _personal_wait_ready_probe 2>/dev/null' | grep -c 'Waiting' | sed 's/^0$//')"
+# And the budget nobody could find is documented, with its default.
+_aw_doc="$(cat "$ROOT/AGENTS.md")"
+has "the rebuild budget is documented"     'EXAKIT_PERSONAL_REBUILD_TIMEOUT' "$_aw_doc"
+has "...with the default it actually uses" 'default `900`' "$_aw_doc"
+
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]
