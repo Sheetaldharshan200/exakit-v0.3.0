@@ -728,6 +728,9 @@ function Get-ExakitUploadFailureReason {
     $line = @($Output | Where-Object { $_ -like "Error: *" } | Select-Object -Last 1)
     if ($line.Count -eq 0) { return "" }
     $text = [string]$line[0]
+    # A JSON value quoted by the engine stays in the log. Twin of the same
+    # step in exakit_upload_failure_reason.
+    $text = ($text -replace '\{.*\}', '<JSON value>') -replace '\{.*$', '<JSON value>'
     $row = ""
     $m = [regex]::Match($text, "row=(\d+)")
     if ($m.Success) { $row = $m.Groups[1].Value }

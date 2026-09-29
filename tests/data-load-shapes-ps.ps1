@@ -156,6 +156,14 @@ Lacks "...and a clean file gets no invented cause" "Windows line endings" $reaso
 $script:ExakitCsvFlags = "bom,crlf"
 Has "...but a file the inspector flagged as CRLF gets the cause appended" "Windows line endings (CRLF)" (Get-ExakitUploadFailureReason -Output $etl)
 $script:ExakitCsvFlags = ""
+$json = @("Error: SQL execution failed: Protocol error: ETL-3050: [Column=2 Row=0] [Transformation of value='{`"sku`":`"A-1`",`"tags`":[`"x`"]}' failed - invalid character value for cast] (Session: 9)")
+$jr = Get-ExakitUploadFailureReason -Output $json
+Lacks "a JSON value the engine quotes stays in the log" '"sku"' $jr
+Has "...named, with what failed kept around it" "value='<JSON value>' failed - invalid character value for cast" $jr
+$open = @('Error: Failed to parse row: {"sku":"A-1","name":"a very long product name that runs on')
+$jr = Get-ExakitUploadFailureReason -Output $open
+Has "...and an unclosed one, cut by the engine, is dropped to the end" "Failed to parse row: <JSON value>" $jr
+Lacks "...leaving nothing of it" "sku" $jr
 $long = @("Error: SQL execution failed: Protocol error: ETL-2105: Error while parsing row=0 (starting from 0) [CSV Parser found at byte 5385 (starting with 0 at the beginning of the row) of 5385 a single field delimiter or a row terminator directly after a quoted field] (Session: 1)")
 $cut = Get-ExakitUploadFailureReason -Output $long
 Has "a long detail is cut at a word, with an ellipsis" "field..." $cut
