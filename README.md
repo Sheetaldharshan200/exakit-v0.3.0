@@ -68,7 +68,7 @@ You already use AI. The hard part is trusting it with your data. This kit gives 
 
 ## Key features
 
-- 🪶 **Almost no prerequisites.** No Homebrew, Rust or Python install needed. The kit uses a suitable Python if it finds one, otherwise it installs a managed one for itself.
+- 🪶 **Almost no prerequisites.** No Homebrew or Rust needed. The kit needs Python 3.11+, and installs its own copy if you don't have one.
 - ⚡ **Database ready in about 2 minutes.** The full install, including sample data and AI client setup, takes longer, especially on Windows. Let it finish. Re-running is always safe.
 - 🔒 **Read-only AI.** Your assistant can read everything and change nothing. The database enforces it.
 - 🤖 **Support for multiple AI clients.** Claude, Codex, Cursor, GitHub Copilot, Gemini CLI, OpenCode, Continue.
@@ -93,7 +93,7 @@ Already running the kit's database in a container? Re-run the install command to
 
 **WSL** is supported and takes the Linux road: run the same command inside a WSL2 distro. Podman or Docker Desktop on the Windows side does not count. Windows and WSL share port 8563, so run the database on one side only. The kit asks you to stop the other side's database rather than adopt it. **Windows arm64** is not supported, so use a Linux VM there.
 
-**No Python install needed** on any platform. The kit uses Python 3.11+ if it finds it, and otherwise installs its own.
+**Python 3.11+ is needed** on every platform. If you don't have it, the kit installs its own copy.
 
 Step-by-step guides: [QUICKSTART](QUICKSTART.md) · [macOS](quickstarts/macos.md) · [Linux](quickstarts/linux.md) · [Windows](quickstarts/windows.md)
 
@@ -205,7 +205,7 @@ exakit update     # apply what is pending (asks before it stops the database)
 
 - **Dedicated read-only MCP login.** The kit provisions and validates a least-privilege database user before any MCP flow proceeds.
 - **Local TLS handled for MCP clients.** Generated MCP client configs set `EXA_SSL_CERT_VALIDATION=no` only for the local self-signed `127.0.0.1` runtime. Use trusted CA validation for real remote databases.
-- **No preinstalled Python required.** Uses `python3` when present, otherwise bootstraps a managed runtime through `uv`.
+- **Python is handled for you.** The kit needs Python 3.11+. It uses `python3` when present, and otherwise installs its own through `uv`.
 - **Repo stays pure source.** Runtime state, logs, credentials, backups, and generated configs live under `~/.exasol-starter-kit/`, never in this repo.
 - **Everything is inspectable.** Install scripts, MCP configs, backups, and logs remain available on disk.
 - **Local only.** The database listens on `127.0.0.1` only, passwords live in local files and are never shown on screen, and AI client configs are backed up before every change.
@@ -222,7 +222,7 @@ https://github.com/user-attachments/assets/77916db0-d273-4720-8d59-1aedac95d5e8
 
 | Question | Answer |
 |---|---|
-| Do&nbsp;I&nbsp;need&nbsp;Rust&nbsp;/&nbsp;Python&nbsp;/&nbsp;Homebrew? | **None of them.** The kit uses a system Python 3.11+ if you have one, and otherwise installs a managed Python for its own use. |
+| Do&nbsp;I&nbsp;need&nbsp;Rust&nbsp;/&nbsp;Python&nbsp;/&nbsp;Homebrew? | **Only Python 3.11+**, and the kit installs its own copy if you don't have one. Rust and Homebrew are not needed. |
 | Does&nbsp;it&nbsp;cost&nbsp;anything? | No. Exasol Personal Local is free to use. It is free of charge, not open source: the database ships under [Exasol's own licence terms](https://www.exasol.com/legal/), while this kit's scripts are [MIT](LICENSE). |
 | What&nbsp;makes&nbsp;this&nbsp;"for&nbsp;Agentic&nbsp;AI"? | An MCP server ships in the box with a dedicated read-only login, so Claude, Cursor, and other MCP clients can query your data directly, with every SQL statement inspectable before it runs. |
 | What&nbsp;sample&nbsp;data&nbsp;is&nbsp;included? | Three bundled datasets: TPC-H retail, smart-meter energy, daily weather, each in its own schema. See the [data dictionary](data/data-dictionary.md). |
