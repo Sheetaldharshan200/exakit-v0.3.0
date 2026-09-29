@@ -2664,23 +2664,97 @@ exakit_version_newer() {
     [ -n "$_vn_a" ] && [ -n "$_vn_b" ] || return 1
     [ "$_vn_a" != "$_vn_b" ] || return 1
     if exakit_can_run_python; then
-        run_python - "$_vn_a" "$_vn_b" <<'PY'
+        run_python - "$_vn_a" "$_vn_b" <<'EXAKIT_VERCMP_PY'
 import re, sys
-def key(v):
+
+# A PRE-RELEASE SORTS BELOW ITS OWN RELEASE. The old key() split on digit runs
+# and compared the pieces, which put "2.3.0-rc1" ABOVE "2.3.0": the list for
+# "2.3.0" ends where the rc's carries on, and the longer list wins. So anyone
+# who installed a release candidate was told they were already ahead, and
+# `exakit update` refused to move them onto the real release - permanently. It
+# also sorted "0.13.0.post1" below "0.13.0", and could raise TypeError
+# comparing an int piece against a str piece on a shape it did not expect.
+def parse(v):
     v = v.strip().lstrip("v")
-    return [int(p) if p.isdigit() else p for p in re.split(r"([0-9]+)", v)]
-sys.exit(0 if key(sys.argv[1]) > key(sys.argv[2]) else 1)
-PY
+    # Build metadata carries no ordering information (semver clause 10).
+    v = v.split("+", 1)[0]
+    # PEP 440's .postN FOLLOWS the release; semver's -rcN precedes it.
+    post = 0
+    m = re.search(r"\.post(\d+)$", v)
+    if m:
+        post = int(m.group(1))
+        v = v[:m.start()]
+    pre = ()
+    m = re.match(r"^(.*?)[-_.]?(rc|alpha|beta|a|b)\.?(\d*)$", v)
+    if m and m.group(2):
+        v = m.group(1).rstrip(".-_")
+        pre = ({"alpha": 0, "a": 0, "beta": 1, "b": 1, "rc": 2}[m.group(2)],
+               int(m.group(3) or 0))
+    nums = tuple(int(p) for p in re.findall(r"\d+", v))
+    # (1,) for a plain release beats (0, ...) for any pre-release of it, and
+    # every element compared is an int, so this cannot raise.
+    return (nums, (1,) if not pre else (0,) + pre, post)
+
+sys.exit(0 if parse(sys.argv[1]) > parse(sys.argv[2]) else 1)
+EXAKIT_VERCMP_PY
         return $?
     fi
-    _vn_a_major="$(exakit_major_version "$_vn_a")"
-    _vn_b_major="$(exakit_major_version "$_vn_b")"
-    case "$_vn_a_major$_vn_b_major" in *[!0-9]*) return 1 ;; esac
-    if [ "$_vn_a_major" -gt "$_vn_b_major" ]; then return 0; fi
-    if [ "$_vn_a_major" -lt "$_vn_b_major" ]; then return 1; fi
-    # Same major and no Python/uv: treat different tags as worth inspecting,
-    # but avoid claiming a downgrade is newer when the major clearly regressed.
-    [ "$_vn_a" != "$_vn_b" ]
+    # NO PYTHON: STILL AN ORDER, NOT A COIN TOSS. This used to compare the
+    # MAJOR only and then return "the strings differ" for anything inside one -
+    # so 2.3.0 was newer than 2.4.0 AND 2.4.0 was newer than 2.3.0. Both
+    # directions true meant exakit_component_is_ahead read every same-major
+    # component as ahead of its advertised version, and `exakit update`
+    # answered "yours is newer than the tested one - keeping yours" and skipped
+    # every component, forever, on any machine with neither python3 nor uv.
+    # runtime-personal.sh already wrote a Python-free comparator for precisely
+    # this hazard and says so in its comment; this guard never got the same.
+    _vn_num() { # _vn_num <version> <field> - that dotted field, digits only, 0 if absent
+        _vnn="$(printf '%s' "${1#v}" | cut -d'.' -f"$2" 2>/dev/null)"
+        _vnn="${_vnn%%[!0-9]*}"
+        [ -n "$_vnn" ] || _vnn=0
+        printf '%s' "$_vnn"
+    }
+    # The release part only: everything before a pre-release or build suffix.
+    _vn_a_rel="${_vn_a%%[-+]*}"
+    _vn_b_rel="${_vn_b%%[-+]*}"
+    _vn_i=1
+    while [ "$_vn_i" -le 4 ]; do
+        _vn_x="$(_vn_num "$_vn_a_rel" "$_vn_i")"
+        _vn_y="$(_vn_num "$_vn_b_rel" "$_vn_i")"
+        [ "$_vn_x" -gt "$_vn_y" ] && return 0
+        [ "$_vn_x" -lt "$_vn_y" ] && return 1
+        _vn_i=$(( _vn_i + 1 ))
+    done
+    # Same release numbers. Rank the suffix the way the Python arm does, so a
+    # machine without Python still moves rc1 -> rc2 and release -> .post1
+    # instead of sitting still. Stopping at "a release beats a pre-release"
+    # would have been SAFE - it errs toward offering nothing - but it would
+    # also strand exactly the people running pre-releases, who are the ones
+    # who most need the next one.
+    #
+    # Rank: alpha 1 < beta 2 < rc 3 < plain release 4 < .postN 5.
+    _vn_rank() { # _vn_rank <version> -> "<rank> <number>"
+        case "$1" in
+            *.post*) printf '5 %s' "$(printf '%s' "${1##*.post}" | tr -cd '0-9')"; return ;;
+        esac
+        _vnr_suf="${1#*-}"
+        [ "$_vnr_suf" = "$1" ] && { printf '4 0'; return; }
+        _vnr_n="$(printf '%s' "$_vnr_suf" | tr -cd '0-9')"
+        [ -n "$_vnr_n" ] || _vnr_n=0
+        case "$_vnr_suf" in
+            alpha*|a[0-9]*) printf '1 %s' "$_vnr_n" ;;
+            beta*|b[0-9]*)  printf '2 %s' "$_vnr_n" ;;
+            rc*)            printf '3 %s' "$_vnr_n" ;;
+            *)              printf '0 %s' "$_vnr_n" ;;
+        esac
+    }
+    _vn_a_rank="$(_vn_rank "$_vn_a")"
+    _vn_b_rank="$(_vn_rank "$_vn_b")"
+    _vn_ar="${_vn_a_rank%% *}"; _vn_an="${_vn_a_rank##* }"
+    _vn_br="${_vn_b_rank%% *}"; _vn_bn="${_vn_b_rank##* }"
+    [ "$_vn_ar" -gt "$_vn_br" ] && return 0
+    [ "$_vn_ar" -lt "$_vn_br" ] && return 1
+    [ "${_vn_an:-0}" -gt "${_vn_bn:-0}" ]
 }
 
 exakit_major_version() {

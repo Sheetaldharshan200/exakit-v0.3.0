@@ -2276,5 +2276,47 @@ for _js_v in repaired declined failed; do
     has "...including \`$_js_v\`" "\`$_js_v\`" "$(printf '%s' "$_js_agents" | grep -A2 '^\*\*Outcomes\*\*')"
 done
 
+echo
+echo "version ordering, on both arms of the comparator:"
+# LIF-06: the old Python key() split on digit runs, so "2.3.0-rc1" sorted ABOVE
+# "2.3.0" - the release's list ends where the rc's carries on, and the longer
+# list wins. Anyone who installed a release candidate was told they were ahead
+# and `exakit update` refused to move them onto the real release, permanently.
+#
+# LIF-07: the no-Python fallback compared the MAJOR only and then returned "the
+# strings differ", so 2.3.0 was newer than 2.4.0 AND 2.4.0 newer than 2.3.0.
+# Both directions true made exakit_component_is_ahead read every same-major
+# component as ahead of its advertised version, and update skipped everything.
+#
+# Both arms are checked against the same table: a machine without Python must
+# not merely be safe, it must give the same ANSWER.
+_vc() { # _vc <a> <b> <python?> -> yes|no
+    ROOT="$ROOT" A="$1" B="$2" P="$3" bash -c '
+        . "$ROOT/setup/lib/common.sh" >/dev/null 2>&1
+        if [ "$P" = 1 ]; then exakit_can_run_python() { return 0; }
+        else exakit_can_run_python() { return 1; }; fi
+        exakit_version_newer "$A" "$B" && echo yes || echo no' 2>/dev/null
+}
+while IFS='|' read -r _vc_a _vc_b _vc_want; do
+    [ -n "$_vc_a" ] || continue
+    check "python:    $_vc_a > $_vc_b" "$_vc_want" "$(_vc "$_vc_a" "$_vc_b" 1)"
+    check "no-python: $_vc_a > $_vc_b" "$_vc_want" "$(_vc "$_vc_a" "$_vc_b" 0)"
+done <<'VCEOF'
+2.4.0|2.3.0|yes
+2.3.0|2.4.0|no
+2.3.0|2.3.0-rc1|yes
+2.3.0-rc1|2.3.0|no
+2.3.0-rc2|2.3.0-rc1|yes
+2.10.0|2.9.0|yes
+2.9.0|2.10.0|no
+0.13.0.post1|0.13.0|yes
+2.3.0|2.3.0|no
+2.3.0-beta1|2.3.0-rc1|no
+VCEOF
+# The property that made LIF-07 dangerous rather than merely wrong: it claimed
+# BOTH directions, so every comparison was true whichever way it was asked.
+check "no version is newer than one that is newer than it" "no" \
+    "$([ "$(_vc 2.3.0 2.4.0 0)" = yes ] && [ "$(_vc 2.4.0 2.3.0 0)" = yes ] && echo yes || echo no)"
+
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]
