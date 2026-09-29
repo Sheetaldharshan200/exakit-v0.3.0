@@ -2528,5 +2528,61 @@ _aw_doc="$(cat "$ROOT/AGENTS.md")"
 has "the rebuild budget is documented"     'EXAKIT_PERSONAL_REBUILD_TIMEOUT' "$_aw_doc"
 has "...with the default it actually uses" 'default `900`' "$_aw_doc"
 
+echo
+echo "a table that never left the old database is not a finished crossing:"
+# LIF-11. legacy_export returns success if ANY table came out, and a table that
+# failed to export got one warn inside a progress bar during a long install.
+# The closing screen then said "Restored 9 table(s)", called the copy no longer
+# needed, and handed over the docker rm command for the container holding the
+# ONLY surviving copy of the tenth. The kit recorded the failure in
+# legacy.export_failed - written by both halves, asserted by two test files,
+# and read by no product code anywhere.
+_lc_report() { # _lc_report <export_failed count> -> the closing screen
+    ROOT="$ROOT" N="$1" bash -c '
+        . "$ROOT/setup/lib/common.sh" >/dev/null 2>&1
+        . "$ROOT/setup/lib/legacy-crossing.sh" >/dev/null 2>&1
+        ui_tilde() { printf "%s" "$1"; }
+        legacy_remove_command() { echo "docker rm -f exasol-nano"; }
+        EXAKIT_LEGACY_RESTORED=9; EXAKIT_LEGACY_SKIPPED=0; EXAKIT_LEGACY_RESTORE_FAILED=0
+        if [ "$N" -gt 0 ]; then
+            manifest_get() {
+                case "$1" in
+                    legacy.export_failed)       printf %s "$N" ;;
+                    legacy.export_failed_names) printf %s "SALES.ORDERS" ;;
+                    *) return 1 ;;
+                esac
+            }
+        else
+            manifest_get() { return 1; }
+        fi
+        legacy_report_restore /tmp/copy "sample"' 2>&1
+}
+_lc_full="$(_lc_report 0)"
+_lc_part="$(_lc_report 1)"
+has  "a complete crossing offers to remove the copy" 'no longer needed' "$_lc_full"
+has  "...and the command that removes the container" 'docker rm -f' "$_lc_full"
+has  "a partial crossing names the table left behind" 'SALES.ORDERS' "$_lc_part"
+has  "...and says where it still lives"               'ONLY in the old container' "$_lc_part"
+lacks "...and does NOT offer to remove the container" 'docker rm -f' "$_lc_part"
+lacks "...nor call the copy no longer needed"         'no longer needed' "$_lc_part"
+# The verdict has to reach the caller, because crossing_done is what stops the
+# installer ever offering the crossing again.
+_lc_rc="$(ROOT="$ROOT" bash -c '
+    . "$ROOT/setup/lib/common.sh" >/dev/null 2>&1
+    . "$ROOT/setup/lib/legacy-crossing.sh" >/dev/null 2>&1
+    ui_tilde() { printf "%s" "$1"; }; legacy_remove_command() { echo x; }
+    EXAKIT_LEGACY_RESTORED=9; EXAKIT_LEGACY_SKIPPED=0; EXAKIT_LEGACY_RESTORE_FAILED=0
+    manifest_get() { case "$1" in legacy.export_failed) echo 1 ;; *) return 1 ;; esac; }
+    legacy_report_restore /tmp/copy "sample" >/dev/null 2>&1; echo $?')"
+check "a partial crossing reports failure to its caller" "1" "$_lc_rc"
+lacks "...so the install path no longer discards that verdict" \
+    'legacy_report_restore "$_lmn_dir" "the new database already had them" || true' \
+    "$(cat "$ROOT/setup/lib/legacy-crossing.sh")"
+# Both halves, or Windows keeps the silent version.
+has "the Windows twin reports it too" 'could NOT be copied out of the old database' \
+    "$(cat "$ROOT/setup/lib/legacy-crossing.ps1")"
+has "...and records which tables"      'legacy.export_failed_names' \
+    "$(cat "$ROOT/setup/lib/legacy-crossing.ps1")"
+
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]

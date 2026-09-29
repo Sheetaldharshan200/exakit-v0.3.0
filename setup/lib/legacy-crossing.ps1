@@ -590,7 +590,7 @@ function Export-LegacyTables {
     New-Item -ItemType Directory -Force -Path $Dir | Out-Null
     $indexPath = Join-Path $Dir "index"
     Set-Content -Path $indexPath -Value @() -Encoding Ascii
-    $ok = 0; $bad = 0; $n = 0
+    $ok = 0; $bad = 0; $n = 0; $badNames = ""
     # A BAR, NOT A SPINNER PER TABLE. Copying a database out is the one long
     # stretch of the crossing, and a spinner says only "still going"; the bar
     # says how much of it is left, in the same shape the deploy and the dataset
@@ -636,6 +636,9 @@ function Export-LegacyTables {
             Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $Dir $file)
             Warn2 "Could not copy $t out of the old database - it is left there, untouched"
             $bad++
+            # The NAME, not just a tally - see the twin in legacy-crossing.sh.
+            # This warning was the only place the table was ever mentioned.
+            $badNames = "$badNames $t"
         }
     }
     if ($live) {
@@ -644,7 +647,10 @@ function Export-LegacyTables {
     }
     $script:ExakitActiveLabel = ""
     Set-ExakitManifestValue "legacy.exported" $ok
-    if ($bad -gt 0) { Set-ExakitManifestValue "legacy.export_failed" $bad }
+    if ($bad -gt 0) {
+        Set-ExakitManifestValue "legacy.export_failed" $bad
+        Set-ExakitManifestValue "legacy.export_failed_names" $badNames.Trim()
+    }
     return ($ok -gt 0)
 }
 
@@ -1062,8 +1068,25 @@ function Write-LegacyRestoreReport {
         Warn2 "$($script:LegacyRestoreFailed) table(s) did not restore - the copies are still at $(Get-ExakitTilde $Dir)"
         return $false
     }
-    # The copy is only removed once every table is accounted for, and the old
-    # container still has the original either way.
+    # TABLES THAT NEVER LEFT THE OLD DATABASE COUNT TOO. This tallied only
+    # RESTORED / SKIPPED / RESTORE_FAILED, so a table that failed at the EXPORT
+    # step was mentioned once, inside a progress bar, during a long install -
+    # and then never again. The screen called the copy no longer needed and
+    # handed over the command to delete the container holding the only
+    # surviving copy. legacy.export_failed was recorded and read by nothing.
+    $exFail = Get-ExakitManifestValue "legacy.export_failed"
+    if ($exFail -and ([int]$exFail) -gt 0) {
+        $exNames = Get-ExakitManifestValue "legacy.export_failed_names"
+        $suffix = ""
+        if ($exNames) { $suffix = ": $exNames" }
+        Warn2 "$exFail table(s) could NOT be copied out of the old database$suffix"
+        Warn2 "Those tables exist ONLY in the old container. Do not remove it until you have them."
+        Info "Try the copy again with: exakit migrate docker-nano"
+        return $false
+    }
+    # The copy is only removed once every table is accounted for - which now
+    # means exported AND restored - and the old container still has the
+    # original either way.
     Info "The copy at $(Get-ExakitTilde $Dir) is no longer needed; remove it whenever you like."
     $rm = Get-LegacyRemoveCommand
     if ($rm) { Info "The old container still holds the original. To remove it: $rm" }
