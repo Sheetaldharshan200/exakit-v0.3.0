@@ -728,6 +728,9 @@ function Get-ExakitUploadFailureReason {
     $line = @($Output | Where-Object { $_ -like "Error: *" } | Select-Object -Last 1)
     if ($line.Count -eq 0) { return "" }
     $text = [string]$line[0]
+    # A JSON value quoted by the engine stays in the log. Twin of the same
+    # step in exakit_upload_failure_reason.
+    $text = ($text -replace '\{.*\}', '<JSON value>') -replace '\{.*$', '<JSON value>'
     $row = ""
     $m = [regex]::Match($text, "row=(\d+)")
     if ($m.Success) { $row = $m.Groups[1].Value }
@@ -2098,7 +2101,7 @@ function Import-ExakitLocalFolder {
             Warn2 "$(Get-ExakitPlural $ext 'file') in $Path are tabular but named .txt/.tsv - exapump reads .csv and .parquet only. Rename them to .csv and load the folder again."
             Info "Only the folder itself is read - subfolders and files of other kinds are left alone."
         } else {
-            Warn2 "No CSV or Parquet files in $Path."
+            Warn2 "No CSV, Parquet or JSON files in $Path."
             Info "Only the folder itself is read - subfolders and files of other kinds are left alone."
         }
         return "failed"
@@ -2927,7 +2930,7 @@ function New-ExakitDataTable {
     # naming JSON here would offer what this side cannot do. When that routing
     # lands, widen the label and the assertion in tests/test_sample_data_schema.py
     # together - never the label alone.
-    [void](Add-ExakitTableRow -Kind "plain" -Label "A local CSV/Parquet file, or a folder of them")
+    [void](Add-ExakitTableRow -Kind "plain" -Label "A local CSV / Parquet / JSON file, or a folder of them")
     [void]$ids.Add("local")
     $script:ExakitTableRowLocal = $ids.Count
     [void](Add-ExakitTableRow -Kind "plain" -Label $FinalLabel)

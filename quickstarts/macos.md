@@ -82,7 +82,7 @@ Full detail: [Staying up to date](../README.md#staying-up-to-date).
 
 | Issue | Fix |
 |---|---|
-| "This machine is not compatible: Exasol Personal needs at least 8 GB RAM" | Exasol Personal needs 8 GB RAM and 20 GB free disk. The installer stops rather than half-installing. To try anyway on a marginal machine: `EXAKIT_FORCE=1` |
+| "This machine is not compatible: Exasol Personal needs at least 8 GB RAM" | Exasol Personal needs 8 GB RAM and 20 GB free disk. The installer stops rather than half-installing |
 | `python3` triggers a developer-tools popup | Dismiss it. `/usr/bin/python3` is only a stub until Xcode's command line tools are installed; the installer brings its own Python and carries on. Nothing to re-run |
 | `~/.local/bin` not on PATH warning | Add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` — or to `~/.bash_profile` if you switched your login shell to bash, because macOS terminals never read `~/.bashrc` |
 | Company-managed Mac blocks virtualization | Use a machine you control |

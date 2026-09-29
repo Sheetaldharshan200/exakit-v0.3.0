@@ -630,6 +630,11 @@ exakit_upload_failure_reason() {
     [ -n "${EXAKIT_LOG_FILE:-}" ] || return 1
     _ufr_line="$(grep -a '^Error: ' "$EXAKIT_LOG_FILE" 2>/dev/null | tail -1)"
     [ -n "$_ufr_line" ] || return 1
+    # A JSON value quoted by the engine stays in the log. A table loaded from a
+    # JSON file carries nested objects as text, so a cast failure on one put
+    # the object itself on screen -- braces and all, then cut at 160 characters
+    # mid-key. The rest of the line still says what failed and where.
+    _ufr_line="$(printf '%s' "$_ufr_line" | sed -e 's/{.*}/<JSON value>/' -e 's/{.*$/<JSON value>/')"
     _ufr_row="$(printf '%s' "$_ufr_line" | sed -n 's/.*row=\([0-9][0-9]*\).*/\1/p')"
     case "$_ufr_line" in
         *"not enclosed field"*)

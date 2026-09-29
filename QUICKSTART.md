@@ -56,7 +56,7 @@ After setup, restart the client and look for an MCP server named `exasol`.
 
 ## 5. Ask your first question
 
-Sample data is already loaded. To load more, or your own CSV or Parquet file:
+Sample data is already loaded. To load more, or your own CSV, Parquet or JSON file:
 
 ```bash
 exakit data-load
