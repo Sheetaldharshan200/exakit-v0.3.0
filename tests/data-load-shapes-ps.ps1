@@ -170,7 +170,7 @@ $gt = & { Import-ExakitLocalFolder -Path $gtfs } 6>&1
 $gtText = ($gt | ForEach-Object { "$_" }) -join "`n"
 Has "a folder of .txt tables is not 'no files'" "2 files in" $gtText
 Has "...it names the rename that loads them" "Rename them to .csv" $gtText
-Lacks "...and does not call it empty" "No CSV or Parquet files" $gtText
+Lacks "...and does not call it empty" "No CSV, Parquet or JSON files" $gtText
 Has "...and fails, as before" "failed" $gtText
 
 Write-Host ""

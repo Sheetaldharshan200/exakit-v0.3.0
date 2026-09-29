@@ -2098,7 +2098,7 @@ function Import-ExakitLocalFolder {
             Warn2 "$(Get-ExakitPlural $ext 'file') in $Path are tabular but named .txt/.tsv - exapump reads .csv and .parquet only. Rename them to .csv and load the folder again."
             Info "Only the folder itself is read - subfolders and files of other kinds are left alone."
         } else {
-            Warn2 "No CSV or Parquet files in $Path."
+            Warn2 "No CSV, Parquet or JSON files in $Path."
             Info "Only the folder itself is read - subfolders and files of other kinds are left alone."
         }
         return "failed"
@@ -2927,7 +2927,7 @@ function New-ExakitDataTable {
     # naming JSON here would offer what this side cannot do. When that routing
     # lands, widen the label and the assertion in tests/test_sample_data_schema.py
     # together - never the label alone.
-    [void](Add-ExakitTableRow -Kind "plain" -Label "A local CSV/Parquet file, or a folder of them")
+    [void](Add-ExakitTableRow -Kind "plain" -Label "A local CSV / Parquet / JSON file, or a folder of them")
     [void]$ids.Add("local")
     $script:ExakitTableRowLocal = $ids.Count
     [void](Add-ExakitTableRow -Kind "plain" -Label $FinalLabel)
