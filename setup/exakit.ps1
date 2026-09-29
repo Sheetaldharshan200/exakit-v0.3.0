@@ -963,8 +963,8 @@ function Invoke-CmdRepairRuntime {
         # command that destroys the database produced a file its owner could
         # not restore from.
         Info "If the database still answers, copy out anything you want to keep first, one table at a time:"
-        Info "  exapump sql -p $($script:ExapumpProfile) -f csv 'SELECT * FROM <SCHEMA>.<TABLE>' > table.csv"
-        Info "  ...and load it back afterwards with: exakit data-load table.csv"
+        Info "  exapump sql -p $($script:ExapumpProfile) -f csv 'SELECT * FROM <SCHEMA>.<TABLE>' > <TABLE>.csv"
+        Info "  ...and load it back afterwards with: exakit data-load <TABLE>.csv  (the file name becomes the table name, so keep it)"
     }
     if (-not $confirmed) {
         if (-not (Confirm-ExakitPrompt "Delete everything in the database and rebuild it empty?" $false)) {

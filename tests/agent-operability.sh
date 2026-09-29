@@ -2585,5 +2585,55 @@ has "the Windows twin reports it too" 'could NOT be copied out of the old databa
 has "...and records which tables"      'legacy.export_failed_names' \
     "$(cat "$ROOT/setup/lib/legacy-crossing.ps1")"
 
+echo
+echo "the MCP operation vocabulary is documented, and derived from the enum:"
+# FOUND BY RUNNING THE KIT, NOT BY READING IT. On a live installed machine
+# `mcp-status --json` answers status "success" and `mcp-doctor --json` answered
+# "failed_recoverable" - neither of which is in any vocabulary AGENTS.md
+# defines, while the same document promises the five state queries "agree with
+# each other on the status vocabulary". The audit's own census (AGK-08) missed
+# it because it grepped the SHELL source for "status": "<literal>", and these
+# come from a Python enum. My first pass at documenting the outcome vocabulary
+# missed it for the same reason and named `error`, which is not even in the
+# enum.
+#
+# Derived from mcp/core/models.py so the document cannot drift from the code:
+# add a member there and this fails until AGENTS.md names it.
+_ov_missing="$(ROOT="$ROOT" python3 -c '
+import io, os, re
+src = io.open(os.path.join(os.environ["ROOT"], "mcp/core/models.py"), encoding="utf-8").read()
+block = re.search(r"class OperationStatus\(str, Enum\):(.*?)\n\n", src, re.S).group(1)
+values = re.findall(r"=\s*\"([a-z_]+)\"", block)
+doc = io.open(os.path.join(os.environ["ROOT"], "AGENTS.md"), encoding="utf-8").read()
+print(" ".join(v for v in values if "`%s`" % v not in doc))' 2>/dev/null)"
+check "every OperationStatus value is named in AGENTS.md" "" "$_ov_missing"
+_ov_count="$(ROOT="$ROOT" python3 -c '
+import io, os, re
+src = io.open(os.path.join(os.environ["ROOT"], "mcp/core/models.py"), encoding="utf-8").read()
+block = re.search(r"class OperationStatus\(str, Enum\):(.*?)\n\n", src, re.S).group(1)
+print(len(re.findall(r"=\s*\"([a-z_]+)\"", block)))' 2>/dev/null)"
+check "...and the enum was really read" "6" "$_ov_count"
+has "AGENTS.md says which commands answer from that set" 'not from the liveness set' \
+    "$(cat "$ROOT/AGENTS.md")"
+
+echo
+echo "the rescue advice names a file that can actually be loaded back:"
+# FOUND BY FOLLOWING IT ON A REAL MACHINE. LIF-12 replaced advice that produced
+# an unloadable file (`exakit sql --json > table.json`) with a CSV round trip -
+# and the replacement was ALSO broken, for a different reason. `exakit
+# data-load` derives the target table from the FILE NAME, so the literal
+# "table.csv" in the example became table TABLE, which Exasol rejects as a
+# reserved keyword:
+#   Protocol error: table name not allowed since it is a keyword: TABLE
+# Exporting worked; the load in the very next line of the same message did not.
+# Proven on a live Linux install: <TABLE>.csv round-trips 5 rows out and 5 back.
+for _rs_f in setup/exakit setup/exakit.ps1; do
+    _rs_src="$(cat "$ROOT/$_rs_f")"
+    lacks "$_rs_f does not name a file that becomes a keyword" 'data-load table.csv' "$_rs_src"
+    has   "$_rs_f names the file after the table"              '<TABLE>.csv' "$_rs_src"
+done
+has "...and says why the name matters" 'file name becomes the table name' \
+    "$(cat "$ROOT/setup/exakit")"
+
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]

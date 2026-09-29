@@ -1023,8 +1023,8 @@ cmd_repair_runtime() {
         # its owner could not restore from. exapump's own CSV output is a
         # plain header-plus-rows file, which `exakit data-load` reads directly.
         info "If the database still answers, copy out anything you want to keep first, one table at a time:"
-        info "  exapump sql -p $EXAKIT_EXAPUMP_PROFILE -f csv 'SELECT * FROM <SCHEMA>.<TABLE>' > table.csv"
-        info "  ...and load it back afterwards with: exakit data-load table.csv"
+        info "  exapump sql -p $EXAKIT_EXAPUMP_PROFILE -f csv 'SELECT * FROM <SCHEMA>.<TABLE>' > <TABLE>.csv"
+        info "  ...and load it back afterwards with: exakit data-load <TABLE>.csv  (the file name becomes the table name, so keep it)"
     fi
     if [ "$_rr_yes" -ne 1 ]; then
         if ! confirm "Delete everything in the database and rebuild it empty?" n; then
@@ -1404,8 +1404,8 @@ cmd_uninstall() {
         printf '\n'
         info "There is no export step: the kit cannot copy your tables out, and this does not stop to ask."
         info "To keep anything, stop now (Ctrl-C) and copy it out first, one table at a time:"
-        info "  exapump sql -p $EXAKIT_EXAPUMP_PROFILE -f csv 'SELECT * FROM <SCHEMA>.<TABLE>' > table.csv"
-        info "  ...which exakit data-load table.csv can load back into a new install."
+        info "  exapump sql -p $EXAKIT_EXAPUMP_PROFILE -f csv 'SELECT * FROM <SCHEMA>.<TABLE>' > <TABLE>.csv"
+        info "  ...which exakit data-load <TABLE>.csv loads back into a new install (the file name becomes the table name)."
         printf '\n'
         exakit_uninstall_run 0
         printf '\n'
