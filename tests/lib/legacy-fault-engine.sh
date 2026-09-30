@@ -9,7 +9,7 @@
 # second stub. Every call is appended to engine.calls, argv verbatim: that log
 # is what the suite reads to prove which verbs were ever issued.
 #
-#   engine.state         running | stopped | absent | unknown | hang | noformat   (running)
+#   engine.state         running | stopped | absent | down | unknown | hang | noformat   (running)
 #                        (noformat: `inspect -f` fails, plain `inspect` works -
 #                        an engine too old for the template flag)
 #   engine.start_rc      exit code of `start`                          (0)
@@ -28,6 +28,10 @@ printf '%s\n' "$*" >> "$_dir/engine.calls"
 
 _state="$(_read engine.state running)"
 case "$1 $2" in
+    # down: the CLI is there, the daemon or machine is not (Docker Desktop stopped).
+    "version --format")
+        [ "$_state" = down ] && exit 1
+        printf '1.0\n'; exit 0 ;;
     "container inspect")
         case "$_state" in
             # exec, so the hang IS this process - the shape of a wedged engine
@@ -35,7 +39,7 @@ case "$1 $2" in
             # would outlive the stub and hold the caller's pipe open for the
             # whole hang; see the note on grandchildren in the resilience suite.
             hang)    exec sleep "$(_read engine.hang_seconds 30)" ;;
-            absent)  exit 1 ;;
+            absent|down)  exit 1 ;;
             noformat) case "$*" in *"-f "*) exit 1 ;; esac; exit 0 ;;
         esac
         # `inspect -f {{.State.Running}} NAME` wants a boolean; a bare

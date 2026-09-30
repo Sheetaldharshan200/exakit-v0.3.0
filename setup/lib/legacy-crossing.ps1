@@ -228,6 +228,14 @@ function Invoke-LegacyEngine {
     return (Invoke-ExakitBounded -FilePath $bin -Arguments $Arguments -TimeoutSeconds $timeout)
 }
 
+# Test-LegacyEngineAnswers - is the engine's daemon/machine up, not just its
+# CLI? The server version is empty when Docker Desktop or the Podman machine is
+# stopped. Twin of legacy_engine_answers.
+function Test-LegacyEngineAnswers {
+    $out = Invoke-LegacyEngine -Arguments @("version", "--format", "{{.Server.Version}}")
+    return ($null -ne $out -and "$out".Trim() -ne "")
+}
+
 # running | stopped | absent | unknown. "unknown" is its own answer: an engine
 # that will not talk is not evidence that the user's database is gone.
 function Get-LegacyContainerState {
@@ -237,7 +245,15 @@ function Get-LegacyContainerState {
     $out = Invoke-LegacyEngine -Arguments @("container", "inspect", "-f", "{{.State.Running}}", $name)
     if ($null -eq $out -or "$out".Trim() -eq "") {
         $exists = Invoke-LegacyEngine -Arguments @("container", "inspect", $name)
-        if ($null -eq $exists -or "$exists".Trim() -eq "") { return "absent" }
+        if ($null -eq $exists -or "$exists".Trim() -eq "") {
+            # SILENCE IS NOT ABSENCE. With Docker Desktop stopped the CLI is
+            # still on PATH and every inspect prints nothing - which read as
+            # "the container is gone", so the install never offered the copy and
+            # migrate said there was no such container, with it sitting in the
+            # stopped engine. Only an engine that answers can say it is absent.
+            if (-not (Test-LegacyEngineAnswers)) { return "unknown" }
+            return "absent"
+        }
         return "unknown"
     }
     if ("$out" -match "true")  { return "running" }
@@ -842,6 +858,8 @@ function Invoke-LegacyCrossingBefore {
         $can = $false; $retry = $true; $why = "the container engine this database needs is not on this machine any more"
     } elseif ($state -eq "absent") {
         $can = $false; $why = "the container is gone, so there is nothing left to copy"
+    } elseif ($state -eq "unknown") {
+        $can = $false; $retry = $true; $why = "$(Get-LegacyEngineName) is not answering (is Docker Desktop or the Podman machine running?)"
     } elseif (-not (Test-Path (Get-ExapumpCli))) {
         $can = $false; $retry = $true; $why = "exapump is not installed yet, and it is what reads the tables out"
     }
@@ -1196,7 +1214,7 @@ function Invoke-LegacyMigrateNow {
         return 1
     }
     if ($state -eq "unknown") {
-        Set-LegacyMigrateFailure "$engineName did not answer about the container '$container'. Is the engine running?"
+        Set-LegacyMigrateFailure "$engineName did not answer about the container '$container' - it looks stopped. Start it (Docker Desktop, or: podman machine start), then run: exakit migrate docker-nano"
         return 1
     }
     if (-not (Test-Path (Get-ExapumpCli))) {

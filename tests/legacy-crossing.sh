@@ -80,6 +80,9 @@ case "\$1 \$2" in
       [ "$_r_state" = unknown ] && { printf 'weird\n'; exit 0; }
       [ "$_r_state" = running ] && { printf 'true\n'; exit 0; }
       printf 'false\n'; exit 0 ;;
+  "version --format")
+      [ "$_r_state" = down ] && exit 1
+      printf '1.0\n'; exit 0 ;;
 esac
 exit 0
 EOF
@@ -121,6 +124,9 @@ check "absent"   "absent"   "$(run "$H1" absent   'legacy_container_state')"
 # gone. "unknown" keeps the migrate offer available instead of quietly
 # withdrawing it.
 check "unparseable is unknown, never absent" "unknown" "$(run "$H1" unknown 'legacy_container_state')"
+# Docker Desktop stopped: the CLI is there, inspect fails and the server version
+# is empty. An engine that will not talk, not a missing container.
+check "a stopped engine is unknown, never absent" "unknown" "$(run "$H1" down 'legacy_container_state')"
 # The engine NAME comes from the record, never from the machine: a host with a
 # different engine installed must not be asked about this container. The stub
 # engine lives only in the bin-* directories run() prepends, so the outer PATH
