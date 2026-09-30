@@ -83,13 +83,27 @@ EXAKIT_LEGACY_CHOICE=""
 # the same place - see exakit_legacy_runtime_recorded there.
 legacy_db_recorded() { exakit_legacy_runtime_recorded; }
 
+# legacy_record_value <key> — the old container's container/volume/engine:
+# the copy under legacy.* first, runtime.* only when none was kept.
+#
+# runtime.* describes the OLD database only until the new one is recorded:
+# personal_record_manifest then drops these keys, so they stop describing a
+# deployment that has no container of that name. legacy_remember_record copies
+# them under legacy.* before that, and the restore after the deployment reads
+# them from there. Twin of Get-LegacyRecordValue.
+legacy_record_value() {
+    _lrv="$(manifest_get "legacy.$1" 2>/dev/null || true)"
+    if [ -n "$_lrv" ]; then printf '%s' "$_lrv"; return 0; fi
+    manifest_get "runtime.$1" 2>/dev/null || true
+}
+
 legacy_container() {
     [ -n "${EXAKIT_LEGACY_CONTAINER:-}" ] && { printf '%s' "$EXAKIT_LEGACY_CONTAINER"; return 0; }
-    manifest_get runtime.container 2>/dev/null || true
+    legacy_record_value container
 }
 legacy_volume() {
     [ -n "${EXAKIT_LEGACY_VOLUME:-}" ] && { printf '%s' "$EXAKIT_LEGACY_VOLUME"; return 0; }
-    manifest_get runtime.volume 2>/dev/null || true
+    legacy_record_value volume
 }
 legacy_dsn() {
     [ -n "${EXAKIT_LEGACY_DSN:-}" ] && { printf '%s' "$EXAKIT_LEGACY_DSN"; return 0; }
@@ -122,7 +136,7 @@ legacy_engine_name() {
         printf '%s' "${_len_base%.exe}"
         return 0
     fi
-    manifest_get runtime.engine 2>/dev/null || true
+    legacy_record_value engine
 }
 
 # legacy_engine — the engine that can actually reach this database, as a
@@ -159,7 +173,7 @@ legacy_engine() {
         return 0
     fi
     _le_path=""
-    _le_recorded="$(manifest_get runtime.engine 2>/dev/null || true)"
+    _le_recorded="$(legacy_record_value engine)"
     [ -n "$_le_recorded" ] && _le_path="$(command -v "$_le_recorded" 2>/dev/null || true)"
     if [ -z "$_le_path" ]; then
         _le_container="$(legacy_container)"

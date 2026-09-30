@@ -1742,9 +1742,33 @@ personal_wait_ready_or_deploy() {
 # rather than calling personal_status was then simply wrong. Callers that have
 # just watched the database answer pass "healthy"; callers that have not pass
 # nothing and the state is probed.
+# personal_clear_stale_record — drop the old container's keys from runtime.*.
+#
+# An install that crossed from the nano kit kept runtime.engine, container,
+# image and volume from that record, describing a container that is not this
+# deployment's. legacy.* is where the kit keeps the old database: migrate and
+# the restore read it from there (legacy_record_value). Copied across first
+# when legacy.* has none, so an older record loses nothing. Called when the
+# runtime is recorded and on every resumed install. Twin of
+# Clear-PersonalStaleRecord (which also records podman: on Windows the
+# launcher always runs the database in it).
+personal_clear_stale_record() {
+    for _pcs_key in container engine volume; do
+        _pcs_old="$(manifest_get "runtime.$_pcs_key" 2>/dev/null || true)"
+        [ -n "$_pcs_old" ] || continue
+        if [ -z "$(manifest_get "legacy.$_pcs_key" 2>/dev/null || true)" ]; then
+            manifest_set "legacy.$_pcs_key" "$_pcs_old"
+        fi
+    done
+    for _pcs_key in runtime.engine runtime.container runtime.image runtime.volume; do
+        manifest_del "$_pcs_key" 2>/dev/null || true
+    done
+}
+
 personal_record_manifest() {
     _prm_status="${1:-}"
     manifest_set runtime.type "personal"
+    personal_clear_stale_record
     # The version of the deployment ON DISK, whenever its state can say —
     # never the version this kit merely advertises. Reusing or adopting an
     # existing deployment used to record the advertised number over it, after
