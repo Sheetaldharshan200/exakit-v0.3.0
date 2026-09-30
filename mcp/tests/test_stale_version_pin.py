@@ -129,13 +129,13 @@ class StaleVersionPinTests(unittest.TestCase):
             self.subsystem.execute(self._request("configure", "1.10.1"))
 
             repair = self.subsystem.execute(self._request("repair", "2.0.0"))
-            self.assertEqual(repair.status, OperationStatus.SUCCESS)
+            self.assertEqual(repair.status, OperationStatus.SUCCESS, repair.findings)
             self.assertEqual(self._pin(), "exasol-mcp-server@2.0.0")
 
             # And the repair is durable: nothing is reported the next time round.
             after = self.subsystem.execute(self._request("validate", "2.0.0"))
 
-        self.assertEqual(after.status, OperationStatus.SUCCESS)
+        self.assertEqual(after.status, OperationStatus.SUCCESS, after.findings)
         self.assertNotIn("managed_entry_outdated", self._codes(after))
 
     def test_a_current_pin_still_reports_clean(self) -> None:
@@ -146,8 +146,8 @@ class StaleVersionPinTests(unittest.TestCase):
             doctor = self.subsystem.execute(self._request("doctor", "2.0.0"))
             repair = self.subsystem.execute(self._request("repair", "2.0.0"))
 
-        self.assertEqual(validate.status, OperationStatus.SUCCESS)
-        self.assertEqual(doctor.status, OperationStatus.SUCCESS)
+        self.assertEqual(validate.status, OperationStatus.SUCCESS, validate.findings)
+        self.assertEqual(doctor.status, OperationStatus.SUCCESS, doctor.findings)
         self.assertNotIn("managed_entry_outdated", self._codes(validate))
         self.assertNotIn("managed_entry_outdated", self._codes(doctor))
         self.assertEqual(repair.status, OperationStatus.NO_CHANGE)
@@ -172,7 +172,7 @@ class StaleVersionPinTests(unittest.TestCase):
             self.assertEqual(drift.severity, Severity.ERROR)
 
             repair = self.subsystem.execute(self._request("repair", "2.0.0"))
-            self.assertEqual(repair.status, OperationStatus.SUCCESS)
+            self.assertEqual(repair.status, OperationStatus.SUCCESS, repair.findings)
             repaired = json.loads(self.config_path.read_text(encoding="utf-8"))
             self.assertEqual(repaired["mcpServers"]["exasol"]["command"], "uvx")
 
@@ -212,7 +212,7 @@ class StaleVersionPinTests(unittest.TestCase):
                 self._request("repair", "2.0.0", ["claude_desktop", "cursor"])
             )
 
-        self.assertEqual(repair.status, OperationStatus.SUCCESS)
+        self.assertEqual(repair.status, OperationStatus.SUCCESS, repair.findings)
         self.assertEqual(self._pin(), "exasol-mcp-server@2.0.0")
         self.assertFalse(
             self.cursor_path.exists(),

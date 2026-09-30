@@ -186,6 +186,11 @@ def main(argv: list[str]) -> int:
         results.append(result)
         junit(result, out_dir / f"junit-{suite}.xml")
         print(f"{suite:12} {result['tests']:4} tests  {result['fail'] + result['error']:3} failing  {result['skip']:3} skipped  {result['seconds']:6.1f}s")
+    for result in results:
+        for row in result["rows"]:
+            if row["outcome"] in ("fail", "error"):
+                last = [line for line in row["detail"].strip().splitlines() if line.strip()]
+                print(f"  {row['outcome']:5} {row['id']}: {last[-1][:160] if last else ''}")
     cov_summary = coverage_finish(cov, out_dir)
     meta = {"when": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"), "platform": platform.platform(),
             "python": platform.python_version(), "commit": git_commit()}

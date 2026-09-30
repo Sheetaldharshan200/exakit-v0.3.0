@@ -15,6 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 import shutil
 import tempfile
+import os
 import unittest
 from unittest import mock
 
@@ -101,6 +102,7 @@ class WindowsProtectionTests(unittest.TestCase):
             self.assertIsNone(self.filesystem.mode_string(artifact))
             self.assertEqual(SecurityPolicy().apply_managed_permissions(artifact), OWNER_ONLY_ACL)
 
+    @unittest.skipIf(os.name == "nt", "the POSIX mode branch needs a POSIX file system")
     def test_posix_still_reports_a_mode(self) -> None:
         artifact = self._temp_dir / "config.json"
         artifact.write_text("{}", encoding="utf-8")
@@ -184,6 +186,7 @@ class DescribeProtectionTests(unittest.TestCase):
     def test_empty_icacls_output_is_none(self) -> None:
         self.assertIsNone(self._describe("\nSuccessfully processed 1 files.\n"))
 
+    @unittest.skipIf(os.name == "nt", "the POSIX mode branch needs a POSIX file system")
     def test_posix_still_reports_the_mode(self) -> None:
         from mcp.runtime import filesystem as fs
         self.target.chmod(0o600)

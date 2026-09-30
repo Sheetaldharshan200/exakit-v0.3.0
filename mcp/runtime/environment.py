@@ -19,7 +19,7 @@ class ExecutionEnvironment:
     def current(cls) -> ExecutionEnvironment:
         return cls(
             os_name=sys.platform,
-            home=Path.home(),
+            home=Path(os.environ["HOME"]) if os.environ.get("HOME") else Path.home(),   # HOME wins, as the kit's sandboxes rely on
             env=dict(os.environ),
             cwd=Path.cwd(),
         )

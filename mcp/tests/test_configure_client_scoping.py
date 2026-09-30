@@ -171,7 +171,7 @@ class PerClientScopingTests(unittest.TestCase):
         # Run 1: everything works, and every client earns a manifest record.
         with self._mock_connectivity():
             first = self._subsystem().execute(self._request(clients))
-        self.assertEqual(first.status, OperationStatus.SUCCESS)
+        self.assertEqual(first.status, OperationStatus.SUCCESS, first.findings)
         self.assertEqual(self._clients_carrying_entry(clients), set(clients))
 
         # Then something outside the kit truncates one config file.
@@ -342,7 +342,7 @@ class PerClientScopingTests(unittest.TestCase):
                     "dsn_reference": {"kind": "literal", "value": "127.0.0.1:8563"},
                 }
             )
-        self.assertEqual(restore.status, OperationStatus.SUCCESS)
+        self.assertEqual(restore.status, OperationStatus.SUCCESS, restore.findings)
         restored = json.loads(self.paths["cursor"].read_text(encoding="utf-8"))
         self.assertIn("filesystem", restored["mcpServers"])
         self.assertNotIn("exasol", restored["mcpServers"])

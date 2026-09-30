@@ -27,10 +27,11 @@ import unittest
 from tests.scenarios.harness import COMMANDS, FRESH_ONLY, SECRET, STATES, sandbox_for
 from tests.support import REPO, Sandbox, one_object
 
-Code = int | tuple[int, int]
+Code = int | tuple[int, int] | frozenset[int]
+MACHINE_DEPENDENT = frozenset({0, 1})   # preflight answers for the machine that runs the suite: ready, or blocked (a small CI disk)
 
 FRESH: dict[str, Code] = {
-    "status": 4, "info": 4, "version": 4, "guide": 4, "preflight": 0, "catalog": 0, "help": 0, "help-topic": 0,
+    "status": 4, "info": 4, "version": 4, "guide": 4, "preflight": MACHINE_DEPENDENT, "catalog": 0, "help": 0, "help-topic": 0,
     "help-unknown-topic": (1, 0), "whats-new": 0, "persona-list": 0, "persona-plan": 0, "persona-show": 0,
     "persona-show-unknown": 2, "persona-bad-subcommand": 2, "persona-apply-no-yes": 4, "marketplace-list": 4,
     "marketplace-list-with-id": 4, "skills": 0, "logs": 0, "logs-bad-target": (1, 2), "mcp-status": 4, "mcp-doctor": 4,
@@ -77,6 +78,13 @@ class MatrixTest(unittest.TestCase):
         path = box.home / "manifest.json"
         return path.read_bytes() if path.exists() else None
 
+    def _assert_code(self, done: subprocess.CompletedProcess, expected: int | frozenset[int]) -> None:
+        detail = f"stdout={done.stdout[-300:]!r} stderr={done.stderr[-300:]!r}"
+        if isinstance(expected, frozenset):
+            self.assertIn(done.returncode, expected, detail)
+        else:
+            self.assertEqual(done.returncode, expected, detail)
+
     def _json_shape(self, code: int, doc: dict) -> None:
         if code == 4:
             self.assertIs(doc.get("installed"), False, doc)
@@ -99,16 +107,19 @@ class MatrixTest(unittest.TestCase):
         before = self._record(box)
         human = box.run(*argv)
         with self.subTest(mode="human"):
-            self.assertEqual(human.returncode, human_code, f"stdout={human.stdout[-300:]!r} stderr={human.stderr[-300:]!r}")
+            self._assert_code(human, human_code)
             self.assertFalse(any(line.startswith("{") for line in human.stdout.splitlines()), "no JSON in human mode")
             if human_code == 2:
                 self.assertEqual(human.stdout.strip(), "", "a refusal goes to stderr, nothing on stdout")
             self.assertNotIn(SECRET, human.stdout + human.stderr)
         as_json = box.run(*argv, "--json")
         with self.subTest(mode="json"):
-            self.assertEqual(as_json.returncode, json_code, f"stdout={as_json.stdout[-300:]!r} stderr={as_json.stderr[-300:]!r}")
+            self._assert_code(as_json, json_code)
             doc = one_object(as_json.stdout)
-            self._json_shape(json_code, doc)
+            self._json_shape(as_json.returncode, doc)
+            if isinstance(json_code, frozenset) and as_json.returncode == 1:
+                self.assertEqual(doc.get("status"), "blocked", doc)
+                self.assertTrue(doc.get("failures"), doc)
             self.assertNotIn(SECRET, as_json.stdout + as_json.stderr)
         if cid not in WRITES_RECORD:
             self.assertEqual(self._record(box), before, f"{cid} must not change the install record")
