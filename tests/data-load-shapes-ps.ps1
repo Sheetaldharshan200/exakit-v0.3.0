@@ -133,9 +133,14 @@ Has "...and so is a .tsv" ("skip|extension||" + (Join-Path $shapes "tabs.tsv")) 
 Has "a README.txt is not" ("skip|unsupported||" + (Join-Path $shapes "README.txt")) $planText
 Has "a header-only file is skipped by name" ("skip|header-only||" + (Join-Path $shapes "shapes.csv")) $planText
 Lacks "nothing exapump refuses by name is queued for it" "load|csv|STOPS|" $planText
-# The Windows scan lists a folder's JSON files as skipped (help text says so);
-# what matters here is that .geojson lands among THEM, not among "other kinds".
-Has ".geojson is JSON in a folder scan" ("skip|json-unsupported||" + (Join-Path $shapes "areas.geojson")) $planText
+# A folder's JSON files load through JSON Tables where the engine exists
+# (Windows x86_64) and are listed as skipped where it does not. Either way what
+# matters is that .geojson is planned as JSON, not among "other kinds".
+if (Test-ExakitJsonTablesApplicable) {
+    Has ".geojson is JSON in a folder scan (queued for JSON Tables)" ("load|json|AREAS|" + (Join-Path $shapes "areas.geojson")) $planText
+} else {
+    Has ".geojson is JSON in a folder scan (no engine here)" ("skip|json-unsupported||" + (Join-Path $shapes "areas.geojson")) $planText
+}
 Lacks "...and not a file of another kind" ("skip|unsupported||" + (Join-Path $shapes "areas.geojson")) $planText
 Check ".geojson is JSON" "json" (Get-ExakitDataFileKind (Join-Path $shapes "areas.geojson"))
 $chosen = @($plan | Where-Object { $_.StartsWith("load|") } | ForEach-Object { $_.Substring(5) })
