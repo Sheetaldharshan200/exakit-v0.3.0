@@ -90,11 +90,14 @@ Recorded on 2026-09-30 on this Mac (macOS, bash 3.2, pwsh 7, Python 3.12.10).
 |---|---|
 | tests/unit (132 tests) | pass |
 | tests/contract (15 tests) | pass |
-| tests/e2e (9 tests) | pass |
+| tests/e2e (10 tests, 1 network test skipped) | pass |
 | tests/e2e/test_bootstrap_network (real uv 0.12.21 + CPython 3.12.14) | pass, 5 s |
-| tests/whats-new.sh | pass |
-| tests/skills.sh | pass |
-| tests/ps-encoding-guard.sh | pass |
-| tests/ps-parse.ps1 | pass |
-| tests/ps51-json-contracts.ps1 | pass |
-| remaining legacy suites | see the commit message of the run that recorded them |
+| Legacy: whats-new, skills, agent-operability (645), dry-run-matrix (175), install-payload, kit-upgrade, install-resume-safety (52), agent-audit, uninstall (41), status-soft-components | pass |
+| Legacy: marketplace, versions-manifest (407), noninteractive-answers, agents-rosters (19), ps-table-twin, bash32-guard, ps-undefined-functions (19 files) | pass |
+| Legacy: ps-encoding-guard (111), ps-parse (31 files), ps51-json-contracts (45) | pass |
+| Legacy: legacy-crossing | 1 failure, "a stopped engine is unknown, never absent", identical on the untouched 0.2.0 checkout on this Mac: environmental (a stopped container engine), not a regression |
+
+Three legacy suites needed one-line updates for the new tree and say so in
+their own comments: `dry-run-matrix.sh` counts the installer's new stop,
+`install-resume-safety.sh` keeps `setup\exakit.ps1` (the launcher) as the
+incoming-kit sentinel, `ps-undefined-functions.sh` sweeps `bootstrap/*.ps1`.
