@@ -89,7 +89,12 @@ function Confirm-ExakitPython {
     $env:UV_PYTHON_INSTALL_DIR = Join-Path $home_ "python"
     & $uv python install $script:ExakitPythonVersion --quiet
     if ($LASTEXITCODE -ne 0) { Write-Host "  [x] uv could not install Python $script:ExakitPythonVersion."; return 1 }
-    $interpreter = (& $uv python find $script:ExakitPythonVersion 2>$null | Select-Object -First 1)
+    # A native call with redirected stderr runs inside a Continue window: 5.1
+    # otherwise turns the redirect into a terminating error before it is read.
+    $previousEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try { $interpreter = (& $uv python find $script:ExakitPythonVersion 2>$null | Select-Object -First 1) }
+    finally { $ErrorActionPreference = $previousEap }
     if (-not (Test-ExakitPythonRuns $interpreter)) { Write-Host "  [x] The Python uv installed does not run."; return 1 }
     [System.IO.File]::WriteAllText($record, $interpreter + "`n")
     $env:EXAKIT_PYTHON = $interpreter

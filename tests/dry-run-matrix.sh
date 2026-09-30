@@ -126,7 +126,8 @@ grep -q 'ExakitRanAsFile = \[bool\]$PSCommandPath' "$ROOT/install.ps1" && \
 # preflight refusal, the download failure, the installer/kit mismatch, and the
 # setup script's own code. Raise this when a stop is added; never lower it by
 # dropping the assignment.
-check "...and every stop still reports a code" "4" \
+# Five since 0.3.0: the Python bootstrap that cannot be set up is a stop too.
+check "...and every stop still reports a code" "5" \
     "$(grep -c 'global:LASTEXITCODE' "$ROOT/install.ps1")"
 grep -q 'Exasol Personal (local deployment via Podman)' "$ROOT/install.sh" && \
     check "install.sh routes personal-on-linux and names the plan" present present || \

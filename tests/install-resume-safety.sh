@@ -428,7 +428,7 @@ else
 fi
 if [ -n "$_sentinels" ]; then
     _sent_line="$(sed -n "${_sentinels}p" "$_IPS")"
-    for _sentinel in 'setup\legacy-exakit.ps1' 'setup\lib\exakit-common.ps1' 'versions.json'; do
+    for _sentinel in 'setup\exakit.ps1' 'setup\lib\exakit-common.ps1' 'versions.json'; do
         case "$_sent_line" in
             *"$_sentinel"*) pass "...checking it for $_sentinel" ;;
             *) fail "the incoming kit is no longer checked for $_sentinel - an archive without it would replace a working kit" ;;
