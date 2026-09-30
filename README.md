@@ -13,7 +13,7 @@
 
 [![Documentation](https://img.shields.io/badge/docs-exasol.com-blue)](https://docs.exasol.com/db/latest/home.htm)
 [![Community](https://img.shields.io/badge/community-exasol-green)](https://community.exasol.com)
-[![Quickstart](https://img.shields.io/badge/database%20ready-~2%20min-orange)](QUICKSTART.md)
+[![Quickstart](https://img.shields.io/badge/database%20ready-~5%20min-orange)](QUICKSTART.md)
 
 **macOS / Linux / WSL**
 
@@ -67,7 +67,7 @@ Five optional add-ons can be installed at any time with `exakit marketplace`:
 ## Key features
 
 - Few prerequisites. The kit needs Python 3.11 or newer and installs its own copy if you don't have one. You don't need Homebrew or Rust.
-- The database is ready in about 2 minutes. The full install, with sample data and AI client setup, takes longer, especially on Windows, so let it finish.
+- The database is ready in about 5 minutes. The full install, with sample data and AI client setup, takes longer, especially on Windows, so let it finish.
 - Re-running the install is always safe. It skips whatever is already done.
 - Your AI assistant has read-only access. It can read everything and change nothing, and the database enforces this.
 - It works with Claude, Codex, Cursor, GitHub Copilot, Gemini CLI, OpenCode and Continue.
@@ -97,7 +97,7 @@ Step-by-step guides: [QUICKSTART](QUICKSTART.md) · [macOS](quickstarts/macos.md
 
 ### What the install does
 
-The install command checks your machine, shows what it is going to do, and then installs the database, exapump, the MCP server, pyexasol and your AI client connections. The steps are the same on macOS, Linux, WSL and Windows PowerShell. The database is ready in about 2 minutes, and the rest takes a few minutes more, especially on Windows. Let it finish.
+The install command checks your machine, shows what it is going to do, and then installs the database, exapump, the MCP server, pyexasol and your AI client connections. The steps are the same on macOS, Linux, WSL and Windows PowerShell. The database is ready in about 5 minutes, and the rest takes a few minutes more, especially on Windows. Let it finish.
 
 When it is done, it shows a connection panel with the details you need and copies a first prompt for your AI client to your clipboard.
 
