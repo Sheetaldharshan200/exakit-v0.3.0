@@ -1,4 +1,4 @@
-"""``exakit persona``: list, show, plan (Phase A); apply arrives with the lifecycles (Phase B)."""
+"""``exakit persona``: list, show, plan, and apply through the one plan runner."""
 
 from __future__ import annotations
 
@@ -6,10 +6,11 @@ from typing import Any
 
 from exakit.domain.catalog import Persona
 from exakit.domain.persona import answers_for, plan_for
-from exakit.domain.plan import Plan
+from exakit.domain.manifest import utc_now
+from exakit.domain.plan import Plan, Step
 from exakit.domain.result import Result
 
-from . import Context
+from . import Context, run_plan
 from .machine import all_datasets, probe
 
 
@@ -97,3 +98,78 @@ def install_env(ctx: Context, persona_id: str) -> dict[str, str]:
         env["EXAKIT_MARKETPLACE_ADDONS"] = ",".join(runnable) or "none"
     env["EXAKIT_PERSONA_ACTIVE"] = "1"
     return env
+
+
+# --- apply -------------------------------------------------------------------------------
+
+
+def _bind(ctx: Context, step: Step, answers) -> None:
+    """Give a pending step the use case that does it; each one records its own manifest facts."""
+    from . import data, marketplace, mcp, skills  # noqa: PLC0415 - the sections this plan drives
+    if step.section == "datasets":
+        step.run = lambda: data.load(ctx, data.dataset(ctx, step.id))
+        step.remedy = step.remedy or f"exakit data-load {step.id}"
+    elif step.section == "mcp_clients":
+        chosen = answers.mcp_clients if step.id == "all" else step.id
+        step.run = lambda: _connect(ctx, chosen)
+        step.remedy = step.remedy or f"EXAKIT_MCP_CLIENTS={chosen} exakit mcp-setup"
+    elif step.section == "addons":
+        step.run = lambda: _install_addon(ctx, marketplace, step.id)
+        step.remedy = step.remedy or f"exakit marketplace {step.id}"
+    elif step.section == "skills":
+        step.run = lambda: skills.install(ctx)
+        step.remedy = step.remedy or "exakit skills-install"
+
+
+def _connect(ctx: Context, clients: str) -> None:
+    from exakit.domain.errors import Failed  # noqa: PLC0415
+    from . import mcp  # noqa: PLC0415
+    env = {**dict(ctx.env), "EXAKIT_MCP_CLIENTS": clients}
+    saved = ctx.env
+    ctx.env = env
+    try:
+        result = mcp.setup(ctx)
+    finally:
+        ctx.env = saved
+    if result.exit_code:
+        raise Failed(f"MCP setup for {clients} did not finish", remedy=f"EXAKIT_MCP_CLIENTS={clients} exakit mcp-setup")
+
+
+def _install_addon(ctx: Context, marketplace, addon_id: str) -> None:
+    from exakit.domain.errors import Failed  # noqa: PLC0415
+    if not marketplace.install_one(ctx, ctx.catalog.addon(addon_id)):
+        raise Failed(f"{addon_id} did not finish installing", remedy=f"exakit update {addon_id}")
+
+
+def _record(ctx: Context, persona: Persona, the_plan: Plan) -> None:
+    skipped = [s.id for s in the_plan.steps if s.state.value == "skipped"]
+    def change(m):
+        m.set("persona.id", persona.id)
+        m.set("persona.source", "apply")
+        m.set("persona.requested_at", m.get("persona.requested_at") or utc_now())
+        m.set("persona.applied_at", utc_now())
+        m.set("persona.skipped", skipped)
+    ctx.manifest_store.update(change)
+
+
+def apply(ctx: Context, persona_id: str) -> Result:
+    """``exakit persona apply <id>``: plan for this machine, confirm, run, record."""
+    persona = ctx.catalog.persona(persona_id)
+    ctx.manifest()   # exit 4 without an install record
+    manifest = ctx.manifest_or_none()
+    machine = probe(ctx, manifest)
+    answers = answers_for(persona, ctx.env, all_datasets=list(machine.all_datasets))
+    the_plan = plan_for(persona, machine, answers)
+    for step in the_plan.pending():
+        _bind(ctx, step, answers)
+    extra = {"persona": {"id": persona.id, "title": persona.title, "source": persona.source}}
+    result = run_plan(ctx, the_plan, confirm_question=f"Apply the {persona.title} persona now?", extra=extra)
+    _record(ctx, persona, the_plan)
+    if not ctx.json:
+        if result.status == "complete":
+            ctx.ui.ok("Everything this persona asks for is already on this machine.")
+        elif result.status == "applied":
+            ctx.ui.ok(f"Persona {persona.id} applied. Recorded on this machine; see it again with: exakit persona plan {persona.id}")
+        else:
+            ctx.ui.warn(f"Persona {persona.id} applied with failures - retry with: exakit persona apply {persona.id} --yes")
+    return result

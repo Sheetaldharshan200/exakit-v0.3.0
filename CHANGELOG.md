@@ -6,8 +6,10 @@
 `python -m exakit`: a launcher on PATH finds the kit's own Python (installed by
 the bootstrap through a pinned, digest-checked uv into `~/.exasol-starter-kit/python`,
 never the system Python) and runs the kit. The commands Python has taken over
-in this release are `help`, `catalog`, `whats-new`, `version` and the new
-`persona`; every other command still runs the previous shell implementation,
+in this release are `help`, `catalog`, `whats-new`, `version`, `persona`
+(including `apply`), `skills`, `skills-install`, `mcp-setup`, `mcp-status`,
+`mcp-doctor`, `mcp-remove`, `sql`, `logs`, `data-load`, `marketplace` and
+`uninstall <addon>`; every other command still runs the previous shell implementation,
 unchanged, behind the same `exakit` word (`exakit/cli/main.py` lists the split,
 and `tests/contract` pins every `--json` shape and exit code). An installed
 0.2.0 kit gets all of this from `exakit update`: the new tree's `setup/exakit`
@@ -19,8 +21,16 @@ datasets, AI clients and add-ons a role wants; four ship (`analyst`,
 answers every question from it (an explicit `EXAKIT_*` answer still wins, an
 add-on that cannot run here is skipped with a reason), and `exakit persona
 list | show | plan` read the personas and say what is left on this machine.
-`persona apply` follows with the lifecycles. Add-ons and components are
-described in `catalog/` as JSON too, which is what the next phases build on
+`exakit persona apply <id>` runs the plan through the kit's one apply loop
+(confirm, or `--yes`, or exit 5 without a terminal), records the persona, and
+answers `partial` with the failed step's own retry command when one step does
+not finish. Add-ons are described in `catalog/addons/<id>/addon.json` and
+installed by one lifecycle per kind (a Python venv, a prebuilt binary, an
+editor extension); the steps only one add-on needs (dash-server's port,
+the scheduler's database user, JSON Tables' cargo shim) are a short Python
+class each under `exakit/addons/`. `exakit marketplace --list --json`,
+`exakit uninstall <addon>` and the MCP, skills, data, sql and logs commands
+keep their `--json` shapes and exit codes, pinned by `tests/contract`
 (docs/architecture.md, docs/design.md, docs/tasks.md).
 
 **Sample data loads on Windows again, first time.** A fresh Windows install

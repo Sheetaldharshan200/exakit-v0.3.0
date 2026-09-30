@@ -23,7 +23,8 @@ class PythonVenvLifecycle(LifecycleBase):
 
     @property
     def python(self) -> Path:
-        return self.uv().python_of(self.venv)
+        """The venv's interpreter by layout alone, so presence checks never need uv."""
+        return self.venv / ("Scripts/python.exe" if self.ctx.platform.os == "windows" else "bin/python")
 
     @property
     def package(self) -> str:
@@ -33,9 +34,14 @@ class PythonVenvLifecycle(LifecycleBase):
         return package_version(self.python, self.package, self.ctx.runner) if self.python.exists() else None
 
     def installed_version(self) -> str | None:
-        if not self.recorded("version"):
+        """The recorded version while the venv or the launcher is still on disk (the cheap probe every status uses)."""
+        recorded = self.recorded("version")
+        if not recorded:
             return None
-        return self.package_version()
+        launcher = self.ctx.paths.bin_dir / self.addon.launcher if self.addon.launcher else None
+        if self.python.exists() or (launcher is not None and launcher.exists()):
+            return str(recorded)
+        return None
 
     def install_spec(self, version: str) -> str:
         source = self.addon.source

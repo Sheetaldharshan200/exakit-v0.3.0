@@ -39,13 +39,14 @@ Update this file in the same commit as the work. Design sections are in
 
 ## Phase B: marketplace, skills, mcp, data, persona apply, logs, sql
 
-- [ ] B1 `lifecycles/{python_venv,binary,host_extension}.py` + fakes + tests
-- [ ] B2 `app/marketplace.py` + `cli/marketplace.py`; port each add-on to its `addon.json` (+ hooks.py where needed: exasol-scheduler DB user, json-tables cargo shim); legacy module pairs deleted one by one after `tests/legacy/marketplace.sh` equivalents pass in `tests/unit`
-- [ ] B3 `app/skills.py` (place, retire, allowlist) + tests from `tests/legacy/skills.sh`
-- [ ] B4 `app/mcp.py`: move `mcp/` into `exakit/adapters/clients` + `app/mcp.py`; `mcp-setup`, `mcp-status`, `mcp-doctor`, `mcp-remove`; `mcp/tests` moved to `tests/unit/clients`
-- [ ] B5 `adapters/exapump.py` + `app/data.py` (bundled datasets, files, folders, resume) + `cli/data.py`, `cli/sql.py`, `cli/logs.py`
-- [ ] B6 `app/persona.py` apply + acceptance A21 to A24
-- [ ] B7 Retire the legacy suites for these areas; CI roster updated
+- [x] B1 `lifecycles/{__init__,base,python_venv,binary,host_extension}.py`; per-add-on modules `exakit/addons/{dash_server,dbt_exasol,json_tables,exasol_scheduler}.py` (exasol-vscode is the generic host extension); `tests/unit/lifecycles/test_addons.py` (D16)
+- [x] B2 `app/marketplace.py` (list, scripted and menu answers, install loop, `install_addon_quietly`, `uninstall <addon>`), `app/services.py`; `marketplace` and add-on `uninstall` migrated (the full uninstall stays legacy, D18); `tests/unit/app/test_marketplace.py` + contract shapes. The legacy `.sh`/`.ps1` add-on modules stay until C4 retires the legacy start/stop/autostart (D17)
+- [x] B3 `app/skills.py` (place, retire, allowlist, per-add-on) + `tests/unit/app/test_skills.py`
+- [x] B4 `app/mcp.py` (setup, status, doctor, remove, read-only user, add-on endpoints) over `adapters/clients` calling `mcp/` in process (D15; the package move is Phase C); `app/runtime_ops.py` self-heal; `tests/unit/app/test_mcp.py`
+- [x] B5 `adapters/exapump.py` + `app/{data,data_files,sql,logs}.py` (bundled datasets, files with cut-short recovery, folders with receipts, JSON through json-tables) + CLI wiring; `tests/unit/app/{test_data,test_sql_logs}.py`
+- [x] B6 `app/persona.py` apply through `run_plan` (datasets via data, clients via mcp, add-ons via marketplace, skills via skills; records `persona.*`); `tests/unit/app/test_persona_apply.py` + contract; acceptance A21 to A24
+- [ ] B8 Bring the eight functions over the 40-line standard back under it (`data.load`, `data.data_load`, `data_files.load_folder`, `help.component`, `logs.run`, `mcp.configure_readonly_access`, `mcp._select`, `sql.run`); tests already cover each
+- [ ] B7 Retire the legacy suites for these areas once C4 deletes the legacy add-on modules they cover; CI roster runs the Python suites already (`versions.yml`)
 
 ## Phase C: install, update, runtime, uninstall
 

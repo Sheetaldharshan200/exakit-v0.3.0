@@ -16,7 +16,7 @@ bash tests/<legacy-suite>.sh                            # the legacy suites, unc
 ```
 
 The acceptance rows below name the suite that proves each one. Rows that
-belong to `persona apply` (A21 to A24) are Phase B and are marked pending.
+belong to `persona apply` (A21 to A24) are covered by `tests/unit/app/test_persona_apply.py` and `tests/contract/test_cli.py` (PhaseBShapeTest).
 
 ## 2. Acceptance criteria (personas)
 
@@ -42,10 +42,10 @@ belong to `persona apply` (A21 to A24) are Phase B and are marked pending.
 | A18 | `exakit persona show data-scientist --json` | | the file's fields, exit 0; `show nope` exits 2 with the refusal object under `--json` | R10, R12 | persona.sh: CLI |
 | A19 | sandbox with tpch loaded, no clients connected, no add-ons, skills current | `exakit persona plan data-scientist --json` | `datasets`: tpch done, energy pending, weather pending; `mcp_clients` from the stubbed discovery; `addons` states; `skills.state:"done"`; `pending` equals the count; `remedy` is the `apply --yes` command | R9 | persona.sh: plan |
 | A20 | same, everything already there | `exakit persona plan analyst --json` | `status:"complete"`, `pending:0`, `remedy:null` | R9 | persona.sh: plan |
-| A21 | no terminal, no `--yes` | `exakit persona apply analyst` | prints the plan, exits 5, last line names `exakit persona apply analyst --yes`; nothing recorded | R8, D6 | persona.sh: apply |
-| A22 | `--yes`, every downstream function stubbed to succeed | `exakit persona apply data-scientist --yes --json` | calls the data loader with `EXAKIT_DATASETS=energy,weather` (pending only), `exakit_mcp_setup` with `EXAKIT_MCP_CLIENTS=all`, the marketplace with the filtered csv, `exakit_install_skills`; records `persona.source=apply`, `persona.applied_at`; `status:"applied"`, exit 0 | R8 | persona.sh: apply |
-| A23 | `--yes`, the marketplace stub fails | `exakit persona apply data-scientist --yes --json` | the other sections still run; `status:"partial"`, `failed[]` names the add-on, `remedy` is `exakit marketplace <id>`; exit 1 | R8 | persona.sh: apply |
-| A24 | `--yes`, `minimal` | `exakit persona apply minimal --yes` | no loader, no MCP setup, no marketplace call; skills placed; exit 0 | design 4 | persona.sh: apply |
+| A21 | no terminal, no `--yes` | `exakit persona apply analyst` | prints the plan, exits 5, remedy is `exakit persona apply analyst --yes`; nothing recorded | R8, D6 | test_persona_apply: refuses_without_yes; contract PhaseBShapeTest |
+| A22 | `--yes`, every downstream use case stubbed to succeed | `exakit persona apply analyst --yes --json` | `data.load` per pending dataset, `mcp.setup` per pending client with `EXAKIT_MCP_CLIENTS=<id>`, `marketplace.install_one` per available add-on (an installed one is `done`), `skills.install`; records `persona.source=apply`, `persona.applied_at`; `status:"applied"`, exit 0 | R8 | test_persona_apply: yes_runs_each_section |
+| A23 | `--yes`, the add-on install fails | `exakit persona apply minimal --yes --json` | the other sections still run; `status:"partial"`, `failed[]` names the add-on, `remedy` is `exakit update <id>` (the step's own retry); exit 1 | R8 | test_persona_apply: failed_step_partial |
+| A24 | `--yes`, `minimal`, everything present | `exakit persona apply minimal --yes` | no loader, no MCP setup, no marketplace call; `status:"complete"`, persona recorded; exit 0 | design 4 | test_persona_apply: complete_plan; contract PhaseBShapeTest |
 | A25 | `exakit persona apply` (no id), `exakit persona bogus`, `exakit persona list --nope` | | exit 2 each; JSON refusal object when `--json` present | R12 | persona.sh: CLI |
 | A26 | manifest with `persona.id` | `exakit status --json` | carries `"persona":"<id>"`; without the block, `"persona":null` | R13 | persona.sh: status |
 | A27 | `setup/help/exakit.json` | `exakit help persona`, `exakit catalog`, `exakit help --json` | all know the command; the Personas group exists | R13 | persona.sh: help |
@@ -88,11 +88,12 @@ Recorded on 2026-09-30 on this Mac (macOS, bash 3.2, pwsh 7, Python 3.12.10).
 
 | Suite | Result |
 |---|---|
-| tests/unit (132 tests) | pass |
-| tests/contract (15 tests) | pass |
+| tests/unit (236 tests: domain, adapters incl. Phase B adapters, app incl. skills/mcp/data/sql/logs/marketplace/persona apply, lifecycles) | pass |
+| tests/contract (21 tests, incl. marketplace --list, uninstall <addon>, persona apply shapes) | pass |
 | tests/e2e (10 tests, 1 network test skipped) | pass |
 | tests/e2e/test_bootstrap_network (real uv 0.12.21 + CPython 3.12.14) | pass, 5 s |
 | Legacy: whats-new, skills, agent-operability (645), dry-run-matrix (175), install-payload, kit-upgrade, install-resume-safety (52), agent-audit, uninstall (41), status-soft-components | pass |
+| Legacy (rerun after Phase B): marketplace (377), uninstall (41), skills (236) | pass |
 | Legacy: marketplace, versions-manifest (407), noninteractive-answers, agents-rosters (19), ps-table-twin, bash32-guard, ps-undefined-functions (19 files) | pass |
 | Legacy: ps-encoding-guard (111), ps-parse (31 files), ps51-json-contracts (45) | pass |
 | Legacy: legacy-crossing | 1 failure, "a stopped engine is unknown, never absent", identical on the untouched 0.2.0 checkout on this Mac: environmental (a stopped container engine), not a regression |

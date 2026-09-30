@@ -19,7 +19,8 @@ from exakit.domain.result import Result
 from . import _context, commands, legacy
 
 MIGRATED_COMMANDS: frozenset[str] = frozenset({"help", "catalog", "whats-new", "version", "persona", "skills", "skills-install",
-                                               "mcp-setup", "mcp-status", "mcp-doctor", "mcp-remove", "sql", "logs", "data-load"})
+                                               "mcp-setup", "mcp-status", "mcp-doctor", "mcp-remove", "sql", "logs", "data-load",
+                                               "marketplace", "uninstall"})
 READONLY_COMMANDS: frozenset[str] = frozenset({"help", "catalog", "whats-new", "version", "status", "info",
                                                "skills", "logs", "mcp-status", "persona"})
 HANDLERS: dict[str, Callable[[list[str], Context], Result]] = {
@@ -31,6 +32,7 @@ HANDLERS: dict[str, Callable[[list[str], Context], Result]] = {
     "mcp-setup": commands.mcp_setup_command, "mcp-status": commands.mcp_status_command,
     "mcp-doctor": commands.mcp_doctor_command, "mcp-remove": commands.mcp_remove_command,
     "sql": commands.sql_command, "logs": commands.logs_command, "data-load": commands.data_load_command,
+    "marketplace": commands.marketplace_command, "uninstall": commands.uninstall_command,
 }
 ALIASES = {"-h": "help", "--help": "help", "--version": "version", "-v": "version"}
 
@@ -103,8 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         return 130
 
 
-_LEGACY_WORDS = frozenset({"status", "info", "update", "start", "stop", "marketplace",
-                           "uninstall", "guide", "preflight", "repair-runtime", "migrate", "autostart",
+_LEGACY_WORDS = frozenset({"status", "info", "update", "start", "stop", "guide", "preflight", "repair-runtime", "migrate", "autostart",
                            "upgrade-kit2", "rollback-kit2"})
 
 

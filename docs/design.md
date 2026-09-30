@@ -123,10 +123,18 @@ exakit/
   app/
     __init__.py          Context dataclass; UseCase Protocol (plan/apply)
     status.py info.py version.py help.py
-    persona.py marketplace.py skills.py mcp.py data.py
-    install.py update.py runtime.py uninstall.py
+    persona.py marketplace.py skills.py mcp.py data.py data_files.py sql.py logs.py
+    services.py          the database plus each installed service add-on: status/start/stop/autostart
+    runtime_ops.py       credentials, exapump and the personal runtime as the use cases reach them; ensure_running()
+    install.py update.py runtime.py uninstall.py            (Phase C)
     notice.py            the once-a-day pending-update notice
     machine.py           MachineState probe: what is on THIS machine (datasets, clients, add-ons, skills)
+  lifecycles/
+    __init__.py          Lifecycle Protocol; for_addon(ctx, addon) picks exakit.addons.<id_> or the generic kind
+    base.py              LifecycleBase: manifest block, versions, verified downloads, launchers, ServiceHooks
+    python_venv.py binary.py host_extension.py             the three generic kinds
+  addons/
+    dash_server.py dbt_exasol.py json_tables.py exasol_scheduler.py   one Lifecycle subclass per add-on with bespoke steps (D16)
   domain/
     errors.py            ExakitError hierarchy with exit codes (the only place codes are defined)
     result.py            Result, Refusal
@@ -338,7 +346,7 @@ implementing the Protocol. The generic lifecycles cover everything the five
 add-ons do today except: exasol-scheduler's DB user bootstrap (custom hook
 `post_install`), json-tables' Windows cargo shim (a second `binary` asset
 under `source.extra`). Both are expressed as optional hooks, not full
-modules: `hooks.py` may define `post_install(ctx, addon)`, `pre_uninstall`,
+modules: `exakit/addons/<id_>.py` may define a `Lifecycle` subclass (D16) overriding `install`, `validate`, `service`, `uninstall`,
 `validate`.
 
 ### 3.3 `catalog/personas/<id>.json` (schema 1, unchanged from the approved draft)
@@ -616,7 +624,7 @@ deletes `setup/`.
 
 ---
 
-## 14. Decisions taken while building Phase A
+## 14. Decisions taken while building Phases A and B
 
 | # | Decision | Why |
 |---|---|---|
@@ -627,4 +635,10 @@ deletes `setup/`.
 | D12 | Help documents stay under `setup/help/` for now. | Every legacy screen and test reads them there; the move to `help/` is a Phase D rename. |
 | D13 | The installed-version probes in Phase A are the manifest plus a disk check for exapump and pyexasol. | The full per-component probes are the lifecycles' `installed_version` hooks (B1) and the runtime adapter (C1). The table's shape and vocabulary are already final. |
 | D14 | uv is pinned to 0.12.21 with one digest per platform in `versions.json` `tools.uv`. | Verified on this Mac: the archive digest matched and CPython 3.12.14 installed in five seconds. Bumping uv is a `versions.json` change with new digests. |
+| D15 | The `mcp/` package stays where it is in Phase B; `adapters/clients` calls `mcp.cli.main` in process. | Its own tests and the legacy CLI both import it from there; moving it is a rename with no behaviour change, scheduled for Phase C. |
+| D16 | Bespoke add-on steps live in `exakit/addons/<id_>.py` as a `Lifecycle` subclass of the generic kind; `lifecycles.for_addon` picks the module when it exists. | A class that overrides the steps it needs is easier to read than a hook table (`hooks.py` with named callbacks): dash-server's port settling, the scheduler's database user and json-tables' cargo shim each override two or three methods and inherit the rest. |
+| D17 | The legacy add-on `.sh`/`.ps1` modules are not deleted in Phase B. | The legacy `start`, `stop`, `autostart`, `update` and `status` still dispatch to them; they go with those commands in C4. Both worlds read the same `components.<id>` manifest block, so a Python install and a legacy start agree. |
+| D18 | `status`, `info`, `start`, `stop`, `autostart`, `update`, the installer and the full `uninstall` stay legacy through Phase B; `uninstall <addon>` is Python. | The single-add-on removal is the marketplace's own hook (dash-server's dry run names the dashboards it keeps); the full uninstall needs the runtime adapter (C1). `cli.commands.uninstall_command` splits on whether an id was given. |
+| D19 | An add-on is "installed" when the manifest records a version AND its lifecycle still finds it on disk (venv interpreter or launcher for Python tools, engine for binaries, the editor's own listing for extensions). | The legacy rule (manifest + launcher) missed a deleted venv and, for VS Code, an extension removed inside the editor. The probe needs no uv and no network, so `marketplace --list` stays a read. |
+| D20 | `install_addon_quietly` swaps the renderer for `SilentRenderer` around one install. | Loading a `.json` file needs json-tables; the file load is the story, the add-on install is a footnote that belongs in the log. |
 

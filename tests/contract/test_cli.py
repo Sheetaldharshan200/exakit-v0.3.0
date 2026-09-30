@@ -165,6 +165,91 @@ class RefusalsAndCodesTest(unittest.TestCase):
         self.assertEqual(self.box.run("help", "--json").returncode, 0)
 
 
+class PhaseBShapeTest(unittest.TestCase):
+    """marketplace --list, uninstall <addon>, persona apply: the shapes and exit codes agents branch on."""
+
+    @classmethod
+    def setUpClass(cls):
+        doc = {**MANIFEST, "components": {**MANIFEST["components"], "dash_server": {"version": "0.1.1", "port": 5100}}}
+        cls.box = Sandbox(manifest=doc)
+        bin_dir = Path(cls.box.env["EXAKIT_BIN_DIR"])
+        bin_dir.mkdir(exist_ok=True)
+        (bin_dir / "dash-server").write_text("#!/bin/sh\n")
+        cls.box.env["EXAKIT_MCP_CLIENTS"] = "skip"
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.box.close()
+
+    def test_marketplace_list_json_is_the_legacy_document(self):
+        done = self.box.run("marketplace", "--list", "--json")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        doc = _one_object(done.stdout)
+        self.assertEqual(list(doc), ["addons"])
+        rows = {r["id"]: r for r in doc["addons"]}
+        self.assertEqual(set(rows), {"dash-server", "dbt-exasol", "exasol-scheduler", "exasol-vscode", "json-tables"})
+        self.assertEqual(rows["dash-server"], {"id": "dash-server", "status": "installed", "installed": True, "version": "0.1.1"})
+        for row in rows.values():
+            self.assertIn(row["status"], ("installed", "available", "managed outside the kit", "not in this kit copy", "not available on this machine"))
+            self.assertEqual(row["installed"], row["status"] == "installed")
+        self.assertEqual(_one_object(self.box.run("marketplace", "--json").stdout), doc)
+
+    def test_marketplace_without_a_terminal_installs_nothing(self):
+        done = self.box.run("marketplace")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("nothing was installed", done.stdout)
+        self.assertIn("marketplace --list", done.stdout)
+
+    def test_marketplace_refusals(self):
+        self.assertEqual(self.box.run("marketplace", "nope").returncode, 2)
+        self.assertEqual(self.box.run("marketplace", "--list", "dash-server").returncode, 2)
+        self.assertEqual(self.box.run("marketplace", "--frob").returncode, 2)
+
+    def test_uninstall_one_addon_codes(self):
+        self.assertEqual(self.box.run("uninstall", "nope").returncode, 2)
+        self.assertEqual(self.box.run("uninstall", "dash-server", "json-tables").returncode, 2)
+        not_installed = self.box.run("uninstall", "dbt-exasol")
+        self.assertEqual(not_installed.returncode, 0, not_installed.stderr)
+        self.assertIn("not installed", not_installed.stdout)
+        declined = self.box.run("uninstall", "dash-server", "--json")
+        self.assertEqual(declined.returncode, 5)
+        doc = _one_object(declined.stdout)
+        self.assertEqual((doc["ok"], doc["remedy"]), (False, "exakit uninstall dash-server --yes"))
+        dry = self.box.run("uninstall", "dash-server", "--dry-run")
+        self.assertEqual(dry.returncode, 0, dry.stderr)
+        self.assertIn("will remove", dry.stdout)
+        self.assertTrue((Path(self.box.env["EXAKIT_BIN_DIR"]) / "dash-server").exists())
+
+    def test_persona_apply_refuses_without_yes_and_records_nothing(self):
+        box = Sandbox(manifest={**MANIFEST, "components": {**MANIFEST["components"], "skills": {"version": "0.0.1"}}})
+        box.env["EXAKIT_MCP_CLIENTS"] = "skip"
+        box.env["EXAKIT_MARKETPLACE_ADDONS"] = "none"
+        try:
+            done = box.run("persona", "apply", "minimal", "--json")
+            self.assertEqual(done.returncode, 5, done.stdout)
+            doc = _one_object(done.stdout)
+            self.assertEqual((doc["ok"], doc["remedy"]), (False, "exakit persona apply minimal --yes"))
+            self.assertEqual(doc["skills"], [{"id": "skills", "state": "pending"}])
+            self.assertNotIn("persona", json.loads((box.home / "manifest.json").read_text()))
+        finally:
+            box.close()
+
+    def test_persona_apply_complete_records_the_persona(self):
+        box = Sandbox(manifest=MANIFEST)
+        box.env["EXAKIT_MCP_CLIENTS"] = "skip"
+        box.env["EXAKIT_MARKETPLACE_ADDONS"] = "none"
+        try:
+            done = box.run("persona", "apply", "minimal", "--yes", "--json")
+            self.assertEqual(done.returncode, 0, done.stdout)
+            doc = _one_object(done.stdout)
+            self.assertEqual((doc["installed"], doc["status"], doc["remedy"], doc["pending"]), (True, "complete", None, 0))
+            recorded = json.loads((box.home / "manifest.json").read_text())["persona"]
+            self.assertEqual((recorded["id"], recorded["source"]), ("minimal", "apply"))
+            self.assertEqual(_one_object(box.run("persona", "list", "--json").stdout)["recorded"], "minimal")
+        finally:
+            box.close()
+
+
 class MigrationSplitTest(unittest.TestCase):
     def test_every_command_is_in_exactly_one_world(self):
         from exakit.cli.main import MIGRATED_COMMANDS, _LEGACY_WORDS

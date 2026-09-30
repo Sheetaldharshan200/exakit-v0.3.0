@@ -246,7 +246,7 @@ exakit persona plan data-scientist --json  # what applying it would do HERE: dat
 EXAKIT_PERSONA=data-scientist curl ... | sh   # apply one during the install (unattended: add the env answers you need)
 ```
 
-`exakit persona apply <id> --yes` lands with the next kit update; until then `plan` names what is left and the everyday commands above (`data-load`, `mcp-setup`, `marketplace <id>`) do it. Every `--json` answer carries `installed`, `status` and `remedy`.
+`exakit persona apply <id> --yes` runs what `plan` lists: datasets through the loader, clients through `mcp-setup`, add-ons through the marketplace, then the skills; without `--yes` and without a terminal it prints the plan and exits 5. A step that fails does not stop the others: the answer is `status:"partial"`, exit 1, `failed[]` names the step and `remedy` is the command that retries it. Every `--json` answer carries `installed`, `status` and `remedy`.
 
 ## Where things live
 

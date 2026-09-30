@@ -47,7 +47,8 @@ as the change they describe.
 - **Adding an add-on?** One file, `catalog/addons/<id>/addon.json` (schema
   3.2), its `setup/help/<id>.json` and its `skills/<id>/SKILL.md` with an
   `addon:` key, plus the `components.<id>` block in `versions.json`. Code
-  (`hooks.py`) only for behaviour a generic lifecycle cannot express. Never
+  (`exakit/addons/<id_>.py`, a `Lifecycle` subclass) only for behaviour a
+  generic lifecycle cannot express. Never
   a `.sh` + `.ps1` module pair.
 - **Adding a component?** One file, `catalog/components/<id>.json`, plus its
   `versions.json` entry.

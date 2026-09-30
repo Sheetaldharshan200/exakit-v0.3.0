@@ -23,7 +23,6 @@ from exakit.domain.persona import (
 from . import Context
 
 _VERSION_IN_TEXT = re.compile(r"[0-9]+\.[0-9]+[0-9A-Za-z._+-]*")
-_VSCODE_CLIS = ("code", "code-insiders", "cursor", "windsurf", "codium")
 
 
 def kit_root(ctx: Context) -> Path:
@@ -128,12 +127,15 @@ def installed_version(ctx: Context, cid: str, manifest: Manifest | None) -> tupl
 
 
 def addon_installed_version(ctx: Context, addon: Addon, manifest: Manifest) -> tuple[str | None, bool]:
-    version = manifest.get(f"components.{addon.manifest_key}.version")
-    if not version:
+    """The record says installed AND the add-on's lifecycle still finds it on disk."""
+    if not manifest.get(f"components.{addon.manifest_key}.version"):
         return None, False
-    if addon.launcher and not (ctx.paths.bin_dir / addon.launcher).exists() and not ctx.runner.which(addon.launcher):
+    from exakit.lifecycles import for_addon  # noqa: PLC0415 - lifecycles sit above app.machine
+    try:
+        version = for_addon(ctx, addon).installed_version()
+    except (ValueError, OSError):
         return None, False
-    return str(version), True
+    return (str(version), True) if version else (None, False)
 
 
 def kit_bundled_version(ctx: Context) -> str | None:
@@ -169,30 +171,23 @@ def skills_current(ctx: Context, manifest: Manifest | None) -> bool:
 
 
 def system_present(ctx: Context, addon: Addon) -> bool:
-    """A copy the user installed themselves: a same-named command on PATH that is not the kit's launcher."""
-    for name in {addon.id, addon.launcher or addon.id}:
-        found = ctx.runner.which(name)
-        if not found:
-            continue
-        try:
-            if Path(found).resolve() == (ctx.paths.bin_dir / name).resolve():
-                continue
-        except OSError:
-            pass
-        return True
-    return False
+    """A copy the user installed themselves, as the add-on's lifecycle recognises it."""
+    from exakit.lifecycles import for_addon  # noqa: PLC0415 - lifecycles sit above app.machine
+    try:
+        return for_addon(ctx, addon).system_present()
+    except (ValueError, OSError):
+        return False
 
 
 def applicable(ctx: Context, addon: Addon) -> tuple[bool, str]:
-    """Can this add-on run here? Platform support from the catalog; host presence for extensions."""
+    """Can this add-on run here? The catalog's platforms first, then the lifecycle's own probe."""
     if not addon.supports(ctx.platform.platform_key):
         return False, f"no build is published for this platform ({ctx.platform.platform_key})"
-    if addon.kind == "host-extension":
-        if not any(ctx.runner.which(cli) for cli in _VSCODE_CLIS):
-            return False, ("VS Code was not found, and neither was a fork the kit can drive "
-                           "(VS Code Insiders, Cursor, VSCodium or Windsurf). Install VS Code from "
-                           "https://code.visualstudio.com - or, on a fork, put its CLI on PATH - then run: exakit marketplace")
-    return True, ""
+    from exakit.lifecycles import for_addon  # noqa: PLC0415
+    try:
+        return for_addon(ctx, addon).applicable()
+    except ValueError as err:
+        return False, str(err)
 
 
 def addon_state(ctx: Context, addon: Addon, manifest: Manifest | None) -> tuple[str, str]:
