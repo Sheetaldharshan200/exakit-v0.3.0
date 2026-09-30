@@ -39,3 +39,25 @@ class ListLog:
 
     def line(self, level: str, message: str) -> None:
         self.lines.append((level, message))
+
+
+class FakeRunner:
+    """Answers commands from a table keyed by the leading argv words; records every call."""
+
+    def __init__(self, responses: dict[tuple[str, ...], "Completed"] | None = None, which: dict[str, str] | None = None) -> None:
+        from exakit.adapters.process.runner import Completed
+        self._default = Completed(0, "", "")
+        self.responses = dict(responses or {})
+        self.which_table = dict(which or {})
+        self.calls: list[tuple[str, ...]] = []
+
+    def run(self, cmd, *, env=None, cwd=None, timeout=None, stdin=None):
+        self.calls.append(tuple(cmd))
+        best = None
+        for key, value in self.responses.items():
+            if tuple(cmd[: len(key)]) == key and (best is None or len(key) > len(best)):
+                best = key
+        return self.responses[best] if best is not None else self._default
+
+    def which(self, name: str):
+        return self.which_table.get(name)
