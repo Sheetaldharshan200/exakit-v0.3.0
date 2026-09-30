@@ -1,4 +1,4 @@
-"""What's-new cards, from setup/whats-new.json (one key per kit version, one short line per highlight)."""
+"""What's-new cards, from help/whats-new.json (one key per kit version, one short line per highlight)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from .machine import kit_bundled_version, kit_root
 
 
 def _load(root: Path) -> dict[str, list[str]] | None:
-    path = root / "setup" / "whats-new.json"
+    path = root / "help" / "whats-new.json"
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -60,7 +60,7 @@ def run(ctx: Context, version: str | None) -> Result:
         return Result(True, "ok", data={"version": version, "notes": lines})
     if _load(root) is None:
         if not ctx.json:
-            ctx.ui.info("This kit copy does not carry setup/whats-new.json.")
+            ctx.ui.info("This kit copy does not carry help/whats-new.json.")
         return Result(True, "ok", data={"version": version, "notes": [], "versions": []})
     known = versions(root)
     if not ctx.json:

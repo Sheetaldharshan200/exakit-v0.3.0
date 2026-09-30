@@ -56,10 +56,12 @@ Update this file in the same commit as the work. Design sections are in
 - [x] C4a `app/status.py`, `app/info.py` (the tri-state queries, every AGENTS.md key, `datasets_source`), `app/runtime.py` (`start` with orphan reaping, `stop`, `autostart`); `tests/unit/app/test_status_info_runtime.py` + contract StateQueryPhaseCTest (D21)
 - [x] C4b `app/repair.py` (consent, exit 5 when declined, the installer re-run in process with a forced fresh deployment) and `app/legacy_db.py` + `app/legacy_crossing.py` + `app/migrate.py` (the docker-nano crossing: asked once during the install, `exakit migrate docker-nano` afterwards) over `adapters/process/containers.py`
 - [x] C5 `app/uninstall.py` (the safe-target rule, the legacy removal order, the menu with the typed UNINSTALL gate, `--yes`, `--dry-run`, snapshots kept); `tests/unit/app/test_uninstall_repair.py`
-- [x] C6 `install.sh` / `install.ps1` hand over to `python -m exakit install`; `cli/legacy.py` deleted, the dispatcher refuses an unknown command with exit 2 and no shell CLI is ever run by `exakit` (`app/guide.py` carries `guide` and the two Kit 2 scripts). `setup/` itself stays on disk until D1, because the legacy suites under `tests/*.sh` still exercise it and a real install through the Python path (manual M-3, M-5) is the last gate before deleting it (D26)
+- [x] C6 `install.sh` / `install.ps1` hand over to `python -m exakit install`; `cli/legacy.py` deleted, the dispatcher refuses an unknown command with exit 2 and no shell CLI is ever run by `exakit` (`app/guide.py` carries `guide`). `setup/` itself stays on disk until D1, because the legacy suites under `tests/*.sh` still exercise it and a real install through the Python path (manual M-3, M-5) is the last gate before deleting it (D26)
 
 ## Phase D: delete the legacy tree
 
-- [ ] D1 `setup/` deleted; `tests/legacy/` empty; `MIGRATED_COMMANDS` removed (everything is Python)
-- [ ] D2 `CLAUDE.md`, `MARKETPLACE.md`, `AGENTS.md` describe only the Python kit
-- [ ] D3 Optional: `ui/tui/` on Textual in the kit venv, `exakit ui` command (decision A3)
+- [x] D1 `setup/lib`, the legacy CLIs, the setup scripts, `upgrade/`, `setup/load-data.sh` and every legacy `tests/*.sh` / `*.ps1` suite deleted; `setup/` holds only the two launcher copies; help documents in `help/`, the what's-new file in `help/whats-new.json`, the cargo shim source in `shim/`; Kit 2 (`upgrade-kit2`, `rollback-kit2`, `upgrade/`) removed outright - it was never going to ship; `MIGRATED_COMMANDS` removed; CI runs the Python suites on ubuntu, macOS and Windows; the bump workflows retune `fallback_version` in the catalog (D27)
+- [x] D2 `CLAUDE.md`, `MARKETPLACE.md` (the add-on walkthrough is the catalog file plus a `Lifecycle` subclass), `AGENTS.md` describe only the Python kit
+- [ ] D3 Optional: `ui/tui/` on Textual in the kit venv, `exakit ui` command (decision A3) - not started
+- [ ] D4 Manual acceptance M-3 and M-5 (a real install through the Python path on a scratch macOS/Linux machine and on Windows) - the first thing to run before tagging 0.3.0
+- [ ] D5 The exapump glibc container shim (Linux with glibc < 2.38) is not ported; Windows uninstall leaves `$EXAKIT_HOME/python` for the user to delete

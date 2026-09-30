@@ -45,7 +45,7 @@ as the change they describe.
   docs/design.md 3.3). `tests/unit/domain/test_catalog.py` validates every
   shipped file; name the id in AGENTS.md. Nothing in code names a persona.
 - **Adding an add-on?** One file, `catalog/addons/<id>/addon.json` (schema
-  3.2), its `setup/help/<id>.json` and its `skills/<id>/SKILL.md` with an
+  3.2), its `help/<id>.json` and its `skills/<id>/SKILL.md` with an
   `addon:` key, plus the `components.<id>` block in `versions.json`. Code
   (`exakit/addons/<id_>.py`, a `Lifecycle` subclass) only for behaviour a
   generic lifecycle cannot express. Never
@@ -60,11 +60,11 @@ as the change they describe.
   against the real CLI in a sandbox), `-s tests/e2e` (installer dry run,
   launcher). One behaviour per test; fakes from `tests/unit/fakes.py`, never
   the network.
-- **The legacy tree (`setup/`) is frozen.** It still runs the commands Python
-  has not taken over (`exakit/cli/main.py` lists the migrated set) and is
-  deleted phase by phase. Fix a bug there only when the same fix is not yet
-  scheduled in Python; never add a feature there. Its own suites stay at
-  `tests/*.sh` and `tests/*.ps1` until the code they cover is gone. Shell
-  there stays bash 3.2 and PowerShell 5.1 compatible; `bootstrap/*.ps1`
-  stays ASCII-only.
+- **Shell lives only in `bootstrap/` and the two installers.** `install.sh`
+  and `install.ps1` download the kit and hand over to `python -m exakit
+  install`; `bootstrap/ensure-python.*` installs the managed Python;
+  `bootstrap/exakit*` are the launchers (`setup/exakit*` are byte-identical
+  copies kept so the 0.2.0 self-update can install them). That shell stays
+  POSIX sh / PowerShell 5.1 compatible and ASCII-only. Everything else is
+  Python: never add a `.sh` or `.ps1` module.
 - Do not add AI attribution to commits, PRs, code, or docs.

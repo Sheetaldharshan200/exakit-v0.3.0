@@ -39,9 +39,8 @@ class Sandbox:
                     "EXAKIT_VERSIONS_TTL": "999999", "EXAKIT_NO_UPDATE_NOTICE": "1", "NO_COLOR": "1",
                     "PYTHONPATH": str(REPO)}
 
-    def run(self, *args: str, legacy: bool = False) -> subprocess.CompletedProcess:
-        cmd = ["bash", str(REPO / "setup" / "legacy-exakit"), *args] if legacy else [sys.executable, "-m", "exakit", *args]
-        return subprocess.run(cmd, cwd=REPO, env=self.env, capture_output=True, text=True, timeout=120)
+    def run(self, *args: str) -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, "-m", "exakit", *args], cwd=REPO, env=self.env, capture_output=True, text=True, timeout=120)
 
     def close(self) -> None:
         shutil.rmtree(self.dir, ignore_errors=True)
@@ -380,55 +379,12 @@ class PhaseCCommandsTest(unittest.TestCase):
 
 
 class MigrationSplitTest(unittest.TestCase):
-    def test_every_command_is_in_exactly_one_world(self):
-        from exakit.cli.main import MIGRATED_COMMANDS, _LEGACY_WORDS
-        self.assertEqual(MIGRATED_COMMANDS & _LEGACY_WORDS, set())
-        docs = json.loads((REPO / "setup" / "help" / "exakit.json").read_text())
+    def test_every_documented_command_has_a_handler(self):
+        from exakit.cli.main import HANDLERS
+        docs = json.loads((REPO / "help" / "exakit.json").read_text())
         documented = {c["command"].split()[0] for c in docs["commands"]}
-        self.assertEqual(documented - MIGRATED_COMMANDS - _LEGACY_WORDS, set())
+        self.assertEqual(documented - set(HANDLERS), set())
 
     def test_launcher_copies_are_byte_identical(self):
         self.assertEqual((REPO / "setup" / "exakit").read_bytes(), (REPO / "bootstrap" / "exakit").read_bytes())
         self.assertEqual((REPO / "setup" / "exakit.ps1").read_bytes(), (REPO / "bootstrap" / "exakit.ps1").read_bytes())
-
-
-@unittest.skipUnless(shutil.which("bash"), "bash is needed to run the legacy CLI")
-class LegacyAgreementTest(unittest.TestCase):
-    """The document surfaces must say the same thing whichever CLI answers."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.box = Sandbox(manifest=MANIFEST)
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.box.close()
-
-    def _legacy_json(self, *args: str) -> dict | None:
-        done = self.box.run(*args, legacy=True)
-        if done.returncode != 0 or not done.stdout.strip():
-            return None
-        try:
-            return json.loads(done.stdout)
-        except ValueError:
-            return None
-
-    def test_catalog_json_agrees(self):
-        legacy = self._legacy_json("catalog", "--json")
-        if legacy is None:
-            self.skipTest("the legacy catalog needs a Python the shell can find")
-        new = _one_object(self.box.run("catalog", "--json").stdout)
-        self.assertEqual(new["count"], legacy["count"])
-        self.assertEqual([r["invocation"] for r in new["commands"]], [r["invocation"] for r in legacy["commands"]])
-        self.assertEqual(set(new["documents"]), set(legacy["documents"]))
-
-    def test_help_json_agrees(self):
-        legacy = self._legacy_json("help", "--json")
-        if legacy is None:
-            self.skipTest("the legacy help needs a Python the shell can find")
-        new = _one_object(self.box.run("help", "--json").stdout)
-        self.assertEqual(new, legacy)
-
-
-if __name__ == "__main__":
-    unittest.main()

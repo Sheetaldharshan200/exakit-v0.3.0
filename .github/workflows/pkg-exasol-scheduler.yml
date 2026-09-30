@@ -253,17 +253,15 @@ jobs:
           PY
           # The module fallbacks move with the manifest or the two drift apart,
           # which versions.yml fails the build over.
-          sed -i "s/^EXAKIT_EXASOL_SCHEDULER_VERSION_FALLBACK=\"\${EXAKIT_EXASOL_SCHEDULER_VERSION_FALLBACK:-.*}\"$/EXAKIT_EXASOL_SCHEDULER_VERSION_FALLBACK=\"\${EXAKIT_EXASOL_SCHEDULER_VERSION_FALLBACK:-$new}\"/" setup/lib/exasol-scheduler.sh
           python3 - "$new" <<'PY'
-          import re, sys
-          new = sys.argv[1]
-          path = "setup/lib/exasol-scheduler.ps1"
-          with open(path) as handle:
-              text = handle.read()
-          text = re.sub(r'(\$script:ExasolSchedulerVersionFallback = .*else \{ ")[^"]*(" \})',
-                        lambda m: m.group(1) + new + m.group(2), text, count=1)
+          import json, sys
+          path = "catalog/addons/exasol-scheduler/addon.json"
+          doc = json.load(open(path))
+          doc["fallback_version"] = sys.argv[1]
           with open(path, "w") as handle:
-              handle.write(text)
+              json.dump(doc, handle, indent=2)
+              handle.write("
+")
           PY
           if git diff --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -281,7 +279,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
-          git add versions.json setup/lib/exasol-scheduler.sh setup/lib/exasol-scheduler.ps1
+          git add versions.json catalog/addons/exasol-scheduler/addon.json
           git commit -m "exasol-scheduler: advertise $new (prebuilt binaries published)"
           git push -u origin "$branch" --force
           if [ -n "$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')" ]; then

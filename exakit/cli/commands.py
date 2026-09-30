@@ -32,7 +32,7 @@ def _split(args: list[str], allowed: tuple[str, ...], command: str) -> tuple[lis
 
 
 def _help_docs(ctx: Context):
-    return help_app.load_docs(kit_root(ctx) / "setup" / "help")
+    return help_app.load_docs(kit_root(ctx) / "help")
 
 
 def _help_color(ctx: Context) -> bool:
@@ -183,16 +183,6 @@ def install_command(args: list[str], ctx: Context) -> Result:
 def guide_command(args: list[str], ctx: Context) -> Result:
     _split(args, (), "guide")
     return guide_app.run(ctx)
-
-
-def upgrade_kit2_command(args: list[str], ctx: Context) -> Result:
-    _split(args, (), "upgrade-kit2")
-    return guide_app.kit2_script(ctx, "upgrade-kit2.sh")
-
-
-def rollback_kit2_command(args: list[str], ctx: Context) -> Result:
-    _split(args, (), "rollback-kit2")
-    return guide_app.kit2_script(ctx, "rollback-kit2.sh")
 
 
 def preflight_command(args: list[str], ctx: Context) -> Result:

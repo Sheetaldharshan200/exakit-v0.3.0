@@ -1,4 +1,4 @@
-"""Help, catalog and their JSON surfaces, rendered from the help documents (setup/help/*.json).
+"""Help, catalog and their JSON surfaces, rendered from the help documents (help/*.json).
 
 This is the legacy renderer, moved out of a shell heredoc and given a
 function signature. The documents are the single source of truth; the

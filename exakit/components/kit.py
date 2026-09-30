@@ -13,7 +13,7 @@ from exakit.domain.versions import is_newer
 
 from .base import ComponentBase
 
-REQUIRED = ("setup/exakit", "versions.json", "exakit/__main__.py", "bootstrap/exakit")
+REQUIRED = ("setup/exakit", "versions.json", "exakit/__main__.py", "bootstrap/exakit", "help/exakit.json")
 
 
 def kit_version_at(root: Path, path: str = "kit.version") -> str | None:

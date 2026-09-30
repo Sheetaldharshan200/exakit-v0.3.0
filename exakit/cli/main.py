@@ -1,8 +1,8 @@
 """``exakit``: one entry point, one dispatch, one place errors become exit codes.
 
 Global flags (``--json``/``-j``, ``--yes``/``-y``, ``--dry-run``) may appear
-anywhere; the first bare word is the command. Every command runs in Python
-(``MIGRATED_COMMANDS`` is the full set). A bare component id renders its help
+anywhere; the first bare word is the command (``HANDLERS`` is the full set).
+A bare component id renders its help
 page, ``<command> --help`` renders that command's page, and anything else is
 a refusal with exit 2.
 """
@@ -18,10 +18,6 @@ from exakit.domain.result import Result
 
 from . import _context, commands
 
-MIGRATED_COMMANDS: frozenset[str] = frozenset({"help", "catalog", "whats-new", "version", "persona", "skills", "skills-install",
-                                               "mcp-setup", "mcp-status", "mcp-doctor", "mcp-remove", "sql", "logs", "data-load",
-                                               "marketplace", "uninstall", "status", "info", "start", "stop", "autostart", "update",
-                                               "install", "preflight", "repair-runtime", "migrate", "guide", "upgrade-kit2", "rollback-kit2"})
 READONLY_COMMANDS: frozenset[str] = frozenset({"help", "catalog", "whats-new", "version", "status", "info",
                                                "skills", "logs", "mcp-status", "persona", "preflight", "guide"})
 HANDLERS: dict[str, Callable[[list[str], Context], Result]] = {
@@ -38,7 +34,7 @@ HANDLERS: dict[str, Callable[[list[str], Context], Result]] = {
     "stop": commands.stop_command, "autostart": commands.autostart_command, "update": commands.update_command,
     "install": commands.install_command, "preflight": commands.preflight_command,
     "repair-runtime": commands.repair_runtime_command, "migrate": commands.migrate_command,
-    "guide": commands.guide_command, "upgrade-kit2": commands.upgrade_kit2_command, "rollback-kit2": commands.rollback_kit2_command,
+    "guide": commands.guide_command,
 }
 ALIASES = {"-h": "help", "--help": "help", "--version": "version", "-v": "version"}
 
@@ -105,9 +101,6 @@ def main(argv: list[str] | None = None) -> int:
         return err.code
     except KeyboardInterrupt:
         return 130
-
-
-_LEGACY_WORDS: frozenset[str] = frozenset()   # every command is Python now; kept so the contract test's split check reads as before
 
 
 def unknown_command(command: str) -> BadInput:

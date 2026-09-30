@@ -385,26 +385,6 @@
         "exakit whats-new",
         "exakit whats-new 0.2.0"
       ]
-    },
-    {
-      "command": "upgrade-kit2",
-      "options": "",
-      "summary": "Add the Kit 2 trust assets to this install (internal).",
-      "description": "Runs the kit's own upgrade/upgrade-kit2.sh against this install: the Trusted AI Workflow add-on is layered on top and nothing is reinstalled. An upgrade path the kit runs for itself, not a command to reach for by hand.",
-      "examples": [
-        "exakit upgrade-kit2"
-      ],
-      "hidden": true
-    },
-    {
-      "command": "rollback-kit2",
-      "options": "",
-      "summary": "Remove exactly what upgrade-kit2 added (internal).",
-      "description": "Runs the kit's own upgrade/rollback-kit2.sh: everything upgrade-kit2 added is removed, and the database and every Kit 1 component stay untouched.",
-      "examples": [
-        "exakit rollback-kit2"
-      ],
-      "hidden": true
     }
   ],
   "environment": [

@@ -1,0 +1,100 @@
+"""An add-on's one-line description: its GitHub About, fetched at most once a day, else the help document's tagline.
+
+The wording lives in the add-on's own repository, so a maintainer changes it
+there and every kit picks it up within ``EXAKIT_ABOUT_TTL`` seconds. It is
+prose the kit does not control: escape sequences and control bytes are
+stripped, it is folded to one line and capped, before it is cached.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import time
+from pathlib import Path
+
+from exakit.domain.catalog import Addon
+from exakit.domain.errors import ExakitError
+
+from . import Context, help as help_app
+from .machine import kit_root
+
+DEFAULT_URL = "https://api.github.com/repos"
+DEFAULT_TTL = 86400
+DEFAULT_MAX_LEN = 200
+ESCAPES = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\]8;;[^\x07\x1b]*(?:\x07|\x1b\\)")
+CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _int(ctx: Context, name: str, default: int) -> int:
+    value = ctx.env.get(name, "")
+    return int(value) if value.isdigit() else default
+
+
+def sanitise(text: str) -> str:
+    text = ESCAPES.sub("", text)
+    text = CONTROL.sub(" ", text)
+    return re.sub(r" +", " ", text).strip()
+
+
+def cap(text: str, max_len: int) -> str:
+    if max_len <= 0 or len(text) <= max_len:
+        return text
+    cut = text[:max_len]
+    return cut.rsplit(" ", 1)[0] if " " in cut else cut
+
+
+def _fresh(path: Path, ttl: int) -> bool:
+    if ttl <= 0 or not path.is_file():
+        return False
+    return time.time() - path.stat().st_mtime < ttl
+
+
+def repo_of(ctx: Context, addon: Addon) -> str | None:
+    doc = help_app.load_docs(kit_root(ctx) / "help").get(addon.help or addon.id) or {}
+    repo = doc.get("repo") or addon.source.get("repo")
+    return str(repo) if repo else None
+
+
+def fetch(ctx: Context, addon: Addon) -> str | None:
+    """Refresh the cached About once per TTL (a failed attempt also waits the TTL). Returns the text on disk, if any."""
+    cache_dir = ctx.paths.about_cache
+    cache, attempt = cache_dir / f"{addon.id}.txt", cache_dir / f".attempt-{addon.id}"
+    ttl = _int(ctx, "EXAKIT_ABOUT_TTL", DEFAULT_TTL)
+    url = ctx.env.get("EXAKIT_ABOUT_URL") or DEFAULT_URL
+    repo = repo_of(ctx, addon)
+    if ctx.env.get("EXAKIT_ABOUT_OFFLINE") == "1" or not repo or not url.startswith("https://") or _fresh(cache, ttl) or _fresh(attempt, ttl):
+        return _read(cache)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    attempt.write_text("", encoding="utf-8")
+    try:
+        body = ctx.net.text(f"{url}/{repo}", token=ctx.env.get("GITHUB_TOKEN"))
+        text = cap(sanitise(str(json.loads(body).get("description") or "")), _int(ctx, "EXAKIT_ABOUT_MAX_LEN", DEFAULT_MAX_LEN))
+    except (ExakitError, ValueError, AttributeError, OSError):
+        ctx.log.line("INFO", f"About fetch failed for {addon.id} - keeping whatever is on disk")
+        return _read(cache)
+    if not text:
+        ctx.log.line("INFO", f"{repo} has no About text to show for {addon.id}")
+        return _read(cache)
+    tmp = cache.with_suffix(".tmp")
+    tmp.write_text(text + "\n", encoding="utf-8")
+    tmp.replace(cache)
+    ctx.log.line("INFO", f"About refreshed for {addon.id} from {repo}")
+    return text
+
+
+def _read(cache: Path) -> str | None:
+    try:
+        return cache.read_text(encoding="utf-8").splitlines()[0].strip() or None
+    except (OSError, IndexError):
+        return None
+
+
+def description(ctx: Context, addon: Addon) -> str:
+    """The live About when it can be had, the cached one, the help tagline, or the help pointer."""
+    text = fetch(ctx, addon)
+    if text:
+        return text
+    doc = help_app.load_docs(kit_root(ctx) / "help").get(addon.help or addon.id) or {}
+    tagline = str(doc.get("tagline") or "").strip()
+    return tagline.rstrip(".") if tagline else f"Details: exakit help {addon.id}"

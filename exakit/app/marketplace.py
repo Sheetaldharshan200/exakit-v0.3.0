@@ -19,8 +19,8 @@ from exakit.lifecycles import for_addon
 from exakit.ui.silent import SilentRenderer
 from exakit.ui.widgets import Option
 
-from . import Context, help as help_app, services, skills
-from .machine import addon_state, kit_root
+from . import Context, about, services, skills
+from .machine import addon_state
 
 STATUS_WORDS = {
     ADDON_INSTALLED: "installed", ADDON_AVAILABLE: "available", ADDON_SYSTEM: "managed outside the kit",
@@ -70,9 +70,8 @@ def rows(ctx: Context) -> list[Row]:
 
 
 def description(ctx: Context, addon: Addon) -> str:
-    docs = help_app.load_docs(kit_root(ctx) / "setup" / "help")
-    doc = docs.get(addon.help or addon.id) or {}
-    return str(doc.get("tagline") or doc.get("summary") or addon.title)
+    """The add-on's own GitHub About (cached a day), else its help tagline."""
+    return about.description(ctx, addon)
 
 
 # --- the read-only surface ----------------------------------------------------------------

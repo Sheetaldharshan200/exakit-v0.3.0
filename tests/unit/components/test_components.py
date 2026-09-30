@@ -297,7 +297,7 @@ class KitSelfUpdateTest(unittest.TestCase):
             self._installed_kit(box)
             new_tree = {"setup/exakit": "new launcher", "bootstrap/exakit": "new launcher", "exakit/__main__.py": "",
                         "versions.json": json.dumps({"schema_version": 1, "kit": {"version": "0.3.0"}, "components": {}}),
-                        "setup/whats-new.json": json.dumps({"0.3.0": ["Python kit"]})}
+                        "help/whats-new.json": json.dumps({"0.3.0": ["Python kit"]}), "help/exakit.json": "{}"}
             box.downloader.pages["https://github.com/krishna-exasol/update-path/archive/refs/heads/main.tar.gz"] = tarball(new_tree)
             with mock.patch("exakit.app.skills.install", lambda ctx: 0):
                 for_component(box.ctx, "exakit").update()

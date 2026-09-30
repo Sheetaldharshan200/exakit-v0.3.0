@@ -22,12 +22,10 @@ def targets(ctx: Context, target: str) -> list[str]:
     if target == "all":
         out = ["exakit", "runtime", "exapump", "mcp", "pyexasol", "skills"]
         out += [a.id for a in ctx.catalog.addons() if addon_installed_version(ctx, a, manifest)[1]]
-        if manifest.get("kit_level") == 2:
-            out.append("kit2")
         return out
     if target in RUNTIME_WORDS:
         return ["runtime"]
-    if target in ("personal", "exakit", "exapump", "mcp", "pyexasol", "skills", "kit2") or ctx.catalog.has_addon(target):
+    if target in ("personal", "exakit", "exapump", "mcp", "pyexasol", "skills") or ctx.catalog.has_addon(target):
         return [target]
     raise BadInput(f"Unknown update target '{target}' (see: exakit version)")
 
@@ -138,15 +136,6 @@ def apply_runtime(ctx: Context, options: list[str] | None = None) -> None:
 
 
 def update_one(ctx: Context, component: str, options: list[str]) -> None:
-    if component == "kit2":
-        from .machine import kit_root  # noqa: PLC0415
-        script = kit_root(ctx) / "upgrade" / "upgrade-kit2.sh"
-        if not script.is_file():
-            raise Failed("upgrade-kit2.sh is not part of this kit build.")
-        ctx.ui.info(f"Re-staging the Kit 2 assets from {kit_root(ctx)}")
-        if not ctx.runner.run(["bash", str(script)], timeout=3600).ok:
-            raise Failed("The Kit 2 upgrade script reported an error; nothing else was changed.")
-        return
     if ctx.catalog.has_addon(component):
         for_addon(ctx, ctx.catalog.addon(component)).update()
         return

@@ -12,7 +12,7 @@ python3 -m unittest discover -s tests/unit -t .        # pure rules and adapters
 python3 -m unittest discover -s tests/contract -t .    # the frozen --json shapes and exit codes, against the real CLI in a sandbox
 python3 -m unittest discover -s tests/e2e -t .         # installer dry run, launcher answers, update-path layout
 EXAKIT_E2E_NETWORK=1 python3 -m unittest tests.e2e.test_bootstrap_network   # the real uv + CPython bootstrap (opt in)
-bash tests/<legacy-suite>.sh                            # the legacy suites, unchanged, against setup/legacy-exakit
+python3 tests/test_sample_data_schema.py                 # the sample dataset's files agree
 ```
 
 The acceptance rows below name the suite that proves each one. Rows that
@@ -48,9 +48,9 @@ belong to `persona apply` (A21 to A24) are covered by `tests/unit/app/test_perso
 | A24 | `--yes`, `minimal`, everything present | `exakit persona apply minimal --yes` | no loader, no MCP setup, no marketplace call; `status:"complete"`, persona recorded; exit 0 | design 4 | test_persona_apply: complete_plan; contract PhaseBShapeTest |
 | A25 | `exakit persona apply` (no id), `exakit persona bogus`, `exakit persona list --nope` | | exit 2 each; JSON refusal object when `--json` present | R12 | persona.sh: CLI |
 | A26 | manifest with `persona.id` | `exakit status --json` | carries `"persona":"<id>"`; without the block, `"persona":null` | R13 | persona.sh: status |
-| A27 | `setup/help/exakit.json` | `exakit help persona`, `exakit catalog`, `exakit help --json` | all know the command; the Personas group exists | R13 | persona.sh: help |
+| A27 | `help/exakit.json` | `exakit help persona`, `exakit catalog`, `exakit help --json` | all know the command; the Personas group exists | R13 | persona.sh: help |
 | A28 | docs | grep | `AGENTS.md` env table has `EXAKIT_PERSONA` and names every shipped persona id; `README.md` has `exakit persona`; each `quickstarts/*.md` shows the one-line persona install; `install.sh` and `install.ps1` headers list the variable | R20 | persona.sh: docs |
-| A29 | `setup/whats-new.json` | `tests/whats-new.sh` | a `0.3.0` card that passes the line rules; `versions.json` `kit.version` is `0.3.0` | R18 | persona.sh + whats-new.sh |
+| A29 | `help/whats-new.json` | tests/e2e whats-new card test | a `0.3.0` card that passes the line rules; `versions.json` `kit.version` is `0.3.0` | R18 | persona.sh + whats-new.sh |
 | A30 | PowerShell files | static | every name in design 6 is defined; `persona.ps1` is ASCII; `setup-windows.ps1` calls `Set-ExakitPersonaEnvironment`; `Request-ExakitMarketplaceOffer` calls `Get-ExakitPersonaAddonsAnswer`; `Invoke-CmdStatus` emits `persona` | C6, design 6 | persona.sh: parity |
 | A31 | pwsh present | live pwsh | `Get-ExakitPersonaIds` lists the same four; `Set-ExakitPersonaEnvironment data-scientist` sets the same env values as A7; unknown id throws | design 6 | persona.sh: pwsh block; persona.ps1 |
 | A32 | the existing suites | run | `marketplace.sh`, `skills.sh`, `agent-operability.sh`, `agents-rosters.sh`, `whats-new.sh`, `ps-encoding-guard.sh`, `ps-undefined-functions.sh`, `ps-table-twin.sh`, `bash32-guard.sh`, `dry-run-matrix.sh`, `noninteractive-answers.sh`, `versions-manifest.sh`, `help` checks in `agent-audit.sh` still pass | C6 | section 5 |
@@ -100,7 +100,13 @@ Recorded on 2026-09-30 on this Mac (macOS, bash 3.2, pwsh 7, Python 3.12.10).
 | Legacy: ps-encoding-guard (111), ps-parse (31 files), ps51-json-contracts (45) | pass |
 | Legacy: legacy-crossing | 1 failure, "a stopped engine is unknown, never absent", identical on the untouched 0.2.0 checkout on this Mac: environmental (a stopped container engine), not a regression |
 
-Three legacy suites needed one-line updates for the new tree and say so in
-their own comments: `dry-run-matrix.sh` counts the installer's new stop,
-`install-resume-safety.sh` keeps `setup\exakit.ps1` (the launcher) as the
-incoming-kit sentinel, `ps-undefined-functions.sh` sweeps `bootstrap/*.ps1`.
+The legacy suites were deleted with the shell tree in Phase D (ADR 0007).
+What they proved is carried by: dry-run-matrix and install-resume-safety ->
+`tests/unit/app/test_install.py` and the e2e dry run; uninstall ->
+`test_uninstall_repair.py`; marketplace -> `test_marketplace.py` and
+`tests/unit/lifecycles/test_addons.py`; skills -> `test_skills.py`; the MCP
+suites -> `test_mcp.py`; legacy-crossing -> `test_deploy_requirements_migrate.py`;
+versions-manifest -> `tests/unit/domain/test_versions.py`; the JSON shapes ->
+`tests/contract`. The PowerShell-only guards (parsing under 5.1, encoding,
+undefined functions, the table twin) have no Python counterpart to guard;
+`windows.yml` parses the bootstrap under 5.1 instead.

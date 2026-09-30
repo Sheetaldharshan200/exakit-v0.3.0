@@ -6,8 +6,8 @@
 # via `irm | iex` (as a fetched string, never read from disk with -File), and
 # a BOM that survives into that string as a literal U+FEFF character breaks
 # PowerShell's '#' comment-line detection - the parser then tries to execute
-# the comment text itself as commands. (setup\setup-windows.ps1 and
-# setup\exakit.ps1 are the opposite case: always read from disk via -File,
+# the comment text itself as commands. (setup\exakit.ps1 and
+# bootstrap\ensure-python.ps1 are the opposite case: always read from disk via -File,
 # where a BOM is the correct fix for a different, real encoding bug - do not
 # "fix" those to match this file.)
 #
@@ -17,9 +17,9 @@
 #   2. downloads the starter kit to ~\.exasol-starter-kit\kit (so you can
 #      read every script before or after it runs)
 #   3. shows the installation plan
-#   4. hands off to setup\setup-windows.ps1, which installs the
-#      Exasol Personal local deployment, exapump (data loading CLI), and the
-#      MCP server - the same components the macOS/Linux/WSL path installs
+#   4. sets up the kit's own Python and hands off to `python -m exakit
+#      install`, which installs the Exasol Personal local deployment, exapump
+#      (data loading CLI) and the MCP server - the same path as macOS/Linux/WSL
 #
 # Options (environment variables):
 #   $env:EXAKIT_DRY_RUN = "1"   show the plan, install nothing
@@ -569,29 +569,26 @@ $InstallPhase = "setup"
 # the UPSTREAM kit, and when the two layouts differ the handoff below failed
 # with PowerShell's own "The argument ... does not exist" - a path, and no hint
 # that two repositories were in play. Two people hit exactly that.
-$setupScript = Join-Path $KitDir "setup\setup-windows.ps1"
-if (-not (Test-Path $setupScript)) {
+$pythonKit = Join-Path $KitDir "exakit\__main__.py"
+if (-not (Test-Path $pythonKit)) {
     Write-Host ""
     Write-Host "  x This installer and the kit it downloaded do not match." -ForegroundColor Red
-    Write-Host "    The kit came from $Repo@$Ref and has no setup\setup-windows.ps1 in it."
+    Write-Host "    The kit came from $Repo@$Ref and has no Python kit in it (exakit\__main__.py)."
     Write-Host ""
     Write-Host "    The installer is read from a URL, but the kit is taken from EXAKIT_REPO,"
     Write-Host "    which is '$Repo' unless you say otherwise. If you fetched this installer"
     Write-Host "    from a fork or a branch, name it for the kit as well:"
+    Write-Host "      `$env:EXAKIT_REPO = 'owner/name'; `$env:EXAKIT_REF = 'branch'"
+    Write-Host "    The download is at $KitDir."
     Write-Host ""
-    Write-Host "      `$env:EXAKIT_REPO = 'owner/name'; `$env:EXAKIT_REF = 'branch'" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "    Nothing was installed. The download is at $KitDir."
-    Write-Host ""
-    if ($ExakitRanAsFile) { exit 1 }
     $global:LASTEXITCODE = 1
+    if ($ExakitRanAsFile) { exit 1 }
     return
 }
-Write-Host "  * Starting setup: setup\setup-windows.ps1" -ForegroundColor Blue
+Write-Host "  * Starting setup: python -m exakit install" -ForegroundColor Blue
 Write-Host ""
-# We already showed the banner above; tell the setup script to skip its own so
-# the wordmark appears exactly once through the installer. A direct
-# `-File setup\setup-windows.ps1` run (no installer) still shows it.
+# We already showed the banner above; the install skips its own so the
+# wordmark appears exactly once.
 $env:EXAKIT_BANNER_SHOWN = "1"
 # --- 5. the kit's own Python, then the kit ---------------------------------------
 # From here on the kit is Python: bootstrap\ensure-python.ps1 puts a managed
@@ -599,7 +596,13 @@ $env:EXAKIT_BANNER_SHOWN = "1"
 # Python) and `python -m exakit install` runs the install, handing it to the
 # setup script named above today. Twin of the same step in install.sh.
 $ensurePython = Join-Path $KitDir "bootstrap\ensure-python.ps1"
-if (Test-Path $ensurePython) {
+if (-not (Test-Path $ensurePython)) {
+    Write-Host "  x The kit has no bootstrap\ensure-python.ps1; it is not a kit this installer can run." -ForegroundColor Red
+    $global:LASTEXITCODE = 1
+    if ($ExakitRanAsFile) { exit 1 }
+    return
+}
+if ($true) {
     $env:EXAKIT_KIT_DIR = $KitDir
     . ([scriptblock]::Create([System.IO.File]::ReadAllText($ensurePython, [System.Text.Encoding]::UTF8)))
     $pyCode = Confirm-ExakitPython
@@ -611,9 +614,6 @@ if (Test-Path $ensurePython) {
     }
     $env:PYTHONPATH = if ($env:PYTHONPATH) { "$KitDir;$($env:PYTHONPATH)" } else { $KitDir }
     & $env:EXAKIT_PYTHON -m exakit install
-    $setupExitCode = $LASTEXITCODE
-} else {
-    & powershell -ExecutionPolicy Bypass -File (Join-Path $KitDir "setup\setup-windows.ps1")
     $setupExitCode = $LASTEXITCODE
 }
 # Pass the code through; do NOT re-wrap it. Re-throwing it as "Setup failed

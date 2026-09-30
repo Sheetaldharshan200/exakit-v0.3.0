@@ -37,7 +37,7 @@ class ShippedFilesTest(unittest.TestCase):
     def test_every_addon_names_a_help_document_and_a_skill_that_exist(self):
         for path in (KIT_CATALOG / "addons").glob("*/addon.json"):
             doc = json.loads(path.read_text())
-            self.assertTrue((REPO / "setup" / "help" / f"{doc['help']}.json").is_file(), doc["id"])
+            self.assertTrue((REPO / "help" / f"{doc['help']}.json").is_file(), doc["id"])
             skill = REPO / "skills" / doc["skill"] / "SKILL.md"
             self.assertTrue(skill.is_file(), doc["id"])
             self.assertIn(f"addon: {doc['id']}", skill.read_text())

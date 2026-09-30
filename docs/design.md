@@ -108,7 +108,7 @@ exakit/
   __init__.py            __version__ read from kit versions.json at import
   __main__.py            sys.exit(cli.main())
   cli/
-    __init__.py          main(argv) -> int; build_parser(); dispatch(); MIGRATED_COMMANDS
+    main.py              main(argv) -> int; HANDLERS (every command); exit codes
     _common.py           add_json_flag(), add_yes_flag(), render_or_json(result, ctx)
     status.py info.py version.py help.py catalog.py whats_new.py
     persona.py marketplace.py skills.py mcp.py data.py sql.py logs.py
@@ -565,14 +565,13 @@ the refusal object, exit codes, and every `EXAKIT_*` variable in
 
 ## 10. Update path from 0.2.0
 
-1. `versions.json` `kit.version` = `0.3.0`; `whats-new.json` 0.3.0 card.
+1. `versions.json` `kit.version` = `0.3.0`; `help/whats-new.json` 0.3.0 card.
 2. The 0.2.0 kit's `exakit_update_self` stages the new tarball, swaps `kit/`,
    and installs `setup/exakit` to `~/.local/bin/exakit`. In the new tree,
-   `setup/exakit` **is the launcher** (a copy of `bootstrap/exakit`), and the
-   legacy CLI lives at `setup/legacy-exakit`. Same on Windows:
-   `setup/exakit.ps1` is the launcher, `setup/legacy-exakit.ps1` the old CLI.
-   So the very update that brings the tree also installs the launcher, with
-   no change to the 0.2.0 code.
+   `setup/exakit` **is the launcher** (a copy of `bootstrap/exakit`); same on
+   Windows with `setup/exakit.ps1`. So the very update that brings the tree
+   also installs the launcher, with no change to the 0.2.0 code. `setup/`
+   holds those two files and nothing else.
 3. First `exakit` run after the update: the launcher finds no managed Python,
    runs `ensure-python`, then `python -m exakit`. `Manifest.migrate()` runs on
    the first write.
@@ -585,13 +584,17 @@ the refusal object, exit codes, and every `EXAKIT_*` variable in
 
 | Suite | What | How it runs |
 |---|---|---|
-| `tests/unit/` | domain and app with fakes; every lifecycle against a fake runner; persona answers/plan; manifest migration; versions resolve/compare; catalog validation of every shipped file | `python -m unittest discover -s tests/unit -t .` |
-| `tests/contract/` | golden `--json` per command and state (not installed, no database, running, update pending, persona recorded); refusal object; exit codes; `MIGRATED_COMMANDS` covers each command once | same runner; goldens captured from the legacy CLI in a sandbox with paths/timestamps normalised |
-| `tests/e2e/` | `install.sh` / `install.ps1` dry run per OS; launcher with no Python; update 0.2.0 -> new against a fixture manifest; `EXAKIT_PERSONA` unattended install (dry run) | GitHub matrix macos/ubuntu/windows |
-| `tests/legacy/` | today's `tests/*.sh` and `*.ps1`, moved unchanged | run in CI until the code they cover is deleted (phase D) |
+| `tests/unit/` | domain and app with fakes; every lifecycle against a fake runner; the installer, the update loop, uninstall, repair, the crossing; persona answers/plan; manifest migration; versions resolve/compare; catalog validation of every shipped file | `python -m unittest discover -s tests/unit -t .` |
+| `tests/contract/` | the `--json` shape and exit code of every command and state against the real CLI in a sandbox; the refusal object; every documented command has a handler | same runner |
+| `tests/e2e/` | `install.sh` dry run; the launcher with and without a Python; the kit layout the 0.2.0 self-update relies on | same runner |
+| `tests/test_sample_data_schema.py` | the sample dataset's schema, CSVs and verification SQL agree | `python tests/test_sample_data_schema.py` |
+| `mcp/tests/` | the MCP subsystem's own tests | `python -m unittest discover -s mcp/tests -t .` |
 
-CI: `versions.yml` gains the three Python suites; the legacy suite list is
-moved, not edited. `windows-ps51.yml` gains `tests/e2e` Windows dry runs.
+CI (`versions.yml`) runs all of the above on ubuntu and macOS plus the
+coding-standard sweep (no function over 40 lines, no module over 400);
+`windows.yml` runs the three kit suites on a Windows runner and parses the
+bootstrap under Windows PowerShell 5.1. The legacy shell suites went with
+the shell tree (D27).
 
 ---
 
@@ -652,4 +655,6 @@ deletes `setup/`.
 | D24 | The old-kit crossing (an Exasol container from a 0.1.x kit) is ported in full (`legacy_db`, `legacy_crossing`, `migrate`) instead of being dropped with the container runtime. | Machines that installed the first kits still exist; `status --json` documents `legacy_database`, and AGENTS.md documents `EXAKIT_LEGACY_DATA` and `exakit migrate docker-nano`. The port talks to docker/podman through one small adapter and never deletes the container. |
 | D25 | `exakit install --dry-run` prints the six-step plan; `EXAKIT_DRY_RUN=1` on `install.sh` still stops before the Python hand-over (nothing is installed, not even the kit's Python). | The shell dry run is the promise agents rely on ("nothing under EXAKIT_HOME changes"); the Python dry run is for an installed kit asking what a re-run would do. |
 | D26 | After Phase C the `exakit` command never runs the legacy shell CLI: `cli/legacy.py` is gone and an unknown command is a refusal. `setup/` stays on disk for one more step so the legacy suites keep proving the shell twins until the Python path has been run end to end on a real machine (M-3, M-5); D1 deletes it. | The user's rule is "existing behaviour intact through `exakit update`": the safest order is Python first, the shell tree deleted only after a real install has gone through the Python path, not before. |
+| D27 | Phase D deleted `setup/lib`, the legacy CLIs, the setup scripts, `upgrade/` and every `tests/*.sh` / `*.ps1` suite in one commit, without a real install having been run through the Python path first (the user's call). The help documents moved to `help/`, the what's-new file to `help/whats-new.json`, the cargo shim source to `shim/`; Kit 2 (`upgrade-kit2`, `rollback-kit2`) was dropped rather than ported, on the user's word that it will not ship. What the legacy suites proved is now proved by `tests/unit`, `tests/contract` and `tests/e2e`, or was specific to the shell twins and has no Python counterpart to prove. | The user chose to close the migration rather than wait for the manual acceptance; the trade is recorded here and in test-and-acceptance.md (M-3 and M-5 remain the first thing to run on a scratch machine). |
+| D28 | The marketplace description is the add-on's own GitHub About (`app/about.py`): fetched from `https://api.github.com/repos/<repo>` at most once per `EXAKIT_ABOUT_TTL` (a day), sanitised and capped at `EXAKIT_ABOUT_MAX_LEN` (200), cached under `cache/about/`, with the help document's `tagline` behind it and `EXAKIT_ABOUT_OFFLINE=1` to never fetch. | The old kit did exactly this so an add-on's wording is maintained in one place, its own repository; the Python port had regressed to the tagline. |
 

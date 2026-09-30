@@ -1,13 +1,11 @@
-"""``exakit guide``: how to connect, three doors; and the two Kit 2 scripts the kit carries, run from its own copy."""
+"""``exakit guide``: how to connect, three doors."""
 
 from __future__ import annotations
 
-from exakit.domain.errors import Failed
 from exakit.domain.result import Result
 from exakit.ui.widgets import tilde
 
 from . import Context
-from .machine import kit_root
 
 
 def run(ctx: Context) -> Result:
@@ -48,15 +46,4 @@ def run(ctx: Context) -> Result:
     ctx.ui.panel("Everything else", ["Connection summary:   exakit info", "Load more data:       exakit data-load",
                                      "Optional add-ons:     exakit marketplace (dashboards & more)", "Health check:         exakit status · exakit mcp-doctor"])
     ctx.ui.text("")
-    return Result(True, "ok")
-
-
-def kit2_script(ctx: Context, name: str) -> Result:
-    """``exakit upgrade-kit2`` / ``rollback-kit2``: the kit's own upgrade scripts, from the installed copy, no path to type."""
-    script = kit_root(ctx) / "upgrade" / name
-    if not script.is_file():
-        raise Failed(f"{name} is not part of this kit build.")
-    code = ctx.runner.interactive(["bash", str(script)], env=dict(ctx.env))
-    if code != 0:
-        raise Failed(f"{name} reported an error (exit {code}).")
     return Result(True, "ok")

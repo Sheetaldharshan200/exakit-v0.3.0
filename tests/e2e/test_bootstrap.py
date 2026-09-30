@@ -88,11 +88,10 @@ class LauncherTest(unittest.TestCase):
 class UpdatePathLayoutTest(unittest.TestCase):
     """What the 0.2.0 self-update copies from the new tree must be the launcher."""
 
-    def test_setup_exakit_is_the_launcher_and_the_legacy_cli_is_beside_it(self):
+    def test_setup_exakit_is_the_launcher_and_nothing_else_lives_in_setup(self):
         self.assertEqual((REPO / "setup" / "exakit").read_bytes(), (REPO / "bootstrap" / "exakit").read_bytes())
-        self.assertTrue((REPO / "setup" / "legacy-exakit").is_file())
-        self.assertTrue((REPO / "setup" / "legacy-exakit.ps1").is_file())
         self.assertIn("python -m exakit", (REPO / "setup" / "exakit").read_text())
+        self.assertEqual(sorted(p.name for p in (REPO / "setup").iterdir()), ["exakit", "exakit.ps1"])
 
     def test_versions_json_pins_uv_with_a_digest_per_platform(self):
         doc = json.loads((REPO / "versions.json").read_text())
@@ -102,7 +101,7 @@ class UpdatePathLayoutTest(unittest.TestCase):
         self.assertTrue(all(len(v) == 64 for v in uv["sha256"].values()))
 
     def test_whats_new_has_the_0_3_0_card(self):
-        doc = json.loads((REPO / "setup" / "whats-new.json").read_text())
+        doc = json.loads((REPO / "help" / "whats-new.json").read_text())
         self.assertIn("0.3.0", doc)
         self.assertTrue(all(len(line) <= 68 for line in doc["0.3.0"]))
 
