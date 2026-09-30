@@ -11,9 +11,9 @@ in this release are `help`, `catalog`, `whats-new`, `version`, `persona`
 `mcp-doctor`, `mcp-remove`, `sql`, `logs`, `data-load`, `marketplace`,
 `uninstall <addon>`, `status`, `info`, `start`, `stop`, `autostart`, `update`,
 `install`, `uninstall`, `repair-runtime`, `migrate`, `preflight`, `guide` and the
-Kit 2 scripts: every command. Nothing still runs the previous shell implementation,
-unchanged, behind the same `exakit` word (`exakit/cli/main.py` lists the split,
-and `tests/contract` pins every `--json` shape and exit code). An installed
+Kit 2 scripts: every command. The `exakit` word never runs the previous shell
+implementation any more; `tests/contract` pins every `--json` shape and exit
+code against the new one, so scripts and agents see no difference. An installed
 0.2.0 kit gets all of this from `exakit update`: the new tree's `setup/exakit`
 is the launcher, so the update that brings the tree installs it, and the first
 run sets up the Python. Personas are data: `catalog/personas/<id>.json` names the
