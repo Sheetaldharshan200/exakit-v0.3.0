@@ -1602,7 +1602,7 @@ function Confirm-ExakitJsonTablesReady {
     # plural, and one id is the same work.
     try { Invoke-ExakitMarketplaceApply -Ids @("json-tables") | Out-Null } catch { }
     if (-not (Test-ExakitJsonTablesReady)) {
-        $script:JsonTablesBlocked = "The JSON engine could not be installed, so this file was not loaded (details: exakit logs)."
+        $script:JsonTablesBlocked = "The JSON engine could not be installed, so this file was not loaded (details: exakit logs setup)."
         Warn2 "The JSON engine could not be installed, so this file was not loaded."
         Info "Everything already in the database is untouched. Details: exakit logs"
         return $false
@@ -1902,6 +1902,244 @@ function Import-ExakitLocalFile {
 # surprise rather than a service. Twin of exakit_bulk_file_kind.
 # A .txt is decided by its CONTENT: a GTFS feed is eleven CSV files all called
 # .txt, a README.txt is not a table. Twin of exakit_bulk_file_kind.
+# --- load receipts -------------------------------------------------------
+#
+# What a repeated folder load needs to know, and could not ask anything for:
+# "are the rows already in that table MINE?". exapump's upload APPENDS -- a
+# folder loaded twice ends with every row in it twice, silently, which is the
+# one outcome a data tool must never produce by accident. The database can say
+# a table holds 1,204 rows; it cannot say they came from sales.csv. So each
+# file that lands writes a line here, and a later run compares.
+# Twins of exakit_load_receipt_* in exapump.sh.
+function Get-ExakitLoadReceiptsPath { return (Join-Path $script:CacheDir "load-receipts.tsv") }
+function Get-ExakitLoadInflightPath { return (Join-Path $script:CacheDir "load-inflight") }
+
+function Write-ExakitLoadReceipt {
+    param([Parameter(Mandatory)][string]$Target,
+          [Parameter(Mandatory)][string]$File,
+          $Rows)
+    try {
+        $path = Get-ExakitLoadReceiptsPath
+        $dir = Split-Path $path -Parent
+        if (-not (Test-Path $dir)) { [void](New-Item -ItemType Directory -Path $dir -Force) }
+        $bytes = (Get-Item -LiteralPath $File).Length
+        $rowText = "0"
+        if ($null -ne $Rows) { $rowText = "$Rows" }
+        $epoch = [int][double]::Parse((Get-Date -UFormat %s))
+        $line = "{0}`t{1}`t{2}`t{3}`t{4}`t{5}" -f $Target.ToUpper(), $bytes,
+            (Get-ExakitSha256 -Path $File), $rowText, $epoch, (Split-Path $File -Leaf)
+        Add-Content -LiteralPath $path -Value $line -Encoding UTF8
+    } catch {
+        # Bookkeeping must never fail a load that worked.
+    }
+}
+
+# Get-ExakitLoadReceipt <target> <file> - the remembered row count when THIS
+# file already landed in THAT table, otherwise $null.
+#
+# Size first, hash only on a size match: the hash of a 2 GB parquet is seconds
+# of reading to answer a question its byte count settles for free almost every
+# time. Same trick the in-folder duplicate check uses.
+function Get-ExakitLoadReceipt {
+    param([Parameter(Mandatory)][string]$Target, [Parameter(Mandatory)][string]$File)
+    try {
+        $path = Get-ExakitLoadReceiptsPath
+        if (-not (Test-Path $path)) { return $null }
+        $bytes = (Get-Item -LiteralPath $File).Length
+        $prefix = "{0}`t{1}`t" -f $Target.ToUpper(), $bytes
+        # Newest last: a table loaded, replaced and loaded again has several
+        # lines, and the last written is the one describing what is in there now.
+        $hit = $null
+        foreach ($line in @(Get-Content -LiteralPath $path -ErrorAction SilentlyContinue)) {
+            if ($line.StartsWith($prefix)) { $hit = $line }
+        }
+        if ($null -eq $hit) { return $null }
+        $parts = $hit -split "`t"
+        if ($parts.Count -lt 4) { return $null }
+        if ($parts[2] -ne (Get-ExakitSha256 -Path $File)) { return $null }
+        return [long]$parts[3]
+    } catch {
+        return $null
+    }
+}
+
+function Remove-ExakitLoadReceipt {
+    param([Parameter(Mandatory)][string]$Target)
+    try {
+        $path = Get-ExakitLoadReceiptsPath
+        if (-not (Test-Path $path)) { return }
+        $prefix = $Target.ToUpper() + "`t"
+        $keep = @(Get-Content -LiteralPath $path | Where-Object { -not $_.StartsWith($prefix) })
+        Set-Content -LiteralPath $path -Value $keep -Encoding UTF8
+    } catch {
+    }
+}
+
+# A crumb dropped before an upload and swept after it. A folder load killed
+# mid-file leaves the target holding PART of that file and no receipt, which is
+# indistinguishable from a table the reader filled themselves -- unless we said,
+# before starting, that we were about to write to it. That is the whole
+# difference between "resume this" and "ask before touching the reader's data".
+function Set-ExakitLoadInflight {
+    param([Parameter(Mandatory)][string]$Target)
+    try {
+        $path = Get-ExakitLoadInflightPath
+        $dir = Split-Path $path -Parent
+        if (-not (Test-Path $dir)) { [void](New-Item -ItemType Directory -Path $dir -Force) }
+        Set-Content -LiteralPath $path -Value $Target.ToUpper() -Encoding UTF8
+    } catch {
+    }
+}
+function Clear-ExakitLoadInflight {
+    try { Remove-Item -LiteralPath (Get-ExakitLoadInflightPath) -Force -ErrorAction SilentlyContinue } catch {}
+}
+function Get-ExakitLoadInflight {
+    try {
+        $path = Get-ExakitLoadInflightPath
+        if (-not (Test-Path $path)) { return "" }
+        return ("" + (Get-Content -LiteralPath $path -First 1)).Trim().ToUpper()
+    } catch {
+        return ""
+    }
+}
+
+# Get-ExakitBulkDecisions <chosen> <schema> - one object per planned file with
+# an Action of load / done / resume / clash. Twin of exakit_bulk_decide.
+#
+# This is the answer to "I ran it again after it stopped". exapump's upload
+# APPENDS, so without this every re-run doubles the rows of every file that had
+# already made it - no error, no warning, just twice the data.
+function Get-ExakitBulkDecisions {
+    param([Parameter(Mandatory)][string[]]$Chosen, [Parameter(Mandatory)][string]$Schema)
+    $inflight = Get-ExakitLoadInflight
+    $out = @()
+    foreach ($row in $Chosen) {
+        $parts = $row.Split('|', 3)
+        $file = $parts[2]
+        $target = ("{0}.{1}" -f $Schema, $parts[1]).ToUpper()
+        $rows = Get-ExakitTableRowCount $target
+        $action = "load"
+        $had = $null
+        # $null is a database that could not be asked - not an empty one. Load
+        # is the honest move: refusing because we could not look would turn an
+        # unreachable listing into a failed job.
+        if ($null -ne $rows -and $rows -ne "absent" -and [long]$rows -gt 0) {
+            $had = [long]$rows
+            $seen = Get-ExakitLoadReceipt $target $file
+            # The receipt alone is not enough. It says what WE put there; the
+            # table can have been dropped and rebuilt, truncated or added to
+            # since, and a receipt that outlives its rows would skip a file the
+            # schema no longer holds.
+            if ($null -ne $seen -and $seen -eq $had) {
+                $action = "done"
+            } elseif ($inflight -eq $target) {
+                $action = "resume"
+            } else {
+                $action = "clash"
+            }
+        }
+        $out += [pscustomobject]@{ Action = $action; File = $file; Target = $target; Table = $parts[1]; Kind = $parts[0]; Had = $had }
+    }
+    return $out
+}
+
+# Read-ExakitBulkClashAnswer - what to do about target tables that already hold
+# rows this kit did not put there. Asked ONCE for the whole set, not once per
+# file: eight files into a schema someone has been using is one decision, and
+# asking it eight times is how a reader ends up answering "yes" to the one they
+# meant to refuse.
+#
+# Skip is the default, and the default without a terminal. Appending by accident
+# is unrecoverable without knowing which rows were new; skipping costs a re-run.
+function Read-ExakitBulkClashAnswer {
+    param([Parameter(Mandatory)]$Decisions, [Parameter(Mandatory)][string]$Schema)
+    $clashes = @($Decisions | Where-Object { $_.Action -eq "clash" })
+    if ($clashes.Count -eq 0) { return "skip" }
+    Write-Host ""
+    Warn2 "$(Get-ExakitPlural $clashes.Count 'table') in $Schema already holding rows this kit did not load:"
+    foreach ($c in $clashes) {
+        Write-Host ("      {0}{1}{2} {3} {4}->{5} {6} already" -f $script:UiDim, $script:UiBullet, $script:UiReset,
+            (Split-Path $c.File -Leaf), $script:UiDim, $script:UiReset, (Get-ExakitRowsLabel $c.Had))
+    }
+    if (-not (Test-ExakitInteractive)) {
+        Info "Skipping those files. Re-run with EXAKIT_ON_EXISTING=replace or =append to decide otherwise."
+        return "skip"
+    }
+    while ($true) {
+        $answer = Read-ExakitPrompt "Those files: (s)kip, (r)eplace what is there, or (a)ppend to it" "s"
+        switch -Regex ($answer) {
+            '^[sS]' { return "skip" }
+            '^[rR]' { return "replace" }
+            '^[aA]' { return "append" }
+            default { Warn2 "Answer s, r or a." }
+        }
+    }
+}
+
+# Get-ExakitRowsLabel <rows> - "339 rows" from a count, or "" when the database
+# could not be asked. Never "0 rows" dressed up as a success.
+function Get-ExakitRowsLabel {
+    param($Rows)
+    if ($null -eq $Rows -or $Rows -eq "absent") { return "" }
+    return (Get-ExakitPlural ([long]$Rows) 'row')
+}
+
+# Show-ExakitBulkResume - said BEFORE the bar starts, because "why is it only
+# loading three of my eight files?" is a question a reader should never have to
+# ask a progress bar.
+function Show-ExakitBulkResume {
+    param([Parameter(Mandatory)]$Decisions, [Parameter(Mandatory)][string]$Clash)
+    $done = @($Decisions | Where-Object { $_.Action -eq "done" }).Count
+    $res  = @($Decisions | Where-Object { $_.Action -eq "resume" }).Count
+    if ($done -gt 0) {
+        $it = "them"
+        if ($done -eq 1) { $it = "it" }
+        Info "$(Get-ExakitPlural $done 'file') already loaded from this folder - skipping $it."
+    }
+    if ($res -gt 0) {
+        Info "$(Get-ExakitPlural $res 'file') was left half-loaded by an interrupted run - reloading from scratch."
+    }
+    if ($Clash -eq "replace") { Info "Replacing what is in the tables that already held rows." }
+    if ($Clash -eq "append")  { Warn2 "Appending to the tables that already held rows - those rows stay, and these go on top." }
+}
+
+# Show-ExakitBulkOutcomes - what happened, per file, on screen, after the bar.
+#
+# The count alone ("Loaded 7 of 8") does not say WHICH seven, and the one line
+# that named the failure was printed INSIDE a live progress bar forty lines
+# earlier. A reader who looks away for the ten seconds that matters is left with
+# a number and a pointer to a log. This is the table they actually needed.
+function Show-ExakitBulkOutcomes {
+    param([Parameter(Mandatory)]$Outcomes, [Parameter(Mandatory)][string]$Schema)
+    if (@($Outcomes).Count -eq 0) { return }
+    # ONE width for the name column and ONE for the mark, measured from what is
+    # actually in this table. The marks are not all the same length without
+    # colour ("[ok]", "[x]", "-"), and padding only the names put every target
+    # in a different column - a list whose whole job is to be scanned down.
+    $markOk = $script:UiTick; $markSkip = $script:UiBullet; $markFail = $script:UiCross
+    $markWidth = @($markOk.Length, $markSkip.Length, $markFail.Length | Measure-Object -Maximum).Maximum
+    $nameWidth = 0
+    foreach ($o in $Outcomes) {
+        $n = (Split-Path $o.File -Leaf).Length
+        if ($n -gt $nameWidth) { $nameWidth = $n }
+    }
+    if ($nameWidth -gt 44) { $nameWidth = 44 }
+    Write-Host ""
+    Write-Host ("   {0}into {1}{2}" -f $script:UiDim, $Schema, $script:UiReset)
+    foreach ($o in $Outcomes) {
+        $mark = $markFail; $colour = $script:UiErr
+        if ($o.Status -eq "ok")   { $mark = $markOk;   $colour = $script:UiOk }
+        if ($o.Status -eq "skip") { $mark = $markSkip; $colour = $script:UiDim }
+        $pad = " " * ($markWidth - $mark.Length)
+        Write-Host ("   {0}{1}{2}{3} {4} {5}->{6} {7}  {8}" -f $colour, $mark, $script:UiReset, $pad,
+            (Split-Path $o.File -Leaf).PadRight($nameWidth), $script:UiDim, $script:UiReset, $o.Table, $o.Detail)
+        # The reason under the row it belongs to, not forty lines up the screen
+        # inside a progress bar that has since been overwritten.
+        if ($o.Why) { Write-Host ("     {0}{1}{2}" -f $script:UiDim, $o.Why, $script:UiReset) }
+    }
+    Write-Host ""
+}
+
 function Get-ExakitBulkFileKind {
     param([Parameter(Mandatory)][string]$Path)
     $name = (Split-Path $Path -Leaf).ToLowerInvariant()
@@ -2149,21 +2387,84 @@ function Import-ExakitLocalFolder {
     $doneWeight = [long]0
     $done = 0
     $failed = 0
+    $skipped = 0
     $i = 0
+    # BEFORE a single byte goes over: what is already in those tables? The
+    # schema was just created, so the listing has to be taken after that, and it
+    # is one query for the whole folder.
+    Clear-ExakitTableListing
+    $decisions = @(Get-ExakitBulkDecisions -Chosen $chosen -Schema $schema)
+    # EXAKIT_ON_EXISTING answers the clash question without a terminal, which is
+    # what a script or an agent driving this needs; an unusable value is a
+    # refusal, not a silent fallback to the most destructive reading.
+    $onExisting = "" + $env:EXAKIT_ON_EXISTING
+    if ($onExisting -eq "") {
+        $clashAnswer = Read-ExakitBulkClashAnswer -Decisions $decisions -Schema $schema
+    } elseif (@("skip", "replace", "append") -contains $onExisting) {
+        $clashAnswer = $onExisting
+    } else {
+        Warn2 "EXAKIT_ON_EXISTING must be skip, replace or append (got '$onExisting')."
+        return "failed"
+    }
+    Show-ExakitBulkResume -Decisions $decisions -Clash $clashAnswer
+    # Every file's fate, collected as it happens and printed as a table once the
+    # bar is gone.
+    $outcomes = @()
+    # What landed where, for the ONE listing taken after the loop. Row counts and
+    # receipts both need it.
+    $landed = @()
     [void](Start-ExakitProgress -Pct 0 -Ceiling 1 -Secs 2 -Phase "reading $(Get-ExakitPlural $chosen.Count 'file')")
     try {
-        foreach ($row in $chosen) {
+        foreach ($d in $decisions) {
             $i++
-            $parts = $row.Split('|', 3)
-            $file = $parts[2]
-            $target = "$schema.$($parts[1])"
+            $file = $d.File
+            $target = $d.Target
+            $w = Get-ExakitLoadWeight $file
+            # Already there, put there by this very file: the whole point of the
+            # exercise. Weight still counts towards the bar, or a resumed run
+            # would crawl to 100% in one jump at the end.
+            if ($d.Action -eq "done") {
+                $skipped++
+                $doneWeight += $w
+                Write-ExakitLog "SKIP" "$(Split-Path $file -Leaf) -> $target (already loaded, $($d.Had) rows)"
+                $outcomes += [pscustomobject]@{ Status = "skip"; File = $file; Table = $d.Table
+                    Detail = (Get-ExakitRowsLabel $d.Had); Why = "already loaded from this file - left as it is" }
+                continue
+            }
+            if ($d.Action -eq "clash" -and $clashAnswer -eq "skip") {
+                $skipped++
+                $doneWeight += $w
+                Write-ExakitLog "SKIP" "$(Split-Path $file -Leaf) -> $target (holds $($d.Had) rows this kit did not load)"
+                $outcomes += [pscustomobject]@{ Status = "skip"; File = $file; Table = $d.Table
+                    Detail = (Get-ExakitRowsLabel $d.Had)
+                    Why = "not loaded: the table already holds rows this kit did not put there" }
+                continue
+            }
+            # An interrupted write leaves PART of a file in the table, and a
+            # clash the reader chose to replace is the same situation by
+            # consent: in both the rows there are not wanted, and appending on
+            # top of them would mix a half-file with a whole one.
+            if ($d.Action -eq "resume" -or ($d.Action -eq "clash" -and $clashAnswer -eq "replace")) {
+                [void](Invoke-Exapump @("sql", "-p", $script:ExapumpProfile, "DROP TABLE IF EXISTS $target"))
+                Remove-ExakitLoadReceipt $target
+                Write-ExakitLog "RESET" "$target dropped before reloading $(Split-Path $file -Leaf)"
+            }
             # The spinner names the file it is actually on, and how far through
             # the folder it is - a forty-file load must never animate under one
             # label.
-            $w = Get-ExakitLoadWeight $file
             Set-ExakitLoadStep -DoneWeight $doneWeight -StepWeight $w -TotalWeight $totalWeight `
                 -Seconds (Get-ExakitLoadSeconds $w) `
                 -Phase "$(Split-Path $file -Leaf) ($i/$($chosen.Count))"
+            # Was the table there BEFORE we touched it? A failure that leaves
+            # behind a table we created and never filled is a phantom: it answers
+            # "yes" to every "is it loaded?" check the kit has, while holding
+            # nothing.
+            # From the decision taken before the loop - and from the DROP just
+            # above, when there was one - rather than from a fresh listing per
+            # file, which on a forty-file folder was forty extra round trips.
+            $before = "absent"
+            if ($null -ne $d.Had -and $d.Action -eq "load") { $before = $d.Had }
+            Set-ExakitLoadInflight $target
             # @(...)[-1]: the function writes its progress with Write-Host, but
             # taking the LAST emitted value keeps the boolean even if a helper
             # underneath it ever starts writing to the pipeline.
@@ -2180,17 +2481,26 @@ function Import-ExakitLocalFolder {
             } catch {
                 $uploaded = $false
             }
+            Clear-ExakitLoadInflight
             if ($uploaded) {
                 # To the logfile: the plan above the confirm already listed every
                 # file and its target, and a redrawing bar cannot share the row.
                 Write-ExakitLog "OK" "$(Split-Path $file -Leaf) -> $target"
                 $done++
                 $doneWeight += $w
+                # The row count is filled in by ONE listing after the loop, not
+                # one per file: each listing is a process start, a TLS handshake
+                # and an authentication.
+                $landed += [pscustomobject]@{ File = $file; Target = $target }
+                $outcomes += [pscustomobject]@{ Status = "ok"; File = $file; Table = $d.Table
+                    Detail = $null; Why = "" }
             } else {
                 $why = ""
-                if ($script:ExakitUploadReason) { $why = " - " + $script:ExakitUploadReason }
-                Warn2 "$(Split-Path $file -Leaf) not loaded$why"
+                if ($script:ExakitUploadReason) { $why = $script:ExakitUploadReason }
+                $gone = Remove-ExakitPhantomTable -Target $target -RowsBefore $before
                 $failed++
+                $outcomes += [pscustomobject]@{ Status = "fail"; File = $file; Table = $d.Table
+                    Detail = "not loaded$gone"; Why = $why }
             }
         }
     } finally {
@@ -2199,17 +2509,75 @@ function Import-ExakitLocalFolder {
         $script:ExakitActiveLabel = ""
     }
 
+    # One listing, taken once, that turns every pending count into a real one and
+    # writes a receipt for every table that took rows.
+    if ($landed.Count -gt 0) {
+        Clear-ExakitTableListing
+        foreach ($l in $landed) {
+            $n = Get-ExakitTableRowCount $l.Target
+            if ($null -eq $n -or $n -eq "absent") { $n = 0 }
+            Write-ExakitLoadReceipt -Target $l.Target -File $l.File -Rows $n
+            foreach ($o in $outcomes) {
+                if ($o.Status -eq "ok" -and $o.File -eq $l.File -and $null -eq $o.Detail) {
+                    $o.Detail = Get-ExakitRowsLabel $n
+                }
+            }
+        }
+    }
+    # Anything the listing could not answer for must not print a marker at the
+    # reader. It loaded; we simply cannot say how much.
+    foreach ($o in $outcomes) { if ($null -eq $o.Detail) { $o.Detail = "" } }
+
+    # The table, before the sentence about it. A reader who reads nothing else
+    # has already been told which file went where and which one did not.
+    Show-ExakitBulkOutcomes -Outcomes $outcomes -Schema $schema
+
     Set-ExakitManifestValue "data.last_load.type" "local_folder"
     Set-ExakitManifestValue "data.last_load.source" $Path
     Set-ExakitManifestValue "data.last_load.target" $schema
     Set-ExakitManifestValue "data.last_load.files" $done
 
+    # Every outcome that happened, named once, in one sentence. "Loaded 0 of 3"
+    # was what a fully-resumed run used to say about a schema holding every row
+    # it asked for - a true count of a number nobody wanted, reading as total
+    # failure. Each clause appears only when its count is non-zero.
+    $say = "$(Get-ExakitPlural $done 'file') loaded"
+    if ($skipped -gt 0) { $say = "$say, $skipped already there and left alone" }
+    if ($failed -gt 0) { $say = "$say, $failed not loaded" }
     if ($failed -gt 0) {
-        Warn2 "Loaded $done of $($chosen.Count) into $schema; $failed not loaded (reason above, full detail: exakit logs)."
+        # NOT "exakit logs". That command lists the log TARGETS and shows none of
+        # them, so a reader following it lands on a chooser and still does not
+        # know what went wrong. Name the log that holds the answer.
+        Warn2 "${schema}: $say (each file's reason is against it above; full detail: exakit logs setup)."
         return "failed"
     }
-    Ok "Loaded $(Get-ExakitPlural $done 'file') into $schema"
+    if ($done -eq 0 -and $skipped -gt 0) {
+        Ok "$schema already holds every file in that folder - nothing to load."
+        return ""
+    }
+    Ok "${schema}: $say"
     return ""
+}
+
+# Remove-ExakitPhantomTable - clean up after a failed upload, and say so.
+#
+# exapump infers the schema and CREATES the table before it imports a single
+# row, so a file the engine then refuses leaves an EMPTY TABLE standing. That
+# table is worse than nothing: exakit status counts it, the schema listing shows
+# it, and the next reader sees a name promising data it does not have. Drop it -
+# but only when we are the ones who created it. A table that was already there
+# is the reader's, failed import or not. Twin of exakit_drop_phantom_table.
+function Remove-ExakitPhantomTable {
+    param([Parameter(Mandatory)][string]$Target, $RowsBefore)
+    if ($RowsBefore -ne "absent") { return "" }
+    Clear-ExakitTableListing
+    $now = Get-ExakitTableRowCount $Target
+    if ($null -eq $now -or $now -eq "absent" -or [long]$now -ne 0) { return "" }
+    $res = Invoke-Exapump @("sql", "-p", $script:ExapumpProfile, "DROP TABLE IF EXISTS $Target")
+    if (-not $res.Success) { return "" }
+    Clear-ExakitTableListing
+    Write-ExakitLog "CLEAN" "dropped empty $Target left by the failed import"
+    return ", no empty table left behind"
 }
 
 function Import-ExakitRemoteFile {
@@ -2397,8 +2765,19 @@ function Sync-ExakitDatasetFlag {
 # second dataset checked in the same run does not pay for it again, and nothing
 # can read a listing taken before its own tables landed.
 $script:ExakitTableListing = $null
+$script:ExakitTableRowListing = $null
 
-function Clear-ExakitTableListing { $script:ExakitTableListing = $null }
+function Clear-ExakitTableListing {
+    $script:ExakitTableListing = $null
+    $script:ExakitTableRowListing = $null
+}
+
+function Get-ExakitTableRowListing {
+    if ($null -eq $script:ExakitTableRowListing) {
+        $script:ExakitTableRowListing = Get-ExakitQualifiedTableRows
+    }
+    return $script:ExakitTableRowListing
+}
 
 function Get-ExakitTableListing {
     if ($null -eq $script:ExakitTableListing) {
@@ -2461,15 +2840,51 @@ function Test-ExakitDatasetLoaded {
 # exakit_table_listing; the sentinel row is what the sh side needs to tell an
 # answered-but-empty listing from one that never came, and the same query
 # keeps the pair identical.
-function Get-ExakitQualifiedTables {
+# ONE query answers both questions. "Does this table exist?" and "how many rows
+# has it?" used to be a listing of the non-empty tables plus a probe per table,
+# and the difference between the two answers is the whole bug a folder load ran
+# into: a table that EXISTS WITH NO ROWS is not absent and is not loaded, and
+# reporting it as either one is what let a failed upload pass for a loaded one.
+# Twin of exakit_table_rows_listing.
+function Get-ExakitQualifiedTableRows {
     $result = Invoke-Exapump @("sql", "-p", $script:ExapumpProfile,
-        "SELECT 'EXAKIT.LISTING_ANSWERED' AS QUALIFIED FROM DUAL UNION ALL SELECT TABLE_SCHEMA || '.' || TABLE_NAME FROM SYS.EXA_ALL_TABLES WHERE TABLE_ROW_COUNT > 0")
+        "SELECT 'EXAKIT.LISTING_ANSWERED|1' AS QUALIFIED FROM DUAL UNION ALL SELECT TABLE_SCHEMA || '.' || TABLE_NAME || '|' || TABLE_ROW_COUNT FROM SYS.EXA_ALL_TABLES")
     if (-not $result.Success) { return $null }
-    $set = @{}
+    $map = @{}
     foreach ($line in (("" + $result.Output) -split "`r?`n")) {
         $t = $line.Trim()
-        if ($t -match '^([A-Za-z0-9_$]+)\.([A-Za-z0-9_$]+)$' -and $t -ne "EXAKIT.LISTING_ANSWERED") { $set[$t.ToUpper()] = $true }
+        if ($t -match '^([A-Za-z0-9_$]+\.[A-Za-z0-9_$]+)\|([0-9]+)$') {
+            $map[$Matches[1].ToUpper()] = [long]$Matches[2]
+        }
     }
+    return $map
+}
+
+# Get-ExakitTableRowCount <SCHEMA.TABLE> - the row count, "absent" when the
+# table is not there, or $null when the database could not be asked. THREE
+# answers, because the caller acts differently on each one.
+function Get-ExakitTableRowCount {
+    param([Parameter(Mandatory)][string]$Target)
+    $map = Get-ExakitTableRowListing
+    if ($null -eq $map) { return $null }
+    $key = $Target.ToUpper()
+    if ($map.ContainsKey($key)) { return $map[$key] }
+    return "absent"
+}
+
+function Get-ExakitQualifiedTables {
+    $map = Get-ExakitQualifiedTableRows
+    if ($null -eq $map) { return $null }
+    $set = @{}
+    foreach ($k in $map.Keys) {
+        # The sentinel carries |1, not |0, ON PURPOSE: it has to survive this
+        # rows-greater-than-zero filter, or a database whose tables merely
+        # happen to be empty hands every caller an empty listing - which they
+        # all read as "unreachable".
+        if ($k -eq "EXAKIT.LISTING_ANSWERED") { continue }
+        if ($map[$k] -gt 0) { $set[$k] = $true }
+    }
+    $set["EXAKIT.LISTING_ANSWERED"] = $true
     return $set
 }
 

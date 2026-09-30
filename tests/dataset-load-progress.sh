@@ -838,15 +838,25 @@ printf '\n== a dataset whose marker tables are empty is not loaded ==\n'
 # tables with 0 rows. The listing asks for rows, and carries a sentinel so an
 # answered-but-empty database is not mistaken for one that could not be asked.
 EXAPUMP_SH3="$(cat "$ROOT/setup/lib/exapump.sh")"
-has "the listing asks for rows, not existence" "WHERE TABLE_ROW_COUNT > 0" "$EXAPUMP_SH3"
-has "...and says when it was answered"         "SELECT 'EXAKIT.LISTING_ANSWERED' AS QUALIFIED FROM DUAL UNION ALL" "$EXAPUMP_SH3"
-has "the PowerShell twin asks the same"        "WHERE TABLE_ROW_COUNT > 0" "$(cat "$ROOT/setup/lib/exapump.ps1")"
-# Behaviour: a stub listing that answers with the sentinel and every table but
-# ORDERS reads as "not loaded" for a dataset whose markers include ORDERS.
+# The listing now CARRIES the row count instead of filtering on it, because the
+# folder load needs the third answer the filtered form threw away: a table that
+# exists with no rows is neither absent nor loaded, and a failed import leaves
+# exactly that behind. The rows>0 set these dataset checks want is derived from
+# the counted listing, so there is still one query, not two.
+has "the listing carries the row count"  "TABLE_NAME || '|' || TABLE_ROW_COUNT" "$EXAPUMP_SH3"
+has "...and says when it was answered"   "SELECT 'EXAKIT.LISTING_ANSWERED|1' AS QUALIFIED FROM DUAL UNION ALL" "$EXAPUMP_SH3"
+has "the PowerShell twin asks the same"  "TABLE_NAME || '|' || TABLE_ROW_COUNT" "$(cat "$ROOT/setup/lib/exapump.ps1")"
+# The sentinel carries |1 so it survives the rows>0 filter. A |0 sentinel would
+# be filtered out with the empty tables, handing every caller an empty listing
+# on a database whose tables merely happen to be empty - which they all read as
+# "could not be asked".
+has "the derived listing drops the empty tables" "grep -v '|0\$'" "$EXAPUMP_SH3"
+# Behaviour: a stub listing that answers with the sentinel, and where ORDERS is
+# present BUT EMPTY - the exact shape a failed upload leaves behind.
 cat > "$EXAKIT_BIN_DIR/exapump" <<'STUBEOF'
 #!/bin/sh
 case "$*" in
-    *LISTING_ANSWERED*) printf 'QUALIFIED\nEXAKIT.LISTING_ANSWERED\nTPCH.REGION\nTPCH.NATION\n'; exit 0 ;;
+    *LISTING_ANSWERED*) printf 'QUALIFIED\nEXAKIT.LISTING_ANSWERED|1\nTPCH.REGION|150\nTPCH.NATION|25\nTPCH.ORDERS|0\n'; exit 0 ;;
 esac
 exit 0
 STUBEOF
@@ -857,7 +867,24 @@ unset -f exakit_dataset_loaded
 exapump_cli() { printf '%s\n' "$EXAKIT_BIN_DIR/exapump"; }
 _exakit_sync_dataset_flag() { :; }
 check "markers with rows -> loaded"          "0" "$(exakit_dataset_loaded data.datasets.tpch.loaded "region,nation" TPCH tpch; echo $?)"
-check "a marker without rows -> not loaded"  "1" "$(exakit_dataset_loaded data.datasets.tpch.loaded "region,orders" TPCH tpch; echo $?)"
+check "a marker standing empty -> not loaded" "1" "$(exakit_dataset_loaded data.datasets.tpch.loaded "region,orders" TPCH tpch; echo $?)"
+# ...and the count itself is readable now, which is what the folder load needs.
+exakit_clear_table_listing
+check "an empty table reads as 0, not as absent" "0"      "$(exakit_table_rows_of TPCH.ORDERS)"
+check "a table with rows reads as its count"     "150"    "$(exakit_table_rows_of TPCH.REGION)"
+check "a table that is not there reads as absent" "absent" "$(exakit_table_rows_of TPCH.NOSUCH)"
+# A database that answers with nothing but empty tables is ANSWERED, not
+# unreachable - the |1 sentinel is what keeps that true.
+cat > "$EXAKIT_BIN_DIR/exapump" <<'STUBEOF'
+#!/bin/sh
+case "$*" in
+    *LISTING_ANSWERED*) printf 'QUALIFIED\nEXAKIT.LISTING_ANSWERED|1\nTPCH.ORDERS|0\n'; exit 0 ;;
+esac
+exit 0
+STUBEOF
+chmod +x "$EXAKIT_BIN_DIR/exapump"
+exakit_clear_table_listing
+check "a database of only-empty tables still answers" "EXAKIT.LISTING_ANSWERED" "$(exakit_table_listing)"
 
 printf '\n%s: %d passed, %d failed\n' "$(basename "$0")" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

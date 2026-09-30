@@ -1539,7 +1539,7 @@ _exakit_json_tables_ensure() {
         return 1
     }
     if ! _exakit_marketplace_install_one json-tables >> "${EXAKIT_LOG_FILE:-/dev/null}" 2>&1; then
-        _EXAKIT_JSON_TABLES_BLOCKED="The JSON engine could not be installed, so this file was not loaded (details: exakit logs)."
+        _EXAKIT_JSON_TABLES_BLOCKED="The JSON engine could not be installed, so this file was not loaded (details: exakit logs setup)."
         warn "The JSON engine could not be installed, so this file was not loaded."
         info "Everything already in the database is untouched. Details: exakit logs"
         return 1
@@ -1866,6 +1866,115 @@ _exakit_csv_extension_refused() {
 # The first file in alphabetical order wins. Content is compared by hash only
 # between files of identical BYTE SIZE, so a folder of differently sized exports
 # is never read twice just to prove they differ.
+# --- load receipts -------------------------------------------------------
+#
+# What a repeated folder load needs to know, and could not ask anything for:
+# "are the rows already in that table MINE?". exapump's upload APPENDS -- a
+# folder loaded twice ends with every row in it twice, silently, which is the
+# one outcome a data tool must never produce by accident. The database can say
+# a table holds 1,204 rows; it cannot say they came from sales.csv. So each
+# file that lands writes a line here, and a later run compares.
+#
+# A flat file, not the manifest: one append per file costs a printf, while a
+# manifest_set costs a python start and a lock round-trip, and a forty-file
+# folder would pay that forty times for bookkeeping nobody queries.
+exakit_load_receipts_path() {
+    printf '%s/load-receipts.tsv\n' "$EXAKIT_CACHE_DIR"
+}
+
+# exakit_load_receipt_record <SCHEMA.TABLE> <file> <rows> — remember a landing.
+exakit_load_receipt_record() {
+    _lrr_path="$(exakit_load_receipts_path)"
+    mkdir -p "$(dirname "$_lrr_path")" 2>/dev/null || return 0
+    _lrr_bytes="$(wc -c < "$2" 2>/dev/null | tr -d ' ')"
+    [ -n "$_lrr_bytes" ] || return 0
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')" \
+        "$_lrr_bytes" "$(sha256_of "$2")" "${3:-0}" \
+        "$(date +%s 2>/dev/null || echo 0)" "$(basename "$2")" \
+        >> "$_lrr_path" 2>/dev/null || true
+    return 0
+}
+
+# exakit_load_receipt_match <SCHEMA.TABLE> <file> — did THIS file land in THAT
+# table before? Prints the remembered row count on a match.
+#
+# Size first, hash only on a size match: the hash of a 2 GB parquet is seconds
+# of reading to answer a question that its byte count settles for free in the
+# overwhelming majority of cases. Same trick the in-folder duplicate check uses.
+exakit_load_receipt_match() {
+    _lrm_path="$(exakit_load_receipts_path)"
+    [ -f "$_lrm_path" ] || return 1
+    _lrm_target="$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')"
+    _lrm_bytes="$(wc -c < "$2" 2>/dev/null | tr -d ' ')"
+    [ -n "$_lrm_bytes" ] || return 1
+    # Newest first: a table loaded, replaced and loaded again has several lines,
+    # and the last one written is the one that describes what is in there now.
+    _lrm_cand="$(grep -F "$_lrm_target	$_lrm_bytes	" "$_lrm_path" 2>/dev/null | tail -1)"
+    [ -n "$_lrm_cand" ] || return 1
+    _lrm_have="$(printf '%s' "$_lrm_cand" | cut -f3)"
+    [ "$_lrm_have" = "$(sha256_of "$2")" ] || return 1
+    printf '%s\n' "$(printf '%s' "$_lrm_cand" | cut -f4)"
+    return 0
+}
+
+# exakit_load_receipt_file_targets <schema> <file> — every table IN THAT SCHEMA
+# this exact file has landed in, one per line.
+#
+# Keyed on the FILE, not the target, because one JSON file does not become one
+# table: json-tables shreds a nested document into SCHEMA.<base>_<name> per
+# array it finds, so the table the plan named never exists and a target-keyed
+# lookup answers "nothing there" every time -- which is how a second run would
+# shred the same document on top of itself.
+exakit_load_receipt_file_targets() {
+    _lrft_path="$(exakit_load_receipts_path)"
+    [ -f "$_lrft_path" ] || return 1
+    _lrft_bytes="$(wc -c < "$2" 2>/dev/null | tr -d ' ')"
+    [ -n "$_lrft_bytes" ] || return 1
+    # Size before hash, as everywhere else: no point reading a 2 GB file to
+    # answer a question its byte count settles.
+    grep -F "	$_lrft_bytes	" "$_lrft_path" 2>/dev/null | \
+        grep "^$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')\." > /dev/null 2>&1 || return 1
+    _lrft_sha="$(sha256_of "$2")"
+    _lrft_out="$(awk -F'\t' -v pfx="$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')." \
+        -v sz="$_lrft_bytes" -v sha="$_lrft_sha" \
+        'index($1, pfx) == 1 && $2 == sz && $3 == sha { print $1 "|" $4 }' "$_lrft_path" \
+        | awk -F'|' '{ seen[$1] = $2 } END { for (t in seen) print t "|" seen[t] }')"
+    [ -n "$_lrft_out" ] || return 1
+    printf '%s\n' "$_lrft_out"
+}
+
+# exakit_file_already_landed <schema> <file> — has this exact file already been
+# loaded into this schema, and is every table it made still holding exactly what
+# it held? Prints the total rows across them.
+exakit_file_already_landed() {
+    _fal_rows="$(exakit_load_receipt_file_targets "$1" "$2")" || return 1
+    _fal_total=0
+    while IFS='|' read -r _fal_t _fal_n; do
+        [ -n "$_fal_t" ] || continue
+        # Every one of them, not just the first: a document that shredded into
+        # four tables and lost one is a load to redo, not a load to skip.
+        [ "$(exakit_table_rows_of "$_fal_t")" = "$_fal_n" ] || return 1
+        _fal_total=$(( _fal_total + _fal_n ))
+    done <<EXAKIT_FAL_EOF
+$_fal_rows
+EXAKIT_FAL_EOF
+    [ "$_fal_total" -gt 0 ] || return 1
+    printf '%s\n' "$_fal_total"
+}
+
+# exakit_load_receipt_forget <SCHEMA.TABLE> — drop what we remember about a
+# table, because its rows have just been thrown away.
+exakit_load_receipt_forget() {
+    _lrf_path="$(exakit_load_receipts_path)"
+    [ -f "$_lrf_path" ] || return 0
+    _lrf_target="$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')"
+    _lrf_tmp="$(mktemp "${TMPDIR:-/tmp}/exakit-receipts.XXXXXX")" || return 0
+    grep -v -F "$_lrf_target	" "$_lrf_path" > "$_lrf_tmp" 2>/dev/null || true
+    mv "$_lrf_tmp" "$_lrf_path" 2>/dev/null || rm -f "$_lrf_tmp"
+    return 0
+}
+
 exakit_bulk_scan_folder() {
     _bsf_dir="$1"
     _bsf_paths=()
@@ -2027,6 +2136,21 @@ exakit_load_local_folder() {
     EXAKIT_UPLOAD_QUIET=1
     export EXAKIT_UPLOAD_QUIET
     exakit_ensure_schema "$_blf_schema"
+
+    # BEFORE a single byte goes over: what is already in those tables? The
+    # schema was just created, so the listing has to be taken after that, and
+    # it is one query for the whole folder.
+    exakit_clear_table_listing
+    _blf_plans="$(exakit_bulk_decide "$_blf_chosen" "$_blf_schema")"
+    # EXAKIT_ON_EXISTING answers the clash question without a terminal, which is
+    # what a script or an agent driving this needs; an unusable value is a
+    # refusal, not a silent fallback to the most destructive reading.
+    case "${EXAKIT_ON_EXISTING:-}" in
+        "")                  _blf_clash="$(exakit_bulk_ask_clashes "$_blf_plans" "$_blf_schema")" ;;
+        skip|replace|append) _blf_clash="$EXAKIT_ON_EXISTING" ;;
+        *) warn "EXAKIT_ON_EXISTING must be skip, replace or append (got '$EXAKIT_ON_EXISTING')."; return 1 ;;
+    esac
+    exakit_bulk_print_resume "$_blf_plans" "$_blf_clash"
     # Weighted by BYTES, like a bundled dataset: a folder is usually one big
     # export and a handful of small ones, and counting files would put the bar
     # at 90% while the only file that matters is still going.
@@ -2046,29 +2170,101 @@ EXAKIT_BULK_WEIGH_EOF
     fi
     _blf_done=0
     _blf_failed=0
+    _blf_skipped=0
     _blf_i=0
+    # Every file's fate, collected as it happens and printed as a table once the
+    # bar is gone. Writing it to a file rather than a variable because the
+    # reporting must survive the subshells the uploads run in.
+    _blf_out="$(mktemp "${TMPDIR:-/tmp}/exakit-outcome.XXXXXX")" || _blf_out=""
+    # What landed where, for the ONE listing taken after the loop. Row counts
+    # and receipts both need it, and asking per file made a forty-file folder
+    # pay forty round trips for bookkeeping one query answers.
+    _blf_landed="$(mktemp "${TMPDIR:-/tmp}/exakit-landed.XXXXXX")" || _blf_landed="/dev/null"
     while IFS='|' read -r _blf_kind _blf_table _blf_path; do
         [ -n "$_blf_path" ] || continue
         _blf_i=$((_blf_i + 1))
         _blf_target="$_blf_schema.$_blf_table"
+        _blf_w="$(exakit_load_weight_of "$_blf_path")"
+        _blf_verdict="$(printf '%s\n' "$_blf_plans" | grep -F "|$_blf_path|" | head -1)"
+        [ -n "$_blf_verdict" ] || _blf_verdict="load|$_blf_path|"
+        _blf_act="${_blf_verdict%%|*}"
+        _blf_had="${_blf_verdict##*|}"
+        # Already there, put there by this very file: the whole point of the
+        # exercise. Weight still counts towards the bar, or a resumed run would
+        # crawl to 100% in one jump at the end.
+        if [ "$_blf_act" = "done" ]; then
+            _blf_skipped=$((_blf_skipped + 1))
+            _blf_done_w=$(( _blf_done_w + _blf_w ))
+            # Name the tables it MADE, not the one the plan guessed. A shredded
+            # JSON document never produced a table called FEED, and printing one
+            # sends the reader looking for it.
+            _blf_show="$_blf_table"
+            if [ "$_blf_kind" = json ]; then
+                _blf_real="$(exakit_load_receipt_file_targets "$_blf_schema" "$_blf_path" 2>/dev/null \
+                    | cut -d'|' -f1 | sed 's/^[^.]*\.//' | sort | tr '\n' ',' | sed 's/,$//; s/,/, /g')"
+                [ -n "$_blf_real" ] && _blf_show="$_blf_real"
+            fi
+            _exakit_log_file "SKIP  $(basename "$_blf_path") -> $_blf_show (already loaded, $_blf_had rows)"
+            [ -n "$_blf_out" ] && printf 'skip\t%s\t%s\t%s\talready loaded from this file - left as it is\n' \
+                "$(basename "$_blf_path")" "$_blf_show" "$(exakit_rows_label "$_blf_had")" >> "$_blf_out"
+            continue
+        fi
+        if [ "$_blf_act" = "clash" ] && [ "$_blf_clash" = "skip" ]; then
+            _blf_skipped=$((_blf_skipped + 1))
+            _blf_done_w=$(( _blf_done_w + _blf_w ))
+            _exakit_log_file "SKIP  $(basename "$_blf_path") -> $_blf_target (holds $_blf_had rows this kit did not load)"
+            [ -n "$_blf_out" ] && printf 'skip\t%s\t%s\t%s\tnot loaded: the table already holds rows this kit did not put there\n' \
+                "$(basename "$_blf_path")" "$_blf_table" "$(exakit_rows_label "$_blf_had")" >> "$_blf_out"
+            continue
+        fi
+        # An interrupted write leaves PART of a file in the table, and a clash
+        # the reader chose to replace is the same situation by consent: in both
+        # the rows there are not wanted, and appending on top of them would mix
+        # a half-file with a whole one.
+        if [ "$_blf_act" = "resume" ] || { [ "$_blf_act" = "clash" ] && [ "$_blf_clash" = "replace" ]; }; then
+            "$(exapump_cli)" sql -p "$EXAKIT_EXAPUMP_PROFILE" \
+                "DROP TABLE IF EXISTS $_blf_target" >> "${EXAKIT_LOG_FILE:-/dev/null}" 2>&1 || true
+            exakit_load_receipt_forget "$_blf_target"
+            _exakit_log_file "RESET $_blf_target dropped before reloading $(basename "$_blf_path")"
+        fi
         # The bar names the file it is actually on and how far through the
         # folder it is — a forty-file load must never animate under one label.
-        _blf_w="$(exakit_load_weight_of "$_blf_path")"
         if [ -n "$_blf_state" ]; then
             exakit_load_step "$_blf_state" "$_blf_done_w" "$_blf_w" "$_blf_total_w" \
                 "$(exakit_load_secs_for "$_blf_w")" \
                 "$(basename "$_blf_path") ($_blf_i/$_blf_n)"
         fi
+        # Was the table there BEFORE we touched it? A failure that leaves behind
+        # a table we created and never filled is a phantom: it answers "yes" to
+        # every "is it loaded?" check the kit has, while holding nothing.
+        # This comes from the decision taken before the loop -- and from the DROP
+        # just above, when there was one -- rather than from a fresh listing per
+        # file, which on a forty-file folder was forty extra round trips.
+        _blf_pre="$_blf_had"
+        case "$_blf_act" in resume|clash) _blf_pre="absent" ;; esac
+        exakit_load_inflight_set "$_blf_target"
         if [ "$_blf_kind" = "json" ]; then
             EXAKIT_LAST_LOAD_TARGET=""
             if exakit_load_local_json "$_blf_path" "$_blf_target"; then
-                _exakit_log_file "OK    $(basename "$_blf_path") -> ${EXAKIT_LAST_LOAD_TARGET:-$_blf_target}"
+                exakit_load_inflight_clear
+                _blf_land="${EXAKIT_LAST_LOAD_TARGET:-$_blf_target}"
+                _exakit_log_file "OK    $(basename "$_blf_path") -> $_blf_land"
                 _blf_done=$((_blf_done + 1))
                 _blf_done_w=$(( _blf_done_w + _blf_w ))
+                # _blf_land is a COMMA-SEPARATED LIST when the document
+                # shredded into several tables. The row counts are filled in
+                # by ONE listing after the loop, not one per file.
+                [ -n "$_blf_out" ] && printf 'ok\t%s\t%s\t@ROWS@\t\n' \
+                    "$(basename "$_blf_path")" \
+                    "$(printf '%s' "$_blf_land" | tr -d ' ')" >> "$_blf_out"
+                printf '%s\t%s\n' "$_blf_path" "$(printf '%s' "$_blf_land" | tr -d ' ')" >> "$_blf_landed"
             else
+                exakit_load_inflight_clear
                 _blf_why="$(exakit_upload_failure_reason 2>/dev/null || true)"
-                warn "$(basename "$_blf_path") not loaded${_blf_why:+ — $_blf_why}"
+                _blf_gone="$(exakit_drop_phantom_table "$_blf_target" "$_blf_pre")"
                 _blf_failed=$((_blf_failed + 1))
+                [ -n "$_blf_out" ] && printf 'fail\t%s\t%s\tnot loaded%s\t%s\n' \
+                    "$(basename "$_blf_path")" "$_blf_table" "$_blf_gone" "$_blf_why" >> "$_blf_out"
             fi
             continue
         fi
@@ -2084,13 +2280,20 @@ EXAKIT_BULK_WEIGH_EOF
             EXAKIT_CSV_FLAGS="$(exakit_csv_inspect "$_blf_path" 2>/dev/null | cut -d'|' -f2)"
         fi
         if ( EXAKIT_UPLOAD_SOFT=1 exapump_upload "$_blf_path" "$_blf_target" ); then
+            exakit_load_inflight_clear
             _exakit_log_file "OK    $(basename "$_blf_path") -> $_blf_target"
             _blf_done=$((_blf_done + 1))
             _blf_done_w=$(( _blf_done_w + _blf_w ))
+            [ -n "$_blf_out" ] && printf 'ok\t%s\t%s\t@ROWS@\t\n' \
+                "$(basename "$_blf_path")" "$_blf_target" >> "$_blf_out"
+            printf '%s\t%s\n' "$_blf_path" "$_blf_target" >> "$_blf_landed"
         else
+            exakit_load_inflight_clear
             _blf_why="$(exakit_upload_failure_reason 2>/dev/null || true)"
-            warn "$(basename "$_blf_path") not loaded${_blf_why:+ — $_blf_why}"
+            _blf_gone="$(exakit_drop_phantom_table "$_blf_target" "$_blf_pre")"
             _blf_failed=$((_blf_failed + 1))
+            [ -n "$_blf_out" ] && printf 'fail\t%s\t%s\tnot loaded%s\t%s\n' \
+                "$(basename "$_blf_path")" "$_blf_table" "$_blf_gone" "$_blf_why" >> "$_blf_out"
         fi
     done <<EXAKIT_BULK_LOAD_EOF
 $_blf_chosen
@@ -2100,16 +2303,299 @@ EXAKIT_BULK_LOAD_EOF
     EXAKIT_UPLOAD_QUIET=0
     EXAKIT_ACTIVE_LABEL=""
 
+    exakit_bulk_settle "$_blf_landed" "$_blf_out"
+    rm -f "$_blf_landed"
+
+    # The table, before the sentence about it. A reader who reads nothing else
+    # has already been told which file went where and which one did not.
+    if [ -n "$_blf_out" ]; then
+        exakit_bulk_print_outcomes "$_blf_out" "$_blf_schema"
+        rm -f "$_blf_out"
+    fi
+
     manifest_set data.last_load.type "local_folder"
     manifest_set data.last_load.source "$_blf_dir"
     manifest_set data.last_load.target "$_blf_schema"
     manifest_set data.last_load.files "$_blf_done"
 
+    # Every outcome that happened, named once, in one sentence. "Loaded 0 of 3"
+    # was what a fully-resumed run used to say about a schema holding every row
+    # it asked for -- a true count of a number nobody wanted, reading as total
+    # failure. Each clause appears only when its count is non-zero.
+    _blf_say="$(exakit_plural "$_blf_done" file) loaded"
+    [ "$_blf_skipped" -gt 0 ] && _blf_say="$_blf_say, $_blf_skipped already there and left alone"
+    [ "$_blf_failed" -gt 0 ] && _blf_say="$_blf_say, $_blf_failed not loaded"
     if [ "$_blf_failed" -gt 0 ]; then
-        warn "Loaded $_blf_done of $_blf_n into $_blf_schema; $_blf_failed not loaded (reason above, full detail: exakit logs)."
+        # NOT "exakit logs". That command lists the log TARGETS and shows none
+        # of them, so a reader following it lands on a chooser and still does
+        # not know what went wrong. Name the log that holds the answer.
+        warn "$_blf_schema: $_blf_say (each file's reason is against it above; full detail: exakit logs setup)."
         return 1
     fi
-    ok "Loaded $(exakit_plural "$_blf_done" file) into $_blf_schema"
+    if [ "$_blf_done" -eq 0 ] && [ "$_blf_skipped" -gt 0 ]; then
+        ok "$_blf_schema already holds every file in that folder — nothing to load."
+        return 0
+    fi
+    ok "$_blf_schema: $_blf_say"
+    return 0
+}
+
+# exakit_bulk_settle <landed> <outcomes> — one listing, taken once, that turns
+# every "@ROWS@" in the report into a real count and writes a receipt for every
+# table that took rows.
+#
+# The counts cannot be read as the loop goes: each one needs a fresh listing,
+# and a listing is a process start, a TLS handshake and an authentication. Read
+# per file, a forty-file folder spent about a hundred seconds asking the
+# database questions it could answer for all forty at once.
+exakit_bulk_settle() {
+    [ -s "$1" ] || return 0
+    exakit_clear_table_listing
+    while IFS='	' read -r _bs_path _bs_targets; do
+        [ -n "$_bs_targets" ] || continue
+        _bs_total=0
+        _bs_names=""
+        _bs_rest="$_bs_targets"
+        while [ -n "$_bs_rest" ]; do
+            _bs_one="${_bs_rest%%,*}"
+            case "$_bs_rest" in *,*) _bs_rest="${_bs_rest#*,}" ;; *) _bs_rest="" ;; esac
+            [ -n "$_bs_one" ] || continue
+            _bs_n="$(exakit_table_rows_of "$_bs_one")"
+            case "$_bs_n" in
+                ''|absent) _bs_n=0 ;;
+                *) _bs_total=$(( _bs_total + _bs_n )) ;;
+            esac
+            # A receipt for every table it made, so a later run can tell rows it
+            # put there from rows it did not.
+            exakit_load_receipt_record "$_bs_one" "$_bs_path" "$_bs_n"
+            _bs_names="${_bs_names:+$_bs_names, }${_bs_one#*.}"
+        done
+        [ -s "$2" ] || continue
+        # The row this file wrote, filled in. awk over sed because a filename
+        # may hold characters sed would read as part of the expression.
+        _bs_tmp="$(mktemp "${TMPDIR:-/tmp}/exakit-settle.XXXXXX")" || return 0
+        awk -F'	' -v OFS='	' -v want="$(basename "$_bs_path")" -v names="$_bs_names" \
+            -v rows="$(exakit_rows_label "$_bs_total")" \
+            '$1 == "ok" && $2 == want && $4 == "@ROWS@" { $3 = names; $4 = rows } { print }' \
+            "$2" > "$_bs_tmp" && mv "$_bs_tmp" "$2" || rm -f "$_bs_tmp"
+    done < "$1"
+    # Anything the listing could not answer for must not print a marker at the
+    # reader. It loaded; we simply cannot say how much.
+    _bs_tmp2="$(mktemp "${TMPDIR:-/tmp}/exakit-settle.XXXXXX")" || return 0
+    awk -F'	' -v OFS='	' '$4 == "@ROWS@" { $4 = "" } { print }' "$2" > "$_bs_tmp2" \
+        && mv "$_bs_tmp2" "$2" || rm -f "$_bs_tmp2"
+    return 0
+}
+
+# exakit_rows_label <rows> — "339 rows" from a count, or "" when the database
+# could not be asked. Never "0 rows" dressed up as a success.
+exakit_rows_label() {
+    case "${1:-}" in
+        ""|absent) printf '\n' ;;
+        *)         printf '%s\n' "$(exakit_plural "$1" row)" ;;
+    esac
+}
+
+# exakit_drop_phantom_table <SCHEMA.TABLE> <rows-before> — clean up after a
+# failed upload, and say so.
+#
+# exapump infers the schema and CREATES the table before it imports a single
+# row, so a file the engine then refuses leaves an EMPTY TABLE standing. That
+# table is worse than nothing: exakit status counts it, the schema listing
+# shows it, and the next reader sees a name that promises data it does not
+# have. Drop it -- but only when we are the ones who created it. A table that
+# was already there is the reader's, failed import or not.
+exakit_drop_phantom_table() {
+    _dpt_pre="${2:-}"
+    [ "$_dpt_pre" = "absent" ] || return 0
+    exakit_clear_table_listing
+    [ "$(exakit_table_rows_of "$1")" = "0" ] || return 0
+    "$(exapump_cli)" sql -p "$EXAKIT_EXAPUMP_PROFILE" \
+        "DROP TABLE IF EXISTS $1" >> "${EXAKIT_LOG_FILE:-/dev/null}" 2>&1 || return 0
+    exakit_clear_table_listing
+    _exakit_log_file "CLEAN dropped empty $1 left by the failed import"
+    printf ', no empty table left behind\n'
+    return 0
+}
+
+# --- what a re-run must not do twice -------------------------------------
+
+exakit_load_inflight_path() { printf '%s/load-inflight\n' "$EXAKIT_CACHE_DIR"; }
+
+# exakit_load_inflight_set <SCHEMA.TABLE> / _clear — a crumb dropped before an
+# upload and swept after it. A folder load that is killed mid-file leaves the
+# target holding PART of that file and no receipt, which is indistinguishable
+# from a table the reader filled themselves -- unless we said, before starting,
+# that we were about to write to it. That is the whole difference between
+# "resume this" and "ask before touching the reader's data".
+exakit_load_inflight_set() {
+    _lis_p="$(exakit_load_inflight_path)"
+    mkdir -p "$(dirname "$_lis_p")" 2>/dev/null || return 0
+    printf '%s\n' "$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')" > "$_lis_p" 2>/dev/null || true
+    return 0
+}
+exakit_load_inflight_clear() { rm -f "$(exakit_load_inflight_path)" 2>/dev/null || true; return 0; }
+exakit_load_inflight_get() { cat "$(exakit_load_inflight_path)" 2>/dev/null || true; }
+
+# exakit_bulk_decide <chosen> <schema> — one line per planned file:
+#
+#     load|<path>            nothing there, or an empty table: go
+#     done|<path>|<rows>     this very file already landed there: skip it
+#     resume|<path>|<rows>   we were interrupted writing this one: redo it
+#     clash|<path>|<rows>    rows we cannot account for: ask before writing
+#
+# This is the answer to "I ran it again after it stopped". exapump's upload
+# APPENDS, so without this every re-run doubles the rows of every file that had
+# already made it -- no error, no warning, just twice the data.
+exakit_bulk_decide() {
+    _bd_chosen="$1"; _bd_schema="$2"
+    _bd_inflight="$(exakit_load_inflight_get)"
+    while IFS='|' read -r _bd_kind _bd_table _bd_path; do
+        [ -n "$_bd_path" ] || continue
+        _bd_target="$(printf '%s.%s' "$_bd_schema" "$_bd_table" | tr '[:lower:]' '[:upper:]')"
+        _bd_rows="$(exakit_table_rows_of "$_bd_target")"
+        case "$_bd_rows" in
+            # "" is a database that could not be asked -- not an empty one. Load
+            # is the honest move: refusing to load because we could not look
+            # would make an unreachable listing into a failed job.
+            "") printf 'load|%s|unknown\n' "$_bd_path" ;;
+            absent|0)
+                # The named target holds nothing -- but a JSON document does not
+                # land in the table the plan named, so "nothing there" is not
+                # the same as "never loaded". Ask what this FILE has landed.
+                _bd_land=""
+                [ "$_bd_kind" = json ] && _bd_land="$(exakit_file_already_landed "$_bd_schema" "$_bd_path" 2>/dev/null || true)"
+                if [ -n "$_bd_land" ]; then
+                    printf 'done|%s|%s\n' "$_bd_path" "$_bd_land"
+                else
+                    # The row count travels with the verdict. Whether the table
+                    # was THERE before the upload decides whether an empty one
+                    # left behind afterwards is ours to drop, and asking the
+                    # database again per file costs a listing per file.
+                    printf 'load|%s|%s\n' "$_bd_path" "$_bd_rows"
+                fi
+                ;;
+            *)
+                _bd_seen="$(exakit_load_receipt_match "$_bd_target" "$_bd_path" 2>/dev/null || true)"
+                # The receipt alone is not enough. It says what WE put there;
+                # the table can have been dropped and rebuilt, truncated, or
+                # added to since, and a receipt that outlives its rows would
+                # skip a file the schema no longer holds. The remembered count
+                # has to still be the count -- anything else is a table we can
+                # no longer account for, which is a question, not an assumption.
+                if [ -n "$_bd_seen" ] && [ "$_bd_seen" = "$_bd_rows" ]; then
+                    printf 'done|%s|%s\n' "$_bd_path" "$_bd_rows"
+                elif [ "$_bd_inflight" = "$_bd_target" ]; then
+                    printf 'resume|%s|%s\n' "$_bd_path" "$_bd_rows"
+                else
+                    printf 'clash|%s|%s\n' "$_bd_path" "$_bd_rows"
+                fi
+                ;;
+        esac
+    done <<EXAKIT_BULK_DECIDE_EOF
+$_bd_chosen
+EXAKIT_BULK_DECIDE_EOF
+}
+
+# exakit_bulk_ask_clashes <decisions> <schema> — what to do about target tables
+# that already hold rows this kit did not put there. Asked ONCE for the whole
+# set, not once per file: eight files into a schema someone has been using is
+# one decision, and asking it eight times is how a reader ends up answering
+# "yes" to the one they meant to refuse.
+#
+# Skip is the default, and the default on a pipe. Appending by accident is
+# unrecoverable without knowing which rows were new; skipping costs a re-run.
+exakit_bulk_ask_clashes() {
+    _bac_n="$(printf '%s\n' "$1" | grep -c '^clash|' || true)"
+    [ "$_bac_n" -gt 0 ] || { printf 'skip\n'; return 0; }
+    # EVERY line of this goes to stderr, and only the answer to stdout. The
+    # caller reads this function through $(...), so a list printed on stdout
+    # does not appear on screen -- it becomes part of the answer, which then
+    # matches none of the three cases and silently falls through to appending.
+    # Exactly what prompt_text does, and for the same reason.
+    printf '\n' >&2
+    warn "$(exakit_plural "$_bac_n" table) in $2 already holding rows this kit did not load:"
+    printf '%s\n' "$1" | grep '^clash|' | while IFS='|' read -r _bac_v _bac_p _bac_r; do
+        printf '      %s%s%s %s %s->%s %s already\n' \
+            "${UI_DIM:-}" "${UI_BULLET:--}" "${UI_RESET:-}" \
+            "$(basename "$_bac_p")" "${UI_DIM:-}" "${UI_RESET:-}" "$(exakit_rows_label "$_bac_r")" >&2
+    done
+    if [ -z "$(_exakit_prompt_tty)" ]; then
+        # info writes to stdout, and stdout here is the answer. >&2 or the
+        # sentence becomes part of it.
+        info "Skipping those files. Re-run with EXAKIT_ON_EXISTING=replace or =append to decide otherwise." >&2
+        printf 'skip\n'; return 0
+    fi
+    while :; do
+        case "$(prompt_text 'Those files: (s)kip, (r)eplace what is there, or (a)ppend to it' 's')" in
+            s|S|skip|Skip|SKIP)          printf 'skip\n'; return 0 ;;
+            r|R|replace|Replace|REPLACE) printf 'replace\n'; return 0 ;;
+            a|A|append|Append|APPEND)    printf 'append\n'; return 0 ;;
+            *) warn "Answer s, r or a." ;;
+        esac
+    done
+}
+
+# exakit_bulk_print_resume <decisions> <clash-answer> — said BEFORE the bar
+# starts, because "why is it only loading three of my eight files?" is a
+# question a reader should never have to ask a progress bar.
+exakit_bulk_print_resume() {
+    _bpr_done="$(printf '%s\n' "$1" | grep -c '^done|' || true)"
+    _bpr_res="$(printf '%s\n' "$1" | grep -c '^resume|' || true)"
+    if [ "$_bpr_done" -gt 0 ]; then
+        info "$(exakit_plural "$_bpr_done" file) already loaded from this folder — skipping $([ "$_bpr_done" = 1 ] && echo it || echo them)."
+    fi
+    if [ "$_bpr_res" -gt 0 ]; then
+        info "$(exakit_plural "$_bpr_res" file) was left half-loaded by an interrupted run — reloading from scratch."
+    fi
+    case "$2" in
+        replace) info "Replacing what is in the tables that already held rows." ;;
+        append)  warn "Appending to the tables that already held rows — those rows stay, and these go on top." ;;
+    esac
+    return 0
+}
+
+# exakit_bulk_print_outcomes <outcomes-file> <schema> — what happened, per file,
+# on screen, after the bar has gone.
+#
+# The count alone ("Loaded 7 of 8") does not say WHICH seven, and the one line
+# that named the failure was printed INSIDE a live progress bar forty lines
+# earlier. A reader who looks away for the ten seconds that matters is left
+# with a number and a pointer to a log. This is the table they actually needed.
+exakit_bulk_print_outcomes() {
+    [ -s "$1" ] || return 0
+    # ONE width for the name column and ONE for the mark, measured from what is
+    # actually in this table. The marks are not all the same length without
+    # colour ("[ok]", "[x]", "-"), and padding only the names put every target
+    # in a different column -- a list whose whole job is to be scanned down.
+    _bpo_mok="${UI_TICK:-[ok]}"; _bpo_msk="${UI_BULLET:--}"; _bpo_mfl="${UI_CROSS:-[x]}"
+    _bpo_mw=${#_bpo_mok}
+    [ ${#_bpo_msk} -gt "$_bpo_mw" ] && _bpo_mw=${#_bpo_msk}
+    [ ${#_bpo_mfl} -gt "$_bpo_mw" ] && _bpo_mw=${#_bpo_mfl}
+    _bpo_w=0
+    while IFS='	' read -r _bpo_s _bpo_f _bpo_t _bpo_r _bpo_why; do
+        [ -n "$_bpo_f" ] || continue
+        [ ${#_bpo_f} -gt "$_bpo_w" ] && _bpo_w=${#_bpo_f}
+    done < "$1"
+    [ "$_bpo_w" -gt 44 ] && _bpo_w=44
+    printf '\n'
+    [ -n "$2" ] && printf '   %sinto %s%s\n' "${UI_DIM:-}" "$2" "${UI_RESET:-}"
+    while IFS='	' read -r _bpo_s _bpo_f _bpo_t _bpo_r _bpo_why; do
+        [ -n "$_bpo_f" ] || continue
+        case "$_bpo_s" in
+            ok)   _bpo_plain="$_bpo_mok"; _bpo_mark="${UI_OK:-}$_bpo_mok${UI_RESET:-}" ;;
+            skip) _bpo_plain="$_bpo_msk"; _bpo_mark="${UI_DIM:-}$_bpo_msk${UI_RESET:-}" ;;
+            *)    _bpo_plain="$_bpo_mfl"; _bpo_mark="${UI_ERR:-}$_bpo_mfl${UI_RESET:-}" ;;
+        esac
+        printf '   %s%*s %-*s %s->%s %s  %s\n' \
+            "$_bpo_mark" "$(( _bpo_mw - ${#_bpo_plain} ))" '' \
+            "$_bpo_w" "$_bpo_f" "${UI_DIM:-}" "${UI_RESET:-}" \
+            "$_bpo_t" "$_bpo_r"
+        # The reason under the row it belongs to, not forty lines up the screen
+        # inside a progress bar that has since been overwritten.
+        [ -n "$_bpo_why" ] && printf '     %s%s%s\n' "${UI_DIM:-}" "$_bpo_why" "${UI_RESET:-}"
+    done < "$1"
+    printf '\n'
     return 0
 }
 
@@ -2358,22 +2844,54 @@ _exakit_sync_dataset_flag() {
 # in EXA_ALL_TABLES (checked against COUNT(*) on a real database), and the
 # sentinel row keeps a database whose every table is empty apart from one
 # that could not be asked - which is what an empty answer means below.
-EXAKIT_TABLE_LISTING=""
-EXAKIT_TABLE_LISTING_READ=0
+# ONE query answers both questions. "Does this table exist?" and "how many rows
+# has it?" used to be a listing of the non-empty tables plus a probe per table,
+# and the difference between the two answers is the whole bug a folder load ran
+# into: a table that EXISTS WITH NO ROWS is not absent and is not loaded, and
+# reporting it as either one is what let a failed upload pass for a loaded one.
+# So the query carries the count and drops the WHERE, and the rows>0 listing the
+# dataset checks want is derived from it rather than fetched again.
+EXAKIT_TABLE_ROWS=""
+EXAKIT_TABLE_ROWS_READ=0
 
 exakit_clear_table_listing() {
-    EXAKIT_TABLE_LISTING=""
-    EXAKIT_TABLE_LISTING_READ=0
+    EXAKIT_TABLE_ROWS=""
+    EXAKIT_TABLE_ROWS_READ=0
+}
+
+# exakit_table_rows_listing — "SCHEMA.TABLE|ROWS" for EVERY table, one per line.
+# Empty output means the database could not be ASKED; the sentinel row is what
+# separates that from a database that genuinely holds nothing. The sentinel
+# carries |1, not |0, ON PURPOSE: exakit_table_listing below filters the
+# zero-row tables out, and a |0 sentinel would be filtered with them - handing
+# every caller an empty listing, which they all read as "unreachable", on a
+# database whose tables merely happen to be empty.
+exakit_table_rows_listing() {
+    if [ "$EXAKIT_TABLE_ROWS_READ" != "1" ]; then
+        EXAKIT_TABLE_ROWS="$("$(exapump_cli)" sql -p "$EXAKIT_EXAPUMP_PROFILE" \
+            "SELECT 'EXAKIT.LISTING_ANSWERED|1' AS QUALIFIED FROM DUAL UNION ALL SELECT TABLE_SCHEMA || '.' || TABLE_NAME || '|' || TABLE_ROW_COUNT FROM SYS.EXA_ALL_TABLES" 2>/dev/null | \
+            grep -oE '^[A-Za-z0-9_$]+\.[A-Za-z0-9_$]+\|[0-9]+$' | tr '[:lower:]' '[:upper:]')"
+        EXAKIT_TABLE_ROWS_READ=1
+    fi
+    printf '%s' "$EXAKIT_TABLE_ROWS"
+}
+
+# exakit_table_rows_of <SCHEMA.TABLE> — the row count, or "absent" when the
+# table is not there, or "" when the database could not be asked. THREE
+# answers, because the caller acts differently on each one.
+exakit_table_rows_of() {
+    _tro_want="$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')"
+    _tro_all="$(exakit_table_rows_listing)"
+    [ -n "$_tro_all" ] || return 0
+    _tro_hit="$(printf '%s\n' "$_tro_all" | grep -F "$_tro_want|" | head -1)"
+    if [ -z "$_tro_hit" ]; then printf 'absent\n'; return 0; fi
+    printf '%s\n' "${_tro_hit#*|}"
 }
 
 exakit_table_listing() {
-    if [ "$EXAKIT_TABLE_LISTING_READ" != "1" ]; then
-        EXAKIT_TABLE_LISTING="$("$(exapump_cli)" sql -p "$EXAKIT_EXAPUMP_PROFILE" \
-            "SELECT 'EXAKIT.LISTING_ANSWERED' AS QUALIFIED FROM DUAL UNION ALL SELECT TABLE_SCHEMA || '.' || TABLE_NAME FROM SYS.EXA_ALL_TABLES WHERE TABLE_ROW_COUNT > 0" 2>/dev/null | \
-            grep -oE '^[A-Za-z0-9_$]+\.[A-Za-z0-9_$]+$' | tr '[:lower:]' '[:upper:]')"
-        EXAKIT_TABLE_LISTING_READ=1
-    fi
-    printf '%s' "$EXAKIT_TABLE_LISTING"
+    _tl_all="$(exakit_table_rows_listing)"
+    [ -n "$_tl_all" ] || return 0
+    printf '%s\n' "$_tl_all" | grep -v '|0$' | cut -d'|' -f1
 }
 
 exakit_dataset_loaded() {
