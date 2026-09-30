@@ -144,7 +144,7 @@ exakit data-load             # bundled datasets not yet loaded, or your own data
 exakit data-load --force     # REPLACE TPC-H: drops and rebuilds its tables
 ```
 
-You can also load your own CSV, Parquet or JSON files (`.geojson` included), or a folder of them, with one table per file. JSON files go through the JSON Tables add-on, which the kit offers when you need it. The kit passes files to the loaders unchanged: a semicolon-separated CSV keeps its delimiter, and for a `.tsv` or `.txt` table the kit tells you to rename it to `.csv`, the only format exapump reads. Uploaded tables go into the `STARTER_KIT` schema. More detail: [what's included](data/README.md) · [data dictionary](data/data-dictionary.md) · [14 example questions with reference SQL](data/example-questions.md)
+You can also load your own CSV, Parquet or JSON files, or a folder of them, with one table per file. JSON files go through the JSON Tables add-on, which the kit offers when you need it. Uploads land in the `STARTER_KIT` schema by default. More detail: [what's included](data/README.md) · [data dictionary](data/data-dictionary.md) · [14 example questions with reference SQL](data/example-questions.md)
 
 ## More ways to connect
 
