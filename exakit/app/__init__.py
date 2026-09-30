@@ -25,7 +25,7 @@ from exakit.adapters.process.services import Services
 from exakit.adapters.runtime.personal import PersonalRuntime
 from exakit.adapters.uv import Uv
 from exakit.domain.catalog import Catalog
-from exakit.domain.errors import ExakitError, NotConfirmed
+from exakit.domain.errors import ExakitError, NotConfirmed, NotInstalled
 from exakit.domain.manifest import Manifest
 from exakit.domain.plan import Plan, StepState
 from exakit.domain.platform import Platform
@@ -70,8 +70,11 @@ class Context:
         return f"curl -fsSL {self.env.get('EXAKIT_INSTALL_URL') or INSTALL_URL} | sh"
 
     def manifest(self) -> Manifest:
-        """The install record. Raises NotInstalled when there is none."""
-        return self.manifest_store.load()
+        """The install record. Raises NotInstalled, with the installer as the remedy, when there is none."""
+        try:
+            return self.manifest_store.load()
+        except NotInstalled as err:
+            raise NotInstalled(err.message, remedy=err.remedy or self.install_command(), hint=err.hint, data=err.data) from None
 
     def manifest_or_none(self) -> Manifest | None:
         return self.manifest_store.load() if self.manifest_store.exists() else None

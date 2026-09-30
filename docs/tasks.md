@@ -50,10 +50,11 @@ Update this file in the same commit as the work. Design sections are in
 
 ## Phase C: install, update, runtime, uninstall
 
-- [ ] C1 `adapters/runtime/personal.py` + `podman.py` + `adapters/process/services.py` (launchd, systemd, Task Scheduler) + fakes
+- [x] C1 `adapters/runtime/personal.py` (status decision tree, start/stop/wait/reap/deploy/record) + `adapters/process/services.py` (launchd, systemd user, Windows Startup) + `adapters/fs/notes.py` (failure note, install-lock holder) + fakes. `podman.py` is not needed: the container runtime is legacy-only and reaches Python solely through `migrate docker-nano` (C4)
 - [ ] C2 `app/install.py` (steps, resume, soft failures, legacy crossing, closing sequence, persona answers) + e2e dry-run matrix
 - [ ] C3 `app/update.py` (self-update stage/swap/backup, per component, heavy runtime gate, notice)
-- [ ] C4 `app/runtime.py` (start, stop, repair-runtime, autostart, migrate docker-nano)
+- [x] C4a `app/status.py`, `app/info.py` (the tri-state queries, every AGENTS.md key, `datasets_source`), `app/runtime.py` (`start` with orphan reaping, `stop`, `autostart`); `tests/unit/app/test_status_info_runtime.py` + contract StateQueryPhaseCTest (D21)
+- [ ] C4b `repair-runtime` and `migrate docker-nano` in Python (today they re-run the legacy setup script; they move with C2)
 - [ ] C5 `app/uninstall.py` (menu, typed confirmation, snapshots kept, add-on removal)
 - [ ] C6 `install.sh` / `install.ps1` hand over to `python -m exakit install` for the whole run; `setup/setup-*.{sh,ps1}` deleted
 

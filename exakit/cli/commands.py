@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 
-from exakit.app import Context, data as data_app, help as help_app, logs as logs_app, marketplace as marketplace_app, mcp as mcp_app, persona as persona_app, skills as skills_app, sql as sql_app, version as version_app, whats_new
+from exakit.app import Context, data as data_app, help as help_app, info as info_app, runtime as runtime_app, status as status_app, logs as logs_app, marketplace as marketplace_app, mcp as mcp_app, persona as persona_app, skills as skills_app, sql as sql_app, version as version_app, whats_new
 from exakit.app.machine import kit_root
 from exakit.domain.errors import BadInput
 from exakit.domain.result import Result
@@ -128,6 +128,33 @@ def persona_command(args: list[str], ctx: Context) -> Result:
         return persona_app.plan(ctx, pid)
     ctx.yes = ctx.yes or "--yes" in flags or "-y" in flags
     return persona_app.apply(ctx, pid)
+
+
+# --- status, info, start, stop, autostart ---------------------------------------------
+
+
+def status_command(args: list[str], ctx: Context) -> Result:
+    _split(args, JSON_FLAGS, "status")
+    return status_app.run(ctx)
+
+
+def info_command(args: list[str], ctx: Context) -> Result:
+    _split(args, JSON_FLAGS, "info")
+    return info_app.run(ctx)
+
+
+def start_command(args: list[str], ctx: Context) -> Result:
+    _split(args, (), "start")
+    return runtime_app.start(ctx)
+
+
+def stop_command(args: list[str], ctx: Context) -> Result:
+    _split(args, (), "stop")
+    return runtime_app.stop(ctx)
+
+
+def autostart_command(args: list[str], ctx: Context) -> Result:
+    return runtime_app.autostart(ctx, args)
 
 
 # --- marketplace and add-on uninstall --------------------------------------------------

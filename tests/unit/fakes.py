@@ -129,6 +129,7 @@ class FakeRuntime:
         self._exists = exists
         self.started = 0
         self.stopped = 0
+        self.reap_ok = False
 
     def status(self):
         return self._status
@@ -162,3 +163,12 @@ class FakeRuntime:
 
     def wedged(self):
         return None
+
+    def cli(self):
+        return "/fake/bin/exasol"
+
+    def reap_orphan(self, port, say):
+        self.reaped = getattr(self, "reaped", 0) + 1
+        if self.reap_ok:
+            self._status = self._status.__class__("stopped", self._status.port)
+        return self.reap_ok

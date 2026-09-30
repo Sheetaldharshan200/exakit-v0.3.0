@@ -82,6 +82,10 @@ class NotInstalled(ExakitError):
 
     code = 4
 
+    def refusal(self) -> dict[str, Any]:
+        """The state-query keys first (``installed``, ``status``, ``remedy``), then the refusal object."""
+        return {"installed": False, "status": "not installed", "remedy": self.remedy, **super().refusal()}
+
 
 class NotConfirmed(ExakitError):
     """A question was declined, or needed ``--yes`` without a terminal."""

@@ -250,6 +250,66 @@ class PhaseBShapeTest(unittest.TestCase):
             box.close()
 
 
+class StateQueryPhaseCTest(unittest.TestCase):
+    """status and info: the tri-state exit code and the keys AGENTS.md promises, against the real CLI."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.box = Sandbox(manifest=MANIFEST)
+        cls.box.env["EXAKIT_PERSONAL_DEPLOY_DIR"] = str(Path(cls.box.dir) / "no-deployment")
+        cls.box.env["PATH"] = str(Path(cls.box.dir) / "empty-path")
+        cls.empty = Sandbox(manifest=None)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.box.close()
+        cls.empty.close()
+
+    def test_status_json_keys_and_exit_3_without_a_database(self):
+        done = self.box.run("status", "--json")
+        self.assertEqual(done.returncode, 3, done.stderr)
+        doc = _one_object(done.stdout)
+        self.assertEqual(list(doc)[:3], ["installed", "status", "remedy"])
+        self.assertTrue(doc["installed"])
+        self.assertIn(doc["status"], ("not deployed", "no database", "stopped"))
+        for key in ("installing", "install_step", "runtime", "platform", "wsl_version", "running", "services", "urls", "autostart",
+                    "datasets_loaded", "datasets_source", "steps_completed", "steps_missing", "remedies", "remedy_hints",
+                    "last_failure", "last_failure_at", "manifest", "persona", "schema_version"):
+            self.assertIn(key, doc, key)
+        self.assertFalse(doc["running"])
+        self.assertEqual(doc["remedy"], doc["remedies"]["database"])
+        self.assertEqual(doc["datasets_loaded"], ["tpch"])
+
+    def test_status_human_screen_exit_3(self):
+        done = self.box.run("status")
+        self.assertEqual(done.returncode, 3, done.stderr)
+        self.assertIn("Kit", done.stdout)
+        self.assertIn("Data", done.stdout)
+
+    def test_info_json_is_the_record_with_the_state_keys(self):
+        done = self.box.run("info", "--json")
+        self.assertEqual(done.returncode, 3, done.stderr)
+        doc = _one_object(done.stdout)
+        self.assertEqual(list(doc)[:3], ["installed", "status", "remedy"])
+        self.assertEqual(doc["runtime"]["type"], "personal")
+        self.assertEqual(set(doc["skills"]), {"installed_version", "advertised_version", "status", "next"})
+
+    def test_not_installed_state_queries_exit_4_with_installed_false(self):
+        for command in (("status", "--json"), ("info", "--json"), ("version", "--json")):
+            done = self.empty.run(*command)
+            self.assertEqual(done.returncode, 4, command)
+            doc = _one_object(done.stdout)
+            self.assertEqual((doc["installed"], doc["status"]), (False, "not installed"), command)
+            self.assertTrue(doc["remedy"])
+        self.assertEqual(self.empty.run("status").returncode, 4)
+        self.assertEqual(self.empty.run("status").stdout, "")
+
+    def test_bad_options(self):
+        self.assertEqual(self.box.run("status", "--nope").returncode, 2)
+        self.assertEqual(self.box.run("autostart", "on").returncode, 2)
+        self.assertEqual(self.box.run("start", "--nope").returncode, 2)
+
+
 class MigrationSplitTest(unittest.TestCase):
     def test_every_command_is_in_exactly_one_world(self):
         from exakit.cli.main import MIGRATED_COMMANDS, _LEGACY_WORDS
