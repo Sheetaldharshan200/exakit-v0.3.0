@@ -88,7 +88,7 @@ Recorded on 2026-09-30 on this Mac (macOS, bash 3.2, pwsh 7, Python 3.12.10).
 
 | Suite | Result |
 |---|---|
-| tests/unit (255 tests: domain, adapters, app incl. skills/mcp/data/sql/logs/marketplace/persona apply/status/info/runtime, lifecycles) | pass |
+| tests/unit (283 tests: domain, adapters, app incl. skills/mcp/data/sql/logs/marketplace/persona apply/status/info/runtime/update, add-on lifecycles, component lifecycles) | pass |
 | tests/contract (26 tests, incl. marketplace --list, uninstall <addon>, persona apply, status and info shapes and exit codes) | pass |
 | tests/e2e (10 tests, 1 network test skipped) | pass |
 | Coding standard (ast sweep of `exakit/`): no function over 40 lines, no module over 400 | pass |

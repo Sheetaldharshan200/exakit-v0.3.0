@@ -116,6 +116,9 @@ class Manifest:
             steps.append(step_id)
         self._doc["steps_completed"] = steps
 
+    def unmark_step(self, step_id: str) -> None:
+        self._doc["steps_completed"] = [s for s in self.steps_completed() if s != step_id]
+
     def runtime_type(self) -> str | None:
         value = self.get("runtime.type")
         return value if isinstance(value, str) and value else None

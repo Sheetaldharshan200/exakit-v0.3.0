@@ -9,7 +9,7 @@ never the system Python) and runs the kit. The commands Python has taken over
 in this release are `help`, `catalog`, `whats-new`, `version`, `persona`
 (including `apply`), `skills`, `skills-install`, `mcp-setup`, `mcp-status`,
 `mcp-doctor`, `mcp-remove`, `sql`, `logs`, `data-load`, `marketplace`,
-`uninstall <addon>`, `status`, `info`, `start`, `stop` and `autostart`; every other command still runs the previous shell implementation,
+`uninstall <addon>`, `status`, `info`, `start`, `stop`, `autostart` and `update`; every other command still runs the previous shell implementation,
 unchanged, behind the same `exakit` word (`exakit/cli/main.py` lists the split,
 and `tests/contract` pins every `--json` shape and exit code). An installed
 0.2.0 kit gets all of this from `exakit update`: the new tree's `setup/exakit`

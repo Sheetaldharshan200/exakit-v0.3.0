@@ -129,6 +129,10 @@ exakit/
     install.py update.py runtime.py uninstall.py            (Phase C)
     notice.py            the once-a-day pending-update notice
     machine.py           MachineState probe: what is on THIS machine (datasets, clients, add-ons, skills)
+  components/
+    __init__.py          for_component(ctx, id): the kit's own parts, one lifecycle each (D22)
+    base.py              ComponentBase: record, advertised version, verified downloads, runtime facts
+    exapump.py mcp_server.py pyexasol.py personal.py kit.py skill_set.py
   lifecycles/
     __init__.py          Lifecycle Protocol; for_addon(ctx, addon) picks exakit.addons.<id_> or the generic kind
     base.py              LifecycleBase: manifest block, versions, verified downloads, launchers, ServiceHooks
@@ -642,4 +646,5 @@ deletes `setup/`.
 | D19 | An add-on is "installed" when the manifest records a version AND its lifecycle still finds it on disk (venv interpreter or launcher for Python tools, engine for binaries, the editor's own listing for extensions). | The legacy rule (manifest + launcher) missed a deleted venv and, for VS Code, an extension removed inside the editor. The probe needs no uv and no network, so `marketplace --list` stays a read. |
 | D20 | `install_addon_quietly` swaps the renderer for `SilentRenderer` around one install. | Loading a `.json` file needs json-tables; the file load is the story, the add-on install is a footnote that belongs in the log. |
 | D21 | `status`, `info`, `start`, `stop` and `autostart` are Python from Phase C on (supersedes D8). `status --json` keeps every legacy key and adds `datasets_source`, `persona` and `schema_version`; `NotInstalled.refusal()` leads with `installed`, `status`, `remedy` so every state query keeps its exit-4 shape. | The runtime adapter (C1) now answers the probe the legacy screen ran; the read-only query never writes (no failure note, no manifest heal), which the legacy `EXAKIT_READONLY_QUERY` flag only approximated. |
+| D22 | The kit's own parts (launcher, exapump, MCP server, pyexasol, the kit copy, the skill set) are `exakit/components/<id>.py` lifecycles with the same verbs as the add-on lifecycles, chosen by `components.for_component`. `app/update.py` drives them; `app/install.py` (C2) will drive the same `install` + `validate`. | The legacy tree had one `<id>_install` / `<id>_update` pair per shell module; one class per part keeps install and update from drifting (update is "force install, then validate, then record desired"). Components are not add-ons: they have no `service`, no marketplace state and their manifest keys are fixed by the 0.2.0 record. |
 

@@ -61,7 +61,7 @@ def available(ctx: Context, cid: str) -> Resolved | None:
     return resolve(cid, policy=ctx.policy, env_pin=ctx.env.get(pin_name), doc=doc, fallback=fallback)
 
 
-def _supported(ctx: Context, cid: str) -> bool:
+def supported(ctx: Context, cid: str) -> bool:
     """False only when the document publishes digests for this component and none is for this platform."""
     doc = ctx.versions.current()
     block = doc.component(cid) if doc else None
@@ -101,7 +101,7 @@ def build_row(ctx: Context, cid: str) -> Row:
     advertised = resolved.version if resolved else None
     severity, note, min_kit = _metadata(ctx, cid)
     status, remedy, platform_note = "current", None, None
-    if not _supported(ctx, cid):
+    if not supported(ctx, cid):
         label, status, severity, platform_note = "not available", "unsupported", "normal", f"no {cid} build exists for this platform"
         installed = None
     elif installed is None and is_addon and present is False:
@@ -202,3 +202,8 @@ def _render(ctx: Context, manifest, table: list[Row], pending: int) -> None:
     ctx.ui.info(source_line(ctx))
     if pending:
         ctx.ui.info("Bring everything up to date with: exakit update")
+
+
+def min_kit_needed(ctx: Context, cid: str) -> str | None:
+    """The kit version the advertised component needs, when the manifest says so and the policy honours it."""
+    return _metadata(ctx, cid)[2]

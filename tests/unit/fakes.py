@@ -25,7 +25,14 @@ class FakeDownloader:
         if url not in self.pages:
             raise Failed(f"Could not download {url}.")
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(self.pages[url])
+        body = self.pages[url]
+        if isinstance(body, bytes):
+            dest.write_bytes(body)
+        else:
+            dest.write_text(body)
+        if sha256:
+            from exakit.adapters.net.digest import verify_sha256
+            verify_sha256(dest, sha256, what=what)
         return dest
 
 
@@ -166,6 +173,19 @@ class FakeRuntime:
 
     def cli(self):
         return "/fake/bin/exasol"
+
+    def destroy(self):
+        self.destroyed = getattr(self, "destroyed", 0) + 1
+        self._exists = False
+        return True
+
+    def deployed_version(self):
+        return getattr(self, "deployed", None)
+
+    def record(self, manifest, credentials, status=None):
+        manifest.set("runtime.type", "personal")
+        manifest.set("runtime.version", getattr(self, "launcher_version", "2.3.0"))
+        return None
 
     def reap_orphan(self, port, say):
         self.reaped = getattr(self, "reaped", 0) + 1

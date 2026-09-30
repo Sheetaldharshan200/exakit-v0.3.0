@@ -24,3 +24,12 @@ def verify_sha256(path: Path, expected: str, *, what: str) -> None:
             f"The downloaded {what} did not match its published checksum.",
             hint=f"expected sha256 {expected}, got {actual}; the download may be corrupt or tampered with",
         )
+
+
+def digest_from_checksums(text: str, asset: str) -> str | None:
+    """The sha256 for one asset out of a ``<digest>  <name>`` checksums file; None when it is not listed."""
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[-1].lstrip("*") == asset and len(parts[0]) == 64:
+            return parts[0].lower()
+    return None

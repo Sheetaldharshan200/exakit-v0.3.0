@@ -20,7 +20,7 @@ from . import _context, commands, legacy
 
 MIGRATED_COMMANDS: frozenset[str] = frozenset({"help", "catalog", "whats-new", "version", "persona", "skills", "skills-install",
                                                "mcp-setup", "mcp-status", "mcp-doctor", "mcp-remove", "sql", "logs", "data-load",
-                                               "marketplace", "uninstall", "status", "info", "start", "stop", "autostart"})
+                                               "marketplace", "uninstall", "status", "info", "start", "stop", "autostart", "update"})
 READONLY_COMMANDS: frozenset[str] = frozenset({"help", "catalog", "whats-new", "version", "status", "info",
                                                "skills", "logs", "mcp-status", "persona"})
 HANDLERS: dict[str, Callable[[list[str], Context], Result]] = {
@@ -34,7 +34,7 @@ HANDLERS: dict[str, Callable[[list[str], Context], Result]] = {
     "sql": commands.sql_command, "logs": commands.logs_command, "data-load": commands.data_load_command,
     "marketplace": commands.marketplace_command, "uninstall": commands.uninstall_command,
     "status": commands.status_command, "info": commands.info_command, "start": commands.start_command,
-    "stop": commands.stop_command, "autostart": commands.autostart_command,
+    "stop": commands.stop_command, "autostart": commands.autostart_command, "update": commands.update_command,
 }
 ALIASES = {"-h": "help", "--help": "help", "--version": "version", "-v": "version"}
 
@@ -107,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
         return 130
 
 
-_LEGACY_WORDS = frozenset({"update", "guide", "preflight", "repair-runtime", "migrate", "upgrade-kit2", "rollback-kit2"})
+_LEGACY_WORDS = frozenset({"guide", "preflight", "repair-runtime", "migrate", "upgrade-kit2", "rollback-kit2"})
 
 
 def _flag_args(flags: dict[str, bool]) -> list[str]:

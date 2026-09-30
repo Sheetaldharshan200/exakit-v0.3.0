@@ -52,6 +52,8 @@ class PersonalRuntime(Protocol):
     def wedged(self) -> str | None: ...
     def reap_orphan(self, port: int, say: Callable[[str], None]) -> bool: ...
     def cli(self) -> str: ...
+    def destroy(self) -> bool: ...
+    def deployed_version(self) -> str | None: ...
 
 
 class PersonalLauncher:
@@ -292,6 +294,12 @@ class PersonalLauncher:
         if not self.wait_ready_or_deploy(say):
             raise Failed("The database never answered after deployment. Read the state with 'exakit status', or repair with: exakit repair-runtime",
                          remedy="exakit repair-runtime")
+
+    def destroy(self) -> bool:
+        """Remove the deployment and its data; True when the launcher accepted it."""
+        done = self._run("destroy", "--remove", *self.auto_approve("destroy"), timeout=1800)
+        self.log.line("CMD", f"{self.cli()} destroy --remove -> {done.code}")
+        return done.ok
 
     # --- the record -----------------------------------------------------------------------
 

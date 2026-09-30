@@ -52,7 +52,7 @@ Update this file in the same commit as the work. Design sections are in
 
 - [x] C1 `adapters/runtime/personal.py` (status decision tree, start/stop/wait/reap/deploy/record) + `adapters/process/services.py` (launchd, systemd user, Windows Startup) + `adapters/fs/notes.py` (failure note, install-lock holder) + fakes. `podman.py` is not needed: the container runtime is legacy-only and reaches Python solely through `migrate docker-nano` (C4)
 - [ ] C2 `app/install.py` (steps, resume, soft failures, legacy crossing, closing sequence, persona answers) + e2e dry-run matrix
-- [ ] C3 `app/update.py` (self-update stage/swap/backup, per component, heavy runtime gate, notice)
+- [x] C3 `exakit/components/{base,exapump,mcp_server,pyexasol,personal,kit,skill_set}.py` (one lifecycle per kit part: install, validate, update, uninstall) + `adapters/clients/handshake.py` + `app/update.py` (targets, ahead/current/unsupported/min-kit rules, the runtime offer with `--yes`/`EXAKIT_CONFIRM_RUNTIME_UPDATE`, kit self-update stage/swap/backup/marker, skills re-placed, what's-new card); `tests/unit/components/test_components.py`, `tests/unit/app/test_update.py` (D22). Left for C2: the exapump glibc container shim (Linux with glibc < 2.38) still comes from the legacy installer
 - [x] C4a `app/status.py`, `app/info.py` (the tri-state queries, every AGENTS.md key, `datasets_source`), `app/runtime.py` (`start` with orphan reaping, `stop`, `autostart`); `tests/unit/app/test_status_info_runtime.py` + contract StateQueryPhaseCTest (D21)
 - [ ] C4b `repair-runtime` and `migrate docker-nano` in Python (today they re-run the legacy setup script; they move with C2)
 - [ ] C5 `app/uninstall.py` (menu, typed confirmation, snapshots kept, add-on removal)
