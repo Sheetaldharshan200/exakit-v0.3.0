@@ -471,13 +471,12 @@ function Invoke-CmdStatus {
     } else {
         Write-StatusPanelRow "Runtime" "$runtimeText - $status"
     }
-    # An older kit's container database that was NOT copied across: the
-    # crossing recorded it and the user answered skip (or was never asked, in an
-    # unattended run). Named here, with the command that copies it, until it is.
+    # An older kit's container database that was copied out but not restored.
+    # One that was skipped is NOT named: it is the user's answer, not an
+    # unfinished job, and status is no place to keep re-asking it. `exakit
+    # migrate docker-nano` still copies it when wanted. Twin of cmd_status.
     if ($legacyContainer -and -not $legacyRestored) {
-        if ($legacyChoice -eq "skip") {
-            Write-StatusPanelRow "Old database" "container '$legacyContainer' ($legacyEngine) - not copied; bring its tables across: exakit migrate docker-nano"
-        } elseif ($legacyChoice -eq "migrate") {
+        if ($legacyChoice -eq "migrate") {
             # Copied out, not yet restored: the install's second half does that,
             # so a re-run of the installer is what finishes it.
             Write-StatusPanelRow "Old database" "container '$legacyContainer' ($legacyEngine) - copied out, not yet restored; finish with: $(Get-ExakitInstallCommand)"
