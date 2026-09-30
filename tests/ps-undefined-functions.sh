@@ -63,6 +63,9 @@ if ($IsWindows -or $env:OS -eq "Windows_NT") {
 
 $files = @(Get-ChildItem (Join-Path $Root "setup") -Recurse -Filter *.ps1)
 $files += Get-ChildItem $Root -Filter *.ps1
+# The bootstrap layer ships too (0.3.0): the launcher and ensure-python define
+# and call each other's functions across files, so both sides are swept.
+if (Test-Path (Join-Path $Root "bootstrap")) { $files += Get-ChildItem (Join-Path $Root "bootstrap") -Filter *.ps1 }
 # tests/*.ps1 are deliberately NOT swept: they call harness-provided and
 # mocked functions that resolve only at run time, and the Windows CI runner
 # EXECUTES them, so an undefined call there fails loudly on its own. Sweeping

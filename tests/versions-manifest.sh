@@ -487,7 +487,7 @@ check "the run completes and the kit copy carries the manifest" \
 # Re-running the installer over an older install (the 0.1.0 -> 0.2.0 path) is the
 # one case where the step flag lies: install.sh has already replaced the kit copy,
 # but exakit_helper is marked and a command is on disk, so the step skips. The
-# installed command is a COPY of setup/legacy-exakit, so it has to be compared with the
+# installed command is a COPY of setup/exakit, so it has to be compared with the
 # kit's own script or the user drives the new library with the old command.
 rerun="$( EXAKIT_HOME="$WORK/rerun-home"
     EXAKIT_MANIFEST="$WORK/rerun-home/manifest.json"
@@ -515,7 +515,7 @@ rerun="$( EXAKIT_HOME="$WORK/rerun-home"
     else
         printf 'SILENT '
     fi
-    if cmp -s "$ROOT/setup/legacy-exakit" "$EXAKIT_BIN_DIR/exakit"; then printf 'refreshed'; else printf 'STALE'; fi )"
+    if cmp -s "$ROOT/setup/exakit" "$EXAKIT_BIN_DIR/exakit"; then printf 'refreshed'; else printf 'STALE'; fi )"
 check "a re-run refreshes the command an older install left behind" \
     "said-out-of-date refreshed" "$rerun"
 
@@ -534,7 +534,7 @@ noop="$( EXAKIT_HOME="$WORK/noop-home"
     exakit_maybe_offer_skills_install() { :; }
     ensure_path_hint() { :; }
     PATH="$WORK/failing-uv:$PATH"
-    install -m 755 "$ROOT/setup/legacy-exakit" "$EXAKIT_BIN_DIR/exakit"
+    install -m 755 "$ROOT/setup/exakit" "$EXAKIT_BIN_DIR/exakit"
     mark_step exakit_helper >/dev/null 2>&1
     _out="$(kit_shared_steps 3 6 "$ROOT/setup" "$WORK/fake-kit" 2>&1)"
     if printf '%s\n' "$_out" | grep -q 'out of date'; then
@@ -2234,9 +2234,9 @@ make_kit_tarball() {
     rm -rf "$_mk_src"
     MK_LAST_SRC="$_mk_src/repo-main"
     mkdir -p "$_mk_src/repo-main/setup/lib"
-    for _mk_file in setup/legacy-exakit setup/lib/common.sh \
+    for _mk_file in setup/exakit setup/lib/common.sh \
                     setup/lib/runtime-personal.sh setup/lib/exapump.sh setup/lib/mcp.sh \
-                    setup/legacy-exakit.ps1 setup/lib/exakit-common.ps1; do
+                    setup/exakit.ps1 setup/lib/exakit-common.ps1; do
         [ "$_mk_file" = "$_mk_omit" ] && continue
         printf '# fake %s from kit %s\n' "$_mk_file" "$_mk_version" > "$_mk_src/repo-main/$_mk_file"
     done
@@ -2298,7 +2298,7 @@ self_update() (
     printf 'version=%s source=%s ' "$(manifest_get kit.version 2>/dev/null || printf none)" \
         "$(manifest_get kit.source 2>/dev/null || printf none)"
     [ -f "$EXAKIT_HOME/kit/versions.json" ] && printf 'kit-present ' || printf 'NO-KIT '
-    grep -q 'fake setup/legacy-exakit ' "$EXAKIT_HOME/kit/setup/legacy-exakit" 2>/dev/null && printf 'replaced ' || printf 'not-replaced '
+    grep -q 'fake setup/exakit ' "$EXAKIT_HOME/kit/setup/exakit" 2>/dev/null && printf 'replaced ' || printf 'not-replaced '
     [ -x "$EXAKIT_BIN_DIR/exakit" ] && printf 'cli-installed ' || printf 'NO-CLI '
     ls -d "$EXAKIT_HOME"/kit.backup-* >/dev/null 2>&1 && printf 'backup-kept' || printf 'NO-BACKUP'
 )
@@ -2488,7 +2488,7 @@ PY
         $out += (Get-ExakitManifestValue "kit.version")
         $out += (Get-ExakitManifestValue "kit.source")
         if (Test-Path (Join-Path $kit "versions.json")) { $out += "kit-present" } else { $out += "NO-KIT" }
-        if ((Get-Content -Raw (Join-Path $kit "setup/legacy-exakit")) -like "*fake setup/legacy-exakit*") { $out += "replaced" } else { $out += "not-replaced" }
+        if ((Get-Content -Raw (Join-Path $kit "setup/exakit")) -like "*fake setup/exakit*") { $out += "replaced" } else { $out += "not-replaced" }
         if (Test-Path (Join-Path $env:EXAKIT_BIN_DIR "exakit.cmd")) { $out += "shim-written" } else { $out += "NO-SHIM" }
         if (Get-ChildItem -Path $env:EXAKIT_HOME -Filter "kit.backup-*" -ErrorAction SilentlyContinue) { $out += "backup-kept" } else { $out += "NO-BACKUP" }
         Write-Output ($out -join " ")
