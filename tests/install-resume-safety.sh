@@ -441,9 +441,15 @@ _has "$_IPS" 'Move-Item -LiteralPath $kitBackup -Destination $KitDir' \
 _has "$_IPS" 'your previous kit was put back' \
     "...and the message says so, so the user knows the exakit command still works" \
     "...and says nothing about it, so the user finds out by typing exakit"
-_has "$_IPS" 'Join-Path $ExakitHome "kit.incoming-' \
+# $StageBase is the kit home on a real run, and the dry run's own temp folder
+# (which also holds that run's $KitDir) on a dry run: either way the incoming
+# tree sits beside the $KitDir it is renamed into.
+_has "$_IPS" 'Join-Path $StageBase "kit.incoming-' \
     "the new tree is staged beside the kit, where a rename can reach it" \
     "the new tree is staged where Move-Item may not be able to rename it from (a %TEMP% on another volume)"
+_has "$_IPS" '$StageBase  = $ExakitHome' \
+    "...and on a real install that is the kit home itself" \
+    "...but a real install no longer stages under the kit home"
 # The old shape was: delete first, ask questions later.
 _kitrm="$(_line_of "$_IPS" 'Remove-Item -Recurse -Force $KitDir')"
 if [ -z "$_kitrm" ] || { [ -n "$_sentinels" ] && [ "$_kitrm" -gt "$_sentinels" ]; }; then

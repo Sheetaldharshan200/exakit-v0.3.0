@@ -2015,8 +2015,13 @@ check "no raised message points at 'the log' without naming the command" "" "${_
 _sl_raisers="$(grep -chE '(die|warn|Fail|Warn2)[ (]"' "$ROOT"/setup/lib/common.sh)"
 check "...and it scanned real raisers" "yes" \
     "$([ "${_sl_raisers:-0}" -gt 50 ] && echo yes || echo no)"
-# The messages that replaced them name a target that actually exists.
-_sl_targets="$(bash "$ROOT/setup/exakit" logs --json 2>/dev/null | python3 -c 'import json,sys
+# The messages that replaced them name a target that actually exists. Against
+# a fixture home holding an installer log: this read whatever kit the machine
+# had, so it passed on a maintainer's laptop and failed on every CI runner.
+_sl_home="$WORK/logs-target-home"
+mkdir -p "$_sl_home/logs"
+printf 'installer run\n' > "$_sl_home/logs/install-20260101-000000.log"
+_sl_targets="$(EXAKIT_HOME="$_sl_home" bash "$ROOT/setup/exakit" logs --json 2>/dev/null | python3 -c 'import json,sys
 try: print(" ".join(t.get("target","") for t in json.load(sys.stdin)["targets"]))
 except Exception: print("")' 2>/dev/null)"
 case "$_sl_targets" in

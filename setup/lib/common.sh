@@ -11578,6 +11578,18 @@ exakit_uninstall_run() {
         [ "$_dry" = "1" ] || ok_step "$1"
     }
 
+    # THE GUARD RUNS BEFORE ANYTHING IS REMOVED. It used to sit in step 5, just
+    # above the kit-home rm, so an unsafe EXAKIT_HOME was refused only after the
+    # database, the MCP entries, the skills and the exapump profiles were
+    # already gone - and the refusal then said "Nothing was removed". Asking
+    # first is what makes that sentence true.
+    if [ -e "$EXAKIT_HOME" ] && ! _un_safe_target "$EXAKIT_HOME"; then
+        error "Refusing to remove $EXAKIT_HOME: it is not an absolute path to a kit home the kit created."
+        info "EXAKIT_HOME must be an absolute path holding the kit's manifest.json, and cannot be your home directory."
+        info "Nothing was removed. Check EXAKIT_HOME, or unset it to use the default ~/.exasol-starter-kit."
+        die "Unsafe EXAKIT_HOME: $EXAKIT_HOME"
+    fi
+
     # 0a) Boot entries first: a LaunchAgent or systemd unit left behind would
     #     try to start something that no longer exists on the next login.
     if command -v exakit_service_ids >/dev/null 2>&1; then
@@ -11597,6 +11609,9 @@ exakit_uninstall_run() {
     #    swept by steps 5-6 regardless; a system-installed copy the kit never
     #    managed is not touched (each hook enforces that itself).
     _un_addons_gone=""
+    # Tells an add-on hook that the kit home goes next, so it does not promise
+    # to keep something step 5 is about to delete (dash-server's instance).
+    EXAKIT_UNINSTALL_FULL=1
     if command -v exakit_marketplace_installed_addons >/dev/null 2>&1; then
         for _un_id in $(exakit_marketplace_installed_addons 2>/dev/null); do
             _un_fn="$(_exakit_addon_fn "$_un_id" uninstall)"
@@ -11689,12 +11704,7 @@ exakit_uninstall_run() {
                 info "AI client config snapshots kept at $_un_keep (delete it when you are sure)"
             fi
         fi
-        if ! _un_safe_target "$EXAKIT_HOME"; then
-            error "Refusing to remove $EXAKIT_HOME: it is not an absolute path to a kit home the kit created."
-            info "EXAKIT_HOME must be an absolute path holding the kit's manifest.json, and cannot be your home directory."
-            info "Nothing was removed. Check EXAKIT_HOME, or unset it to use the default ~/.exasol-starter-kit."
-            die "Unsafe EXAKIT_HOME: $EXAKIT_HOME"
-        fi
+        # Checked by the guard at the top of this function, before step 0a.
         _step "kit home $EXAKIT_HOME (credentials, logs, manifest, snapshots, pyexasol venv, add-ons)"
         _rm "$EXAKIT_HOME"
         _done "Kit home removed: $EXAKIT_HOME (credentials, logs, manifest, snapshots, pyexasol venv, add-on state)"

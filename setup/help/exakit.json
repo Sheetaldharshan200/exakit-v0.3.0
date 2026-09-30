@@ -190,7 +190,7 @@
       "description": "The installer run, the database container, each add-on service, and what the boot entries wrote at login. No target lists them all with size and last-updated; -f follows one live; --path prints just the path for piping.",
       "examples": [
         "exakit logs",
-        "exakit logs install -f",
+        "exakit logs setup -f",
         "exakit logs dash-server --path"
       ]
     },

@@ -63,7 +63,8 @@
 #                         installed - database + all data, MCP client configs,
 #                         skills, exapump, the kit home and the CLI binaries.
 #                         Name a marketplace add-on to remove just that one
-#                         (its service, binary and credential; nothing else).
+#                         (its service, binary and credential; user content
+#                         such as dash-server dashboards is kept).
 #                         -DryRun previews; -Yes skips the typed confirmation
 #   whats-new [version]   what changed in this kit version
 #   logs [target]         every log the kit can show; no target lists them
@@ -838,8 +839,7 @@ function Show-ExakitAutostart {
 # Twin of cmd_autostart in setup/exakit.
 function Invoke-CmdAutostart {
     param([string]$Action = "")
-    Assert-ExakitInstalled
-    Initialize-ExakitLogging
+    # Bad input first, before the install check. Twin of cmd_autostart.
     if ($Action) {
         # Deny, not Fail: this is bad input, and the shell twin answers it with
         # reject() - exit 2. Through Fail it exited 1, which AGENTS.md reserves
@@ -850,6 +850,8 @@ function Invoke-CmdAutostart {
         # step on a machine where nothing was wrong.
         Deny-ExakitInput "autostart takes no arguments - run 'exakit autostart' and answer the question."
     }
+    Assert-ExakitInstalled
+    Initialize-ExakitLogging
     Show-ExakitAutostart
 
     $ids = @(Get-ExakitServiceIds)
@@ -1286,8 +1288,53 @@ function Get-ExakitExapumpProfileDirs {
 # CLI binaries. With -DryRun it prints the plan and changes nothing. Mirrors
 # exakit_uninstall_run in setup/lib/common.sh. uv/uvx (a shared tool) and the
 # PATH entry are intentionally left in place and only reported.
+# Test-ExakitSafeUninstallTarget <path> - is this a path the uninstall may
+# delete? Twin of _un_safe_target in common.sh.
+#
+# EXAKIT_HOME IS TAKEN FROM THE ENVIRONMENT, and this side handed it straight
+# to Remove-Item -Recurse -Force with no check at all. The kit's own OneDrive
+# notice tells people to "set EXAKIT_HOME to a folder on a local drive", so
+# EXAKIT_HOME=D:\ or EXAKIT_HOME=D:\work is one literal reading away, and
+# -Yes skips the only prompt. The same questions as the shell side: fully
+# qualified (not "C:x" or "\x", which depend on the current drive or
+# directory), not a drive or share root, not the user's home, and
+# recognisable as a directory this kit built - or empty.
+function Test-ExakitSafeUninstallTarget([string]$Path) {
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+    if ([System.IO.Path]::DirectorySeparatorChar -eq '\') {
+        if ($Path -notmatch '^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+)') { return $false }
+    } elseif (-not $Path.StartsWith('/')) {
+        # pwsh on macOS/Linux (the CI legs and the tests): rooted means "/...".
+        return $false
+    }
+    try { $full = [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/') } catch { return $false }
+    $root = [System.IO.Path]::GetPathRoot($full)
+    if ((-not $root) -or ($full -ieq $root.TrimEnd('\', '/'))) { return $false }
+    foreach ($homeDir in @($HOME, $env:USERPROFILE, $script:ExakitHomeBase)) {
+        if (-not $homeDir) { continue }
+        try { $homeFull = [System.IO.Path]::GetFullPath($homeDir).TrimEnd('\', '/') } catch { continue }
+        if ($full -ieq $homeFull) { return $false }
+    }
+    if (-not (Test-Path -LiteralPath $full -PathType Container)) { return $false }
+    foreach ($marker in @("manifest.json", "logs", "cache", "credentials", "kit", "mcp", "backups",
+                          "libexec", "workflows", "migration", ".last-failure", ".install.lock")) {
+        if (Test-Path -LiteralPath (Join-Path $full $marker)) { return $true }
+    }
+    # Nothing of ours in it. Empty is still fine; anything else is not.
+    $anyEntry = Get-ChildItem -LiteralPath $full -Force -ErrorAction SilentlyContinue | Select-Object -First 1
+    return ($null -eq $anyEntry)
+}
+
 function Invoke-ExakitUninstallRun {
     param([switch]$DryRun)
+
+    # THE GUARD RUNS BEFORE ANYTHING IS REMOVED, so "Nothing was removed" is
+    # true when it fires. Twin of the check at the top of exakit_uninstall_run.
+    if ((Test-Path -LiteralPath $script:ExakitHome) -and -not (Test-ExakitSafeUninstallTarget $script:ExakitHome)) {
+        Info "EXAKIT_HOME must be a full path (for example C:\exasol-starter-kit) holding the kit's manifest.json. It cannot be a drive root or your home folder."
+        Info "Nothing was removed. Check EXAKIT_HOME, or clear it to use the default $(Join-Path $script:ExakitHomeBase '.exasol-starter-kit')."
+        Fail "Refusing to remove $($script:ExakitHome): it is not a full path to a kit home the kit created (unsafe EXAKIT_HOME)."
+    }
 
     # A real run narrates itself on ONE line. Every path it touches was printed
     # as its own bullet, around twenty lines for a command whose whole result is
@@ -1339,6 +1386,9 @@ function Invoke-ExakitUninstallRun {
     #    UninstallFn and appears here with no edits. A system-installed copy
     #    the kit never managed is not touched (each hook enforces that).
     $addonsGone = @()
+    # Tells an add-on hook that the kit home goes next, so it does not promise
+    # to keep something step 5 is about to delete (dash-server's instance).
+    $script:ExakitUninstallFull = $true
     foreach ($addonId in (Get-ExakitMarketplaceInstalledAddons)) {
         $addonEntry = Get-ExakitMarketplaceAddon $addonId
         if ($addonEntry -and $addonEntry.PSObject.Properties["UninstallFn"] -and
@@ -1347,6 +1397,7 @@ function Invoke-ExakitUninstallRun {
             catch { Warn2 "Removing the $addonId add-on reported issues (continuing uninstall)" }
         }
     }
+    $script:ExakitUninstallFull = $false
     if ($addonsGone.Count -gt 0) { RecordRemoved "Add-ons removed: $($addonsGone -join ', ')" }
 
     # 1) Database + all data.
@@ -1538,7 +1589,13 @@ function Invoke-CmdUninstall {
             return
         }
         if ($DryRun) {
-            Info "Dry run - would remove the $Addon add-on (its service, binary and credential; nothing else)."
+            # The add-on's own hook narrates its plan. Twin of cmd_uninstall.
+            Info "Dry run - removing the $Addon add-on would:"
+            $addonEntry = Get-ExakitMarketplaceAddon $Addon
+            if ($addonEntry -and $addonEntry.PSObject.Properties["UninstallFn"] -and
+                (Get-Command $addonEntry.UninstallFn -ErrorAction SilentlyContinue)) {
+                [void](& $addonEntry.UninstallFn -DryRun)
+            }
             return
         }
         if (-not $AssumeYes) {

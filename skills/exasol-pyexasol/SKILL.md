@@ -82,8 +82,13 @@ which is not in the venv. Calling them as shipped raises `ImportError`.
 Add it to the kit's venv when the user actually wants dataframes:
 
 ```bash
-~/.exasol-starter-kit/pyexasol-venv/bin/python -m pip install pandas
+PY=~/.exasol-starter-kit/pyexasol-venv/bin/python
+# Kits installed before pip was seeded into this venv have no pip yet; ensurepip adds it.
+"$PY" -m pip --version >/dev/null 2>&1 || "$PY" -m ensurepip --upgrade
+"$PY" -m pip install pandas
 ```
+
+On Windows the interpreter is `%USERPROFILE%\.exasol-starter-kit\pyexasol-venv\Scripts\python.exe`; run the same `-m ensurepip --upgrade` and `-m pip install pandas` with it.
 
 Then:
 
@@ -111,7 +116,7 @@ MCP path refused.
 | `ModuleNotFoundError: No module named 'pyexasol'` | wrong interpreter | use `~/.exasol-starter-kit/pyexasol-venv/bin/python` |
 | Connection refused / timeout on `8563` | database not running | `exakit start`, confirm `exakit status` |
 | TLS / certificate verification error | self-signed certificate | pass `websocket_sslopt={"cert_reqs": 0}` |
-| `ImportError` from `export_to_pandas` | pandas not installed | `pip install pandas` into the kit venv |
+| `ImportError` from `export_to_pandas` | pandas not installed | install it into the kit venv with the three lines above (`ensurepip` first if `No module named pip`) |
 | pyexasol reported missing by `exakit status` | the soft install step failed | `exakit update` |
 
 `exakit update` doubles as the repair command — it installs the

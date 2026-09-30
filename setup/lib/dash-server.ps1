@@ -902,20 +902,34 @@ function Get-DashServerAutostartCommand {
     return ('"{0}" --host 127.0.0.1 --port {1}' -f (Get-DashServerLauncherPath), $script:DashServerPort)
 }
 
-# Remove everything the dash-server install put on this machine: the venv,
-# the instance state, the launcher, and the manifest record. -DryRun only
-# narrates the plan. Best-effort and idempotent. Twin of dash_server_uninstall.
+# Remove what the dash-server install put on this machine: the venv, the
+# launcher, the pid file and the manifest record. -DryRun only narrates the
+# plan. Best-effort and idempotent. Twin of dash_server_uninstall.
+#
+# THE INSTANCE IS KEPT: it is the user's dashboards (GitOps repo, apps,
+# secrets), and a reinstall adopts it again. See dash_server_uninstall.
 function Uninstall-DashServer {
     param([switch]$DryRun)
     Resolve-DashServerPort
     # A running server holds its port and would outlive its own files.
     if (-not $DryRun) { [void](Stop-DashServer) }
-    foreach ($path in @($script:DashServerVenv, $script:DashServerHome, (Get-DashServerLauncherPath))) {
+    $instance = Join-Path $script:DashServerHome "instance"
+    foreach ($path in @($script:DashServerVenv, $script:DashServerPidFile, (Get-DashServerLauncherPath))) {
         if (-not ($path -and (Test-Path $path))) { continue }
         if ($DryRun) { Info "  will remove: $path" }
         else {
             Info "Removing $path"
             Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $path
+        }
+    }
+    if ((Test-Path -LiteralPath $instance) -and $script:ExakitUninstallFull) {
+        # A full kit uninstall removes the kit home next, and the instance with it.
+        Info "  your dashboards in $instance go with the kit home"
+    } elseif (Test-Path -LiteralPath $instance) {
+        Info "  keeping your dashboards: $instance (reinstalling the add-on picks them up again; delete the folder yourself if you no longer want them)"
+    } elseif (-not $DryRun -and (Test-Path -LiteralPath $script:DashServerHome)) {
+        if (-not (Get-ChildItem -LiteralPath $script:DashServerHome -Force -ErrorAction SilentlyContinue | Select-Object -First 1)) {
+            Remove-Item -Force -ErrorAction SilentlyContinue $script:DashServerHome
         }
     }
     if (-not $DryRun) {

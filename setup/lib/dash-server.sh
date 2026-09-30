@@ -942,17 +942,26 @@ dash_server_autostart_command() {
     printf '%s\n--host\n127.0.0.1\n--port\n%s\n' "$EXAKIT_DASH_SERVER_BIN" "$EXAKIT_DASH_SERVER_PORT"
 }
 
-# dash_server_uninstall [dry] — remove everything the dash-server install put
-# on this machine: the venv, the instance state, the launcher, and the
-# manifest record. With "1" it only narrates the plan. Best-effort and
-# idempotent; safe to run when nothing is installed.
+# dash_server_uninstall [dry] — remove what the dash-server install put on this
+# machine: the venv, the launcher, the pid file and the manifest record. With
+# "1" it only narrates the plan. Best-effort and idempotent; safe to run when
+# nothing is installed.
+#
+# THE INSTANCE IS KEPT. $EXAKIT_DASH_SERVER_HOME/instance is the user's work -
+# the GitOps repo of every dashboard an agent built, and their secrets - and
+# removing the add-on used to rm -rf it while the dry run promised "nothing
+# else". The scheduler keeps its schema and dbt keeps its projects for the same
+# reason. A reinstall adopts the directory again (dash_server_install only
+# mkdir -p's it), so the dashboards come back with the add-on. A full kit
+# uninstall still removes the kit home, and says so.
 dash_server_uninstall() {
     _dsu_dry="${1:-0}"
     if [ "$_dsu_dry" != "1" ]; then
         # A running server holds its port and would outlive its own files.
         dash_server_stop >/dev/null 2>&1 || true
     fi
-    for _dsu_path in "$EXAKIT_DASH_SERVER_VENV" "$EXAKIT_DASH_SERVER_HOME" "$EXAKIT_DASH_SERVER_BIN"; do
+    _dsu_instance="$EXAKIT_DASH_SERVER_HOME/instance"
+    for _dsu_path in "$EXAKIT_DASH_SERVER_VENV" "$EXAKIT_DASH_SERVER_PIDFILE" "$EXAKIT_DASH_SERVER_BIN"; do
         [ -e "$_dsu_path" ] || continue
         if [ "$_dsu_dry" = "1" ]; then
             info "  will remove: $_dsu_path"
@@ -961,6 +970,15 @@ dash_server_uninstall() {
             rm -rf "$_dsu_path"
         fi
     done
+    if [ -d "$_dsu_instance" ] && [ "${EXAKIT_UNINSTALL_FULL:-0}" = "1" ]; then
+        # A full kit uninstall removes the kit home next, and the instance with
+        # it. Say so here rather than claim it is kept.
+        info "  your dashboards in $_dsu_instance go with the kit home"
+    elif [ -d "$_dsu_instance" ]; then
+        info "  keeping your dashboards: $_dsu_instance (reinstalling the add-on picks them up again; delete the folder yourself if you no longer want them)"
+    elif [ "$_dsu_dry" != "1" ]; then
+        rmdir "$EXAKIT_DASH_SERVER_HOME" 2>/dev/null || true
+    fi
     if [ "$_dsu_dry" != "1" ]; then
         # Before the manifest block goes: an entry pointing at a port nothing
         # answers on is worse than no entry at all, because a client reports it
