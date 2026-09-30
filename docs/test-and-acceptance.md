@@ -91,6 +91,7 @@ Recorded on 2026-09-30 on this Mac (macOS, bash 3.2, pwsh 7, Python 3.12.10).
 | tests/unit (236 tests: domain, adapters incl. Phase B adapters, app incl. skills/mcp/data/sql/logs/marketplace/persona apply, lifecycles) | pass |
 | tests/contract (21 tests, incl. marketplace --list, uninstall <addon>, persona apply shapes) | pass |
 | tests/e2e (10 tests, 1 network test skipped) | pass |
+| Coding standard (ast sweep of `exakit/`): no function over 40 lines, no module over 400 | pass |
 | tests/e2e/test_bootstrap_network (real uv 0.12.21 + CPython 3.12.14) | pass, 5 s |
 | Legacy: whats-new, skills, agent-operability (645), dry-run-matrix (175), install-payload, kit-upgrade, install-resume-safety (52), agent-audit, uninstall (41), status-soft-components | pass |
 | Legacy (rerun after Phase B): marketplace (377), uninstall (41), skills (236) | pass |

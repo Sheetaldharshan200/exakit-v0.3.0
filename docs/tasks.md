@@ -45,7 +45,7 @@ Update this file in the same commit as the work. Design sections are in
 - [x] B4 `app/mcp.py` (setup, status, doctor, remove, read-only user, add-on endpoints) over `adapters/clients` calling `mcp/` in process (D15; the package move is Phase C); `app/runtime_ops.py` self-heal; `tests/unit/app/test_mcp.py`
 - [x] B5 `adapters/exapump.py` + `app/{data,data_files,sql,logs}.py` (bundled datasets, files with cut-short recovery, folders with receipts, JSON through json-tables) + CLI wiring; `tests/unit/app/{test_data,test_sql_logs}.py`
 - [x] B6 `app/persona.py` apply through `run_plan` (datasets via data, clients via mcp, add-ons via marketplace, skills via skills; records `persona.*`); `tests/unit/app/test_persona_apply.py` + contract; acceptance A21 to A24
-- [ ] B8 Bring the eight functions over the 40-line standard back under it (`data.load`, `data.data_load`, `data_files.load_folder`, `help.component`, `logs.run`, `mcp.configure_readonly_access`, `mcp._select`, `sql.run`); tests already cover each
+- [x] B8 Every function in `exakit/` is under 40 lines and every module under 400 (`data_folder.py` and `mcp_readonly.py` split out of `data_files.py` and `mcp.py`); an ast check in the test run record proves it
 - [ ] B7 Retire the legacy suites for these areas once C4 deletes the legacy add-on modules they cover; CI roster runs the Python suites already (`versions.yml`)
 
 ## Phase C: install, update, runtime, uninstall

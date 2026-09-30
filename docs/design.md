@@ -123,7 +123,7 @@ exakit/
   app/
     __init__.py          Context dataclass; UseCase Protocol (plan/apply)
     status.py info.py version.py help.py
-    persona.py marketplace.py skills.py mcp.py data.py data_files.py sql.py logs.py
+    persona.py marketplace.py skills.py mcp.py mcp_readonly.py data.py data_files.py data_folder.py sql.py logs.py
     services.py          the database plus each installed service add-on: status/start/stop/autostart
     runtime_ops.py       credentials, exapump and the personal runtime as the use cases reach them; ensure_running()
     install.py update.py runtime.py uninstall.py            (Phase C)

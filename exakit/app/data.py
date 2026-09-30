@@ -143,17 +143,36 @@ def load(ctx: Context, ds: Dataset, *, force: bool = False) -> Result:
         return Result(True, "already loaded", data={"dataset": ds.id})
     ctx.ui.info(f"Loading the '{ds.id}' dataset into schema {ds.schema}")
     started = time.monotonic()
-    schema_sql = ds.directory / "01_create_schema.sql"
-    if schema_sql.is_file() and schema_sql.stat().st_size:
-        _sql_file(ctx, pump, schema_sql, "schema")
-        if not schema_present(ctx, pump, ds.schema):
-            ctx.ui.warn(f"Schema {ds.schema} was not created on the first run - trying once more")
-            _sql_file(ctx, pump, schema_sql, "schema")
-            if not schema_present(ctx, pump, ds.schema):
-                raise Failed(f"Schema {ds.schema} does not exist after running {schema_sql.name}.", remedy="exakit logs setup")
-    else:
-        ensure_schema(ctx, pump, ds.schema)
+    _create_schema(ctx, pump, ds)
     csvs = sorted(p for p in (ds.directory / "data").glob("*.csv") if p.stat().st_size)
+    _upload_csvs(ctx, pump, ds, csvs)
+    load_sql = ds.directory / "02_load_data.sql"
+    if load_sql.is_file() and load_sql.stat().st_size:
+        _sql_file(ctx, pump, load_sql, "load statements")
+    _verify(ctx, pump, ds)
+    tables, total = _count_and_record(ctx, pump, ds, csvs)
+    took = int(time.monotonic() - started)
+    rows_text = f"{total:,} rows" if total is not None else "rows counted in the log"
+    ctx.ui.ok(f"Dataset '{ds.id}' loaded and verified - {len(tables)} table{'s' if len(tables) != 1 else ''}, {rows_text} ({took}s)")
+    return Result(True, "loaded", data={"dataset": ds.id, "tables": len(tables), "rows": total})
+
+
+def _create_schema(ctx: Context, pump: Exapump, ds: Dataset) -> None:
+    """The dataset's own schema script (retried once), else a bare CREATE SCHEMA."""
+    schema_sql = ds.directory / "01_create_schema.sql"
+    if not (schema_sql.is_file() and schema_sql.stat().st_size):
+        ensure_schema(ctx, pump, ds.schema)
+        return
+    _sql_file(ctx, pump, schema_sql, "schema")
+    if schema_present(ctx, pump, ds.schema):
+        return
+    ctx.ui.warn(f"Schema {ds.schema} was not created on the first run - trying once more")
+    _sql_file(ctx, pump, schema_sql, "schema")
+    if not schema_present(ctx, pump, ds.schema):
+        raise Failed(f"Schema {ds.schema} does not exist after running {schema_sql.name}.", remedy="exakit logs setup")
+
+
+def _upload_csvs(ctx: Context, pump: Exapump, ds: Dataset, csvs: list[Path]) -> None:
     failed: list[str] = []
     for csv in csvs:
         table = f"{ds.schema}.{csv.stem.upper()}"
@@ -162,19 +181,26 @@ def load(ctx: Context, ds: Dataset, *, force: bool = False) -> Result:
     if failed:
         raise Failed(f"Could not load {'; '.join(failed)}. The reason: exakit logs setup. Retry this step with: exakit data-load --force",
                      remedy="exakit data-load --force")
-    load_sql = ds.directory / "02_load_data.sql"
-    if load_sql.is_file() and load_sql.stat().st_size:
-        _sql_file(ctx, pump, load_sql, "load statements")
+
+
+def _verify(ctx: Context, pump: Exapump, ds: Dataset) -> None:
+    """The dataset's verification script: a ,FAIL, row means the data is there but not marked ready."""
     verify_sql = ds.directory / "03_verify_setup.sql"
-    if verify_sql.is_file() and verify_sql.stat().st_size:
-        done = pump.sql_file(profile_name(ctx), verify_sql)
-        ctx.log.line("DATA", f"verification of {ds.id}:\n{done.out}")
-        if not done.ok or ",FAIL," in done.out:
-            ctx.ui.error(f"Verification failed for dataset '{ds.id}':")
-            for line in done.out.splitlines():
-                ctx.ui.text(f"      | {line}")
-            raise Failed(f"Verification failed for dataset '{ds.id}' - see exakit logs setup. Data is loaded but not marked ready; "
-                         "fix the underlying issue and re-run with --force.", remedy="exakit data-load --force")
+    if not (verify_sql.is_file() and verify_sql.stat().st_size):
+        return
+    done = pump.sql_file(profile_name(ctx), verify_sql)
+    ctx.log.line("DATA", f"verification of {ds.id}:\n{done.out}")
+    if done.ok and ",FAIL," not in done.out:
+        return
+    ctx.ui.error(f"Verification failed for dataset '{ds.id}':")
+    for line in done.out.splitlines():
+        ctx.ui.text(f"      | {line}")
+    raise Failed(f"Verification failed for dataset '{ds.id}' - see exakit logs setup. Data is loaded but not marked ready; "
+                 "fix the underlying issue and re-run with --force.", remedy="exakit data-load --force")
+
+
+def _count_and_record(ctx: Context, pump: Exapump, ds: Dataset, csvs: list[Path]) -> tuple[list[str], int | None]:
+    """Row counts for every table (CSV-backed plus the markers), then the manifest flags."""
     tables = [f"{ds.schema}.{c.stem.upper()}" for c in csvs]
     for marker in ds.markers:
         if f"{ds.schema}.{marker}" not in tables:
@@ -193,10 +219,7 @@ def load(ctx: Context, ds: Dataset, *, force: bool = False) -> Result:
             m.set(f"data.datasets.{ds.id}.rows", total)
         m.set("data.last_load.source", f"dataset:{ds.id}")
     ctx.manifest_store.update(change)
-    took = int(time.monotonic() - started)
-    rows_text = f"{total:,} rows" if total is not None else "rows counted in the log"
-    ctx.ui.ok(f"Dataset '{ds.id}' loaded and verified - {len(tables)} table{'s' if len(tables) != 1 else ''}, {rows_text} ({took}s)")
-    return Result(True, "loaded", data={"dataset": ds.id, "tables": len(tables), "rows": total})
+    return tables, total
 
 
 # --- the command and the menu -------------------------------------------------------
@@ -219,6 +242,26 @@ def parse_env_datasets(ctx: Context) -> list[Dataset] | None:
 
 def data_load(ctx: Context, args: list[str]) -> Result:
     """``exakit data-load [--force | <path>]``."""
+    force, path = _parse_data_load_args(args)
+    ctx.manifest()
+    if path is not None and not path.exists():
+        raise Failed(f"No such file or folder: {path}")
+    ensure_running(ctx, deploy=True)
+    if force:
+        chosen = parse_env_datasets(ctx)
+        return _load_datasets(ctx, [dataset(ctx, "tpch")] if chosen is None else chosen, force=True)
+    if path is not None:
+        return load_local_path(ctx, path)
+    chosen = parse_env_datasets(ctx)
+    if chosen is not None and not ctx.env.get("EXAKIT_DATA_FILE"):
+        return _load_datasets(ctx, chosen, force=False)
+    if ctx.env.get("EXAKIT_DATA_FILE"):
+        ctx.ui.info("Loading a local file (EXAKIT_DATA_FILE).")
+        return load_local_path(ctx, Path(ctx.env["EXAKIT_DATA_FILE"]).expanduser())
+    return menu(ctx)
+
+
+def _parse_data_load_args(args: list[str]) -> tuple[bool, Path | None]:
     force, path = False, None
     for arg in args:
         if arg == "--force":
@@ -226,50 +269,28 @@ def data_load(ctx: Context, args: list[str]) -> Result:
         elif arg.startswith("-"):
             raise BadInput(f"Unknown option '{arg}' for data-load (pass --force, or a file or folder path).")
         elif path is None:
-            path = arg
-    ctx.manifest()
-    if path is not None:
-        target = Path(path).expanduser()
-        if not target.exists():
-            raise Failed(f"No such file or folder: {path}")
-    ensure_running(ctx, deploy=True)
-    if force:
-        chosen = parse_env_datasets(ctx)
-        if chosen is None:
-            chosen = [dataset(ctx, "tpch")]
-        elif not chosen:
-            raise Failed(f"EXAKIT_DATASETS='{ctx.env.get('EXAKIT_DATASETS')}' matched no bundled dataset - nothing was loaded.")
-        failures = 0
-        for ds in chosen:
+            path = Path(arg).expanduser()
+    return force, path
+
+
+def _load_datasets(ctx: Context, chosen: list[Dataset], *, force: bool) -> Result:
+    """The scripted path: every named dataset in turn; one failure does not stop the next."""
+    if not chosen:
+        raise Failed(f"EXAKIT_DATASETS='{ctx.env.get('EXAKIT_DATASETS')}' matched no bundled dataset - nothing was loaded.")
+    done = loaded(ctx) if not force else set()
+    failures = 0
+    for ds in chosen:
+        if ds.id in done:
+            ctx.ui.ok(f"Dataset '{ds.id}' is already loaded - nothing to do (replace it with: exakit data-load --force)")
+            continue
+        if force:
             ctx.ui.info(f"Reloading dataset '{ds.id}' (--force)")
-            try:
-                load(ctx, ds, force=True)
-            except Failed as err:
-                ctx.ui.warn(err.message)
-                failures += 1
-        return Result(True, "loaded" if not failures else "partial", exit_code=1 if failures else 0)
-    if path is not None:
-        return load_local_path(ctx, Path(path).expanduser())
-    chosen = parse_env_datasets(ctx)
-    if chosen is not None and not ctx.env.get("EXAKIT_DATA_FILE"):
-        if not chosen:
-            raise Failed(f"EXAKIT_DATASETS='{ctx.env.get('EXAKIT_DATASETS')}' matched no bundled dataset - nothing was loaded.")
-        done = loaded(ctx)
-        failures = 0
-        for ds in chosen:
-            if ds.id in done:
-                ctx.ui.ok(f"Dataset '{ds.id}' is already loaded - nothing to do (replace it with: exakit data-load --force)")
-                continue
-            try:
-                load(ctx, ds)
-            except Failed as err:
-                ctx.ui.warn(err.message)
-                failures += 1
-        return Result(True, "loaded" if not failures else "partial", exit_code=1 if failures else 0)
-    if ctx.env.get("EXAKIT_DATA_FILE"):
-        ctx.ui.info("Loading a local file (EXAKIT_DATA_FILE).")
-        return load_local_path(ctx, Path(ctx.env["EXAKIT_DATA_FILE"]).expanduser())
-    return menu(ctx)
+        try:
+            load(ctx, ds, force=force)
+        except Failed as err:
+            ctx.ui.warn(err.message)
+            failures += 1
+    return Result(True, "loaded" if not failures else "partial", exit_code=1 if failures else 0)
 
 
 def menu(ctx: Context) -> Result:

@@ -55,6 +55,28 @@ def _updated(path: Path) -> str:
 
 
 def run(ctx: Context, args: list[str]) -> Result:
+    follow, path_only, lines, target = _parse_logs_args(args)
+    known = targets(ctx)
+    if target is None:
+        return _list_targets(ctx, known)
+    if ctx.json:
+        raise BadInput("--json lists the targets; it cannot be combined with a target name.")
+    match = [t for t in known if t.id == target]
+    if not match:
+        if ctx.catalog.has_addon(target):
+            raise Failed(f"{target} is not installed - add it with: exakit marketplace {target}", remedy=f"exakit marketplace {target}")
+        raise Failed(f"No log called '{target}'. Available: {', '.join(t.id for t in known) or 'none yet'}")
+    path = match[0].path
+    if path_only:
+        ctx.ui.text(str(path))
+        return Result(True, "ok")
+    if not path.is_file():
+        raise Failed(f"The {target} log has not been written yet ({path}).")
+    _show(ctx, path, follow=follow, lines=lines)
+    return Result(True, "ok")
+
+
+def _parse_logs_args(args: list[str]) -> tuple[bool, bool, int, str | None]:
     follow, path_only, lines, target = False, False, 200, None
     i = 0
     while i < len(args):
@@ -77,38 +99,29 @@ def run(ctx: Context, args: list[str]) -> Result:
         else:
             raise BadInput("logs takes one target at most.")
         i += 1
-    known = targets(ctx)
-    if target is None:
-        rows = [{"target": t.id, "what": t.what, "kind": "file", "path": str(t.path), "command": None,
-                 "size": _size(t.path), "updated": _updated(t.path)} for t in known]
-        if not ctx.json:
-            if not rows:
-                ctx.ui.info("No logs yet - they appear here once the installer or a service has run.")
-            else:
-                ctx.ui.heading("Component logs")
-                ctx.ui.text(f"  {'Target':<22} {'What':<26} {'Size':<8} Updated")
-                for row in rows:
-                    ctx.ui.text(f"  {row['target']:<22} {row['what']:<26} {row['size']:<8} {row['updated']}")
-                ctx.ui.info("Show one: exakit logs <target>   Follow it: exakit logs <target> -f")
-        return Result(True, "ok", data={"count": len(rows), "targets": rows}, raw=True)
-    if ctx.json:
-        raise BadInput("--json lists the targets; it cannot be combined with a target name.")
-    match = [t for t in known if t.id == target]
-    if not match:
-        if ctx.catalog.has_addon(target):
-            raise Failed(f"{target} is not installed - add it with: exakit marketplace {target}", remedy=f"exakit marketplace {target}")
-        raise Failed(f"No log called '{target}'. Available: {', '.join(t.id for t in known) or 'none yet'}")
-    path = match[0].path
-    if path_only:
-        ctx.ui.text(str(path))
-        return Result(True, "ok")
-    if not path.is_file():
-        raise Failed(f"The {target} log has not been written yet ({path}).")
+    return follow, path_only, lines, target
+
+
+def _list_targets(ctx: Context, known) -> Result:
+    rows = [{"target": t.id, "what": t.what, "kind": "file", "path": str(t.path), "command": None,
+             "size": _size(t.path), "updated": _updated(t.path)} for t in known]
+    if not ctx.json:
+        if not rows:
+            ctx.ui.info("No logs yet - they appear here once the installer or a service has run.")
+        else:
+            ctx.ui.heading("Component logs")
+            ctx.ui.text(f"  {'Target':<22} {'What':<26} {'Size':<8} Updated")
+            for row in rows:
+                ctx.ui.text(f"  {row['target']:<22} {row['what']:<26} {row['size']:<8} {row['updated']}")
+            ctx.ui.info("Show one: exakit logs <target>   Follow it: exakit logs <target> -f")
+    return Result(True, "ok", data={"count": len(rows), "targets": rows}, raw=True)
+
+
+def _show(ctx: Context, path: Path, *, follow: bool, lines: int) -> None:
     if follow:
         ctx.ui.info(f"Following {path} - Ctrl-C to stop")
         sys.stdout.flush()
         subprocess.call(["tail", "-n", str(lines), "-f", str(path)])
-    else:
-        text = path.read_text(encoding="utf-8", errors="replace").splitlines()
-        ctx.ui.text("\n".join(text[-lines:]))
-    return Result(True, "ok")
+        return
+    text = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    ctx.ui.text("\n".join(text[-lines:]))

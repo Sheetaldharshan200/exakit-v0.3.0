@@ -10,8 +10,6 @@ from __future__ import annotations
 from typing import Any
 
 from exakit.adapters.clients import CLIENT_IDS, ClientCall, client_states, managed_clients
-from exakit.adapters.exapump import Exapump, Profile, has_token, temp_config
-from exakit.adapters.fs.credentials import CredentialStore
 from exakit.domain.errors import BadInput, Failed, NotInstalled, NotRunning
 from exakit.domain.ids import CLIENT_WORDS_HELP, is_skip_word, parse_client_selection
 from exakit.domain.result import Result
@@ -19,12 +17,11 @@ from exakit.ui.widgets import Option
 
 from . import Context
 from .machine import kit_root
-from .runtime_ops import credentials, ensure_running, exapump, is_running, runtime_remedy
+from .mcp_readonly import configure_readonly_access
+from .runtime_ops import ensure_running, is_running, runtime_remedy
 
 LABELS = {"claude_desktop": "Claude", "claude_code": "Claude Code (CLI)", "cursor": "Cursor", "codex": "Codex",
           "vscode_copilot": "GitHub Copilot", "gemini_cli": "Gemini CLI", "opencode": "OpenCode", "continue": "Continue"}
-READONLY_USER_DEFAULT = "mcp_readonly"
-READONLY_SCHEMAS_DEFAULT = "STARTER_KIT"
 REPAIRABLE_CODES = {"permission_drift", "manifest_drift_hash_mismatch", "manifest_drift_missing_artifact",
                     "managed_artifact_missing", "managed_entry_outdated"}
 
@@ -34,107 +31,6 @@ def _clients(ctx: Context):
         from exakit.adapters.clients import InProcessClientOps  # noqa: PLC0415
         ctx.clients = InProcessClientOps(kit_root(ctx))
     return ctx.clients
-
-
-# --- the read-only user ----------------------------------------------------------
-
-
-def _die_missing(what: str, ctx: Context) -> Failed:
-    return Failed(f"The install record is incomplete (no {what} recorded), so the read-only login for your AI client cannot be created. "
-                  f"Re-run the installer to rebuild it: {ctx.install_command()}", remedy=ctx.install_command())
-
-
-def configure_readonly_access(ctx: Context) -> None:
-    """Create or refresh the dedicated read-only user, grant, validate, and assert its posture."""
-    manifest = ctx.manifest()
-    pump = exapump(ctx)
-    if pump is None:
-        raise Failed("exapump is required for MCP read-only setup but was not found.", remedy="exakit update")
-    admin_user = manifest.get("runtime.user")
-    if not admin_user:
-        raise _die_missing("database user", ctx)
-    pw_file = manifest.get("runtime.password_file")
-    admin_password = credentials(ctx).read(pw_file.rsplit("/", 1)[-1]) if pw_file else None
-    if not admin_password:
-        raise Failed("No runtime database password is available (runtime.password_file is missing). Re-run the installer to rebuild it.",
-                     remedy=ctx.install_command())
-    dsn = manifest.get("runtime.dsn") or ""
-    host, _, port_text = dsn.rpartition(":")
-    if not host or not port_text.isdigit():
-        raise _die_missing("database address", ctx)
-    ro_user = (ctx.env.get("EXAKIT_MCP_READONLY_USER") or READONLY_USER_DEFAULT).upper()
-    if not ro_user.replace("_", "").isalnum():
-        raise BadInput(f"Invalid EXAKIT_MCP_READONLY_USER: {ro_user}")
-    schema = (ctx.env.get("EXAKIT_MCP_READONLY_SCHEMAS") or READONLY_SCHEMAS_DEFAULT).split(",")[0].strip().upper()
-    store = credentials(ctx)
-    ro_password = store.read("mcp_readonly_password")
-    if not CredentialStore.is_token(ro_password):
-        ro_password = CredentialStore.new_token()
-        store.store("mcp_readonly_password", ro_password)
-    profiles = [Profile("admin", host, int(port_text), admin_user, admin_password),
-                Profile("mcp_readonly", host, int(port_text), ro_user, ro_password, schema=schema)]
-    with temp_config(ctx.paths.cache, profiles) as config:
-        def admin(sql: str):
-            return pump.sql("admin", sql, config=config)
-
-        def must(done, message: str) -> None:
-            if not done.ok:
-                ctx.log.line("ERROR", f"{message}: {done.err.strip()[-300:] or done.out.strip()[-300:]}")
-                raise Failed(message, remedy="exakit mcp-setup")
-
-        probe = admin(f"SELECT CASE WHEN EXISTS (SELECT 1 FROM EXA_DBA_USERS WHERE USER_NAME = '{ro_user}') "
-                      "THEN 'EXAKIT_MCP_USER_PRESENT' ELSE 'EXAKIT_MCP_USER_MISSING' END AS STATUS")
-        must(probe, "Could not read the database's user list.")
-        if "EXAKIT_MCP_USER_PRESENT" not in probe.out:
-            ctx.ui.info(f"Creating the dedicated MCP read-only database user ({ro_user.lower()})")
-            must(admin(f"CREATE USER {ro_user} IDENTIFIED BY \"{ro_password}\""), "Could not create the MCP read-only database user.")
-        must(admin(f"ALTER USER {ro_user} IDENTIFIED BY \"{ro_password}\""), "Could not refresh the MCP read-only database password.")
-        must(admin(f"GRANT CREATE SESSION TO {ro_user}"), "Could not grant CREATE SESSION to the MCP read-only user.")
-        schema_probe = admin(f"SELECT CASE WHEN EXISTS (SELECT 1 FROM EXA_ALL_SCHEMAS WHERE SCHEMA_NAME = '{schema}') "
-                             "THEN 'EXAKIT_SCHEMA_PRESENT' ELSE 'EXAKIT_SCHEMA_MISSING' END AS STATUS")
-        if "EXAKIT_SCHEMA_PRESENT" not in schema_probe.out:
-            ctx.ui.info(f"Creating default schema {schema} for MCP-safe querying")
-            must(admin(f"CREATE SCHEMA {schema}"), f"Could not create the default schema {schema}.")
-        must(admin(f"GRANT USE ANY SCHEMA TO {ro_user}"), "Could not grant USE ANY SCHEMA to the MCP read-only user.")
-        must(admin(f"GRANT SELECT ANY TABLE TO {ro_user}"), "Could not grant SELECT ANY TABLE to the MCP read-only user.")
-        ctx.ui.info("Validating dedicated MCP read-only login")
-        login = pump.sql("mcp_readonly", "SELECT CURRENT_USER AS EXAKIT_CURRENT_USER", config=config)
-        if not login.ok or ro_user not in login.out.upper():
-            raise Failed("The MCP read-only user could not log in with the generated credentials.", remedy="exakit mcp-setup")
-        if not has_token(pump.sql("mcp_readonly", "SELECT 'EXAKIT_MCP_READONLY_OK' AS STATUS", config=config), "EXAKIT_MCP_READONLY_OK"):
-            raise Failed("The MCP read-only user did not pass the validation query.", remedy="exakit mcp-setup")
-        assert_readonly_posture(pump, config, ro_user, schema)
-
-    def change(m) -> None:
-        m.set("components.mcp_server.connection.user", ro_user.lower())
-        m.set("components.mcp_server.connection.password_file", str(store.path("mcp_readonly_password")))
-        m.set("components.mcp_server.connection.schemas", [schema])
-        m.set("components.mcp_server.connection.default_schema", schema)
-        m.set("components.mcp_server.connection.read_scope",
-              "every schema (USE ANY SCHEMA + SELECT ANY TABLE); 'schemas' is the connection default, not a limit")
-        m.set("components.mcp_server.connection.validated", True)
-    ctx.manifest_store.update(change)
-    ctx.ui.ok("Dedicated MCP read-only access is configured and validated")
-
-
-def assert_readonly_posture(pump: Exapump, config, ro_user: str, schema: str) -> None:
-    """The six grant checks plus a live write probe; any failure stops setup to protect the database."""
-    checks = [
-        (f"SELECT CASE WHEN EXISTS (SELECT 1 FROM EXA_DBA_SYS_PRIVS WHERE GRANTEE='{ro_user}' AND PRIVILEGE='CREATE SESSION') THEN 'EXAKIT_CREATE_SESSION_OK' ELSE 'MISSING' END", "EXAKIT_CREATE_SESSION_OK", "CREATE SESSION is not granted"),
-        (f"SELECT CASE WHEN EXISTS (SELECT 1 FROM EXA_DBA_SYS_PRIVS WHERE GRANTEE='{ro_user}' AND PRIVILEGE='USE ANY SCHEMA') THEN 'EXAKIT_USE_ANY_SCHEMA_OK' ELSE 'MISSING' END", "EXAKIT_USE_ANY_SCHEMA_OK", "USE ANY SCHEMA is not granted"),
-        (f"SELECT CASE WHEN EXISTS (SELECT 1 FROM EXA_DBA_SYS_PRIVS WHERE GRANTEE='{ro_user}' AND PRIVILEGE='SELECT ANY TABLE') THEN 'EXAKIT_SELECT_ANY_TABLE_OK' ELSE 'MISSING' END", "EXAKIT_SELECT_ANY_TABLE_OK", "SELECT ANY TABLE is not granted"),
-        (f"SELECT CASE WHEN (SELECT COUNT(*) FROM EXA_DBA_SYS_PRIVS WHERE GRANTEE='{ro_user}' AND PRIVILEGE NOT IN ('CREATE SESSION','USE ANY SCHEMA','SELECT ANY TABLE'))=0 THEN 'EXAKIT_SYS_PRIV_SCOPE_OK' ELSE 'EXTRA' END", "EXAKIT_SYS_PRIV_SCOPE_OK", "the read-only user holds extra system privileges"),
-        (f"SELECT CASE WHEN (SELECT COUNT(*) FROM EXA_DBA_ROLE_PRIVS WHERE GRANTEE='{ro_user}' AND GRANTED_ROLE NOT IN ('PUBLIC'))=0 THEN 'EXAKIT_ROLE_SCOPE_OK' ELSE 'EXTRA' END", "EXAKIT_ROLE_SCOPE_OK", "the read-only user holds extra roles"),
-        (f"SELECT CASE WHEN (SELECT COUNT(*) FROM EXA_DBA_OBJ_PRIVS WHERE GRANTEE='{ro_user}' AND PRIVILEGE <> 'SELECT')=0 THEN 'EXAKIT_OBJ_PRIV_SCOPE_OK' ELSE 'EXTRA' END", "EXAKIT_OBJ_PRIV_SCOPE_OK", "the read-only user holds non-SELECT object privileges"),
-    ]
-    for sql, token, problem in checks:
-        if not has_token(pump.sql("admin", sql, config=config), token):
-            raise Failed(f"Security check failed: {problem}. Setup stopped to protect your database.", remedy="exakit mcp-setup")
-    probe = pump.sql("mcp_readonly", f"CREATE TABLE {schema}.EXAKIT_MCP_PERMISSION_PROBE (ID DECIMAL)", config=config)
-    if probe.ok:
-        pump.sql("admin", f"DROP TABLE {schema}.EXAKIT_MCP_PERMISSION_PROBE", config=config)
-        raise Failed(f"Security check failed: the MCP read-only user was able to write to schema {schema}, but it must be read-only. "
-                     "Setup stopped to protect your database.", remedy="exakit mcp-setup")
 
 
 # --- selection and setup --------------------------------------------------------------
@@ -147,26 +43,31 @@ def detected_clients(ctx: Context) -> dict[str, str] | None:
 def _select(ctx: Context) -> list[str] | None:
     """The clients to configure: from the environment, or the interactive menu. None means nothing to do."""
     raw = ctx.env.get("EXAKIT_MCP_CLIENTS", "")
-    if raw:
-        if is_skip_word(raw):
-            ctx.ui.info(f"Skipping AI client setup (EXAKIT_MCP_CLIENTS={raw}) - run 'exakit mcp-setup' any time.")
-            return None
-        try:
-            chosen = parse_client_selection(raw)
-        except BadInput:
-            ctx.ui.warn(f"EXAKIT_MCP_CLIENTS='{raw}' is not valid (use {CLIENT_WORDS_HELP}, or numbers 1-7).")
-            raise
-        if raw.strip().lower() == "all":
-            states = detected_clients(ctx)
-            if states:
-                present = [c for c in chosen if states.get(c) in ("connected", "pending")]
-                skipped = [c for c in chosen if c not in present]
-                if present:
-                    chosen = present
-                    if skipped:
-                        ctx.ui.info(f"EXAKIT_MCP_CLIENTS=all - not installed here, skipped: {','.join(skipped)} (name one explicitly to configure it anyway)")
-        ctx.ui.info(f"Configuring MCP clients from EXAKIT_MCP_CLIENTS: {','.join(chosen)}")
-        return chosen
+    return _select_from_env(ctx, raw) if raw else _select_from_menu(ctx)
+
+
+def _select_from_env(ctx: Context, raw: str) -> list[str] | None:
+    if is_skip_word(raw):
+        ctx.ui.info(f"Skipping AI client setup (EXAKIT_MCP_CLIENTS={raw}) - run 'exakit mcp-setup' any time.")
+        return None
+    try:
+        chosen = parse_client_selection(raw)
+    except BadInput:
+        ctx.ui.warn(f"EXAKIT_MCP_CLIENTS='{raw}' is not valid (use {CLIENT_WORDS_HELP}, or numbers 1-7).")
+        raise
+    if raw.strip().lower() == "all":
+        states = detected_clients(ctx)
+        present = [c for c in chosen if states and states.get(c) in ("connected", "pending")]
+        if present:
+            skipped = [c for c in chosen if c not in present]
+            chosen = present
+            if skipped:
+                ctx.ui.info(f"EXAKIT_MCP_CLIENTS=all - not installed here, skipped: {','.join(skipped)} (name one explicitly to configure it anyway)")
+    ctx.ui.info(f"Configuring MCP clients from EXAKIT_MCP_CLIENTS: {','.join(chosen)}")
+    return chosen
+
+
+def _select_from_menu(ctx: Context) -> list[str] | None:
     states = detected_clients(ctx) or {c: "pending" for c in CLIENT_IDS}
     pending = [c for c in CLIENT_IDS if states.get(c) == "pending"]
     if not pending:

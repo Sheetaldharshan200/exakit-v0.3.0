@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from exakit.adapters.process.runner import Completed
-from exakit.app import data, data_files
+from exakit.app import data, data_files, data_folder
 from exakit.domain.errors import BadInput, Failed
 from tests.unit.app.harness import MANIFEST, Sandbox
 from tests.unit.fakes import FakeExapump, FakeRuntime
@@ -169,7 +169,7 @@ class FilesTest(unittest.TestCase):
             (folder / "pic.png").write_bytes(b"x")
             (folder / ".hidden.csv").write_text("a\n1\n")
             (folder / "sub" / "inner.csv").write_text("a\n1\n")
-            entries = {e.path.name: e for e in data_files.scan_folder(folder)}
+            entries = {e.path.name: e for e in data_folder.scan_folder(folder)}
             self.assertEqual(entries["aaa.csv"].action, "load")
             self.assertEqual((entries["sales.csv"].kind, entries["sales.csv"].table), ("duplicate-content", "aaa.csv"))
             self.assertEqual(entries["orders.csv"].action, "load")
@@ -190,17 +190,17 @@ class FilesTest(unittest.TestCase):
             f = Path(box.tmp.name) / "sales.csv"
             f.write_text("a,b\n1,2\n")
             receipts = data_files.Receipts.load(Path(box.tmp.name) / "receipts.tsv")
-            entry = data_files.ScanEntry("load", "csv", "SALES", f)
+            entry = data_folder.ScanEntry("load", "csv", "SALES", f)
             inflight = Path(box.tmp.name) / "inflight"
-            self.assertEqual(data_files._decide(entry, "S", None, receipts, inflight), ("load", "unknown"))
-            self.assertEqual(data_files._decide(entry, "S", {}, receipts, inflight), ("load", "absent"))
-            self.assertEqual(data_files._decide(entry, "S", {"S.SALES": 0}, receipts, inflight), ("load", "0"))
-            self.assertEqual(data_files._decide(entry, "S", {"S.SALES": 5}, receipts, inflight), ("clash", "5"))
+            self.assertEqual(data_folder._decide(entry, "S", None, receipts, inflight), ("load", "unknown"))
+            self.assertEqual(data_folder._decide(entry, "S", {}, receipts, inflight), ("load", "absent"))
+            self.assertEqual(data_folder._decide(entry, "S", {"S.SALES": 0}, receipts, inflight), ("load", "0"))
+            self.assertEqual(data_folder._decide(entry, "S", {"S.SALES": 5}, receipts, inflight), ("clash", "5"))
             receipts.record("S.SALES", f, 5)
-            self.assertEqual(data_files._decide(entry, "S", {"S.SALES": 5}, receipts, inflight), ("done", "5"))
-            self.assertEqual(data_files._decide(entry, "S", {"S.SALES": 7}, receipts, inflight), ("clash", "7"))
+            self.assertEqual(data_folder._decide(entry, "S", {"S.SALES": 5}, receipts, inflight), ("done", "5"))
+            self.assertEqual(data_folder._decide(entry, "S", {"S.SALES": 7}, receipts, inflight), ("clash", "7"))
             inflight.write_text("S.SALES")
-            self.assertEqual(data_files._decide(entry, "S", {"S.SALES": 7}, receipts, inflight), ("resume", "7"))
+            self.assertEqual(data_folder._decide(entry, "S", {"S.SALES": 7}, receipts, inflight), ("resume", "7"))
             receipts.forget("S.SALES")
             self.assertEqual(receipts.rows, [])
         finally:
@@ -260,7 +260,7 @@ class FilesTest(unittest.TestCase):
             pump = StatefulPump([("EXA_ALL_SCHEMAS", Completed(0, "EXAKIT_SCHEMA_PRESENT", ""))])
             box.ctx.exapump = pump
             box.ctx.runtime = FakeRuntime()
-            result = data_files.load_folder(box.ctx, folder)
+            result = data_folder.load_folder(box.ctx, folder)
             self.assertEqual(result.status, "loaded")
             self.assertEqual({(u[1], u[3]) for u in pump.uploads}, {("STARTER_KIT.SALES", ","), ("STARTER_KIT.ORDERS", ";")})
             self.assertIn("STARTER_KIT: 2 files loaded", box.screen())
@@ -271,7 +271,7 @@ class FilesTest(unittest.TestCase):
             self.assertEqual({r[0] for r in receipts.rows}, {"STARTER_KIT.SALES", "STARTER_KIT.ORDERS"})
             box.out.truncate(0); box.out.seek(0)
             pump.uploads.clear()
-            result = data_files.load_folder(box.ctx, folder)
+            result = data_folder.load_folder(box.ctx, folder)
             self.assertEqual(pump.uploads, [])
             self.assertIn("already holds every file", box.screen())
         finally:
@@ -285,12 +285,12 @@ class FilesTest(unittest.TestCase):
             (folder / "sales.csv").write_text("a,b\n1,2\n")
             pump = FakeExapump([("EXA_ALL_SCHEMAS", Completed(0, "EXAKIT_SCHEMA_PRESENT", "")), ("LISTING_ANSWERED", _listing({"STARTER_KIT.SALES": 9}))])
             box.ctx.exapump = pump
-            result = data_files.load_folder(box.ctx, folder)
+            result = data_folder.load_folder(box.ctx, folder)
             self.assertEqual(pump.uploads, [])
             self.assertIn("not loaded: the table already holds rows this kit did not put there", box.screen())
             self.assertIn("already holds every file", box.screen())
             box.env["EXAKIT_ON_EXISTING"] = "replace"
-            data_files.load_folder(box.ctx, folder)
+            data_folder.load_folder(box.ctx, folder)
             self.assertTrue(any("DROP TABLE IF EXISTS STARTER_KIT.SALES" in t for _, t in pump.calls))
             self.assertEqual(len(pump.uploads), 1)
         finally:

@@ -132,18 +132,7 @@ def error_detail(output: str) -> str:
 def run(ctx: Context, args: list[str]) -> Result:
     parsed = parse_args(args)
     ctx.manifest()
-    if parsed.file:
-        path = Path(parsed.file).expanduser()
-        if not path.is_file():
-            raise BadInput(f"No such file: {parsed.file}")
-        text = path.read_text(encoding="utf-8")
-    elif parsed.statement is not None:
-        text = parsed.statement
-    elif not sys.stdin.isatty():
-        text = sys.stdin.read()
-    else:
-        text = ""
-    text = clean(text)
+    text = clean(_statement_text(parsed))
     if not text:
         raise BadInput("Nothing to run: pass one statement, quoted, or --file <path>.")
     if not parsed.write:
@@ -152,17 +141,37 @@ def run(ctx: Context, args: list[str]) -> Result:
     if pump is None:
         raise NotRunning("exapump (the SQL client) is not installed", remedy="exakit update")
     done = pump.sql(profile_name(ctx), text, json_rows=ctx.json)
-    if ctx.json:
-        if done.ok:
-            try:
-                rows = json.loads(done.out) if done.out.strip() else []
-            except ValueError:
-                rows = []
-            data = {"ok": True, "rows": rows, "row_count": len(rows) if isinstance(rows, list) else None}
-            return Result(True, "ok", data=data, raw=True)
-        lines, command = remedy_lines(done.out + done.err, text)
-        data = {"ok": False, "error": error_detail(done.out + done.err), "remedy": command, "remedy_hint": "\n".join(lines) or None}
-        return Result(True, "failed", data=data, raw=True, exit_code=done.code or 1)
+    return _json_answer(done, text) if ctx.json else _text_answer(ctx, done, text)
+
+
+def _statement_text(parsed) -> str:
+    if parsed.file:
+        path = Path(parsed.file).expanduser()
+        if not path.is_file():
+            raise BadInput(f"No such file: {parsed.file}")
+        return path.read_text(encoding="utf-8")
+    if parsed.statement is not None:
+        return parsed.statement
+    if not sys.stdin.isatty():
+        return sys.stdin.read()
+    return ""
+
+
+def _json_answer(done, text: str) -> Result:
+    """{"ok": true, "rows", "row_count"} or {"ok": false, "error", "remedy", "remedy_hint"}; the object alone on stdout."""
+    if done.ok:
+        try:
+            rows = json.loads(done.out) if done.out.strip() else []
+        except ValueError:
+            rows = []
+        data = {"ok": True, "rows": rows, "row_count": len(rows) if isinstance(rows, list) else None}
+        return Result(True, "ok", data=data, raw=True)
+    lines, command = remedy_lines(done.out + done.err, text)
+    data = {"ok": False, "error": error_detail(done.out + done.err), "remedy": command, "remedy_hint": "\n".join(lines) or None}
+    return Result(True, "failed", data=data, raw=True, exit_code=done.code or 1)
+
+
+def _text_answer(ctx: Context, done, text: str) -> Result:
     output = (done.out + done.err).rstrip("\n")
     if done.ok:
         if output:

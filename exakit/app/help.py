@@ -223,14 +223,20 @@ class HelpScreens:
         self.header(doc.get("title", key), doc.get("tagline", ""))
         self.out()
         self.para(doc.get("role", ""), indent="   ")
-        facts = [("Repository", doc.get("repo")), ("Package", doc.get("package")), ("Binary", doc.get("binary")),
-                 ("Runs via", doc.get("runs_via")), ("Image", doc.get("image")), ("Config", doc.get("config")),
-                 ("Profile", doc.get("profile")), ("Venv", doc.get("venv")), ("Python", doc.get("python")),
-                 ("URL", doc.get("url")), ("Control plane", doc.get("control_plane")), ("DSN", doc.get("dsn")),
-                 ("Admin user", doc.get("admin_user")), ("DB user", doc.get("db_user")),
-                 ("Deployment", doc.get("deployment_dir")), ("Platforms", doc.get("platforms")),
-                 ("Requires", doc.get("requires")), ("Installed by", doc.get("installed_by")), ("Docs", doc.get("docs"))]
-        facts = [(k, v) for k, v in facts if v]
+        self._component_facts(doc)
+        self._component_usage(key, doc)
+        self._component_notes(doc)
+        self.out()
+        return 0
+
+    FACT_KEYS = (("Repository", "repo"), ("Package", "package"), ("Binary", "binary"), ("Runs via", "runs_via"),
+                 ("Image", "image"), ("Config", "config"), ("Profile", "profile"), ("Venv", "venv"), ("Python", "python"),
+                 ("URL", "url"), ("Control plane", "control_plane"), ("DSN", "dsn"), ("Admin user", "admin_user"),
+                 ("DB user", "db_user"), ("Deployment", "deployment_dir"), ("Platforms", "platforms"),
+                 ("Requires", "requires"), ("Installed by", "installed_by"), ("Docs", "docs"))
+
+    def _component_facts(self, doc: dict[str, Any]) -> None:
+        facts = [(name, doc.get(field)) for name, field in self.FACT_KEYS if doc.get(field)]
         if facts:
             self.section("At a glance")
             for name, value in facts:
@@ -244,6 +250,8 @@ class HelpScreens:
         if doc.get("clients"):
             self.section("Supported clients")
             self.para(", ".join(doc["clients"]), indent="    ")
+
+    def _component_usage(self, key: str, doc: dict[str, Any]) -> None:
         if doc.get("quickstart"):
             self.section("How to start")
             for number, step in enumerate(doc["quickstart"], 1):
@@ -265,6 +273,8 @@ class HelpScreens:
                 self.out(f"    {self.B}{snippet.get('title', '')}{self.R}")
                 for line in snippet.get("code", "").split("\n"):
                     self.out(f"      {self.CY}{line}{self.R}")
+
+    def _component_notes(self, doc: dict[str, Any]) -> None:
         if doc.get("environment"):
             self.section("Environment")
             for item in doc["environment"]:
@@ -281,8 +291,6 @@ class HelpScreens:
         if doc.get("see_also"):
             self.section("See also")
             self.para(", ".join(doc["see_also"]), indent="    ")
-        self.out()
-        return 0
 
     def _find(self, doc: dict[str, Any], name: str) -> list[dict[str, Any]]:
         name = name.strip().lower()
