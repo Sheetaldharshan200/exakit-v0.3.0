@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 
-from exakit.app import Context, help as help_app, persona as persona_app, version as version_app, whats_new
+from exakit.app import Context, help as help_app, persona as persona_app, skills as skills_app, version as version_app, whats_new
 from exakit.app.machine import kit_root
 from exakit.domain.errors import BadInput
 from exakit.domain.result import Result
@@ -129,3 +129,19 @@ def persona_command(args: list[str], ctx: Context) -> Result:
     raise BadInput("exakit persona apply arrives with the next kit update; today: exakit persona plan <id>, then "
                    "exakit data-load, exakit mcp-setup and exakit marketplace <id> for what it lists.",
                    remedy=f"exakit persona plan {pid}" if pid else "exakit persona list")
+
+
+# --- skills -----------------------------------------------------------------------------
+
+
+def skills_command(args: list[str], ctx: Context) -> Result:
+    positional, _ = _split(args, JSON_FLAGS, "skills")
+    if positional:
+        raise BadInput(f"Unknown option '{positional[0]}' for skills (supported: --json).")
+    return skills_app.list_skills(ctx)
+
+
+def skills_install_command(args: list[str], ctx: Context) -> Result:
+    _split(args, (), "skills-install")
+    ctx.manifest()   # exit 4 without an install record
+    return skills_app.skills_install_command(ctx)
