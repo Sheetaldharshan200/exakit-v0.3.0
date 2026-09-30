@@ -79,8 +79,20 @@ class Lifecycle(ComponentBase):
         stage = self._stage(latest, current)
         if stage is None:
             return
-        target = root / "skills"
-        backup = root / f"skills.backup-{time.strftime('%Y%m%d-%H%M%S')}"
+        backup = self._swap(root / "skills", stage)
+        if backup is None:
+            return
+        try:
+            skills.install(self.ctx)
+        except Failed:
+            self.ctx.ui.warn("The new skills are in the kit copy but could not be placed - run: exakit skills-install")
+            return
+        shutil.rmtree(backup, ignore_errors=True)
+        self.ctx.ui.ok(f"AI skills updated to {self.installed_version()}. Restart or reload your AI client to pick them up.")
+
+    def _swap(self, target: Path, stage: Path) -> Path | None:
+        """The staged skills/ in place of the current one; returns the set-aside copy (an empty path when there was none)."""
+        backup = target.with_name(f"skills.backup-{time.strftime('%Y%m%d-%H%M%S')}")
         if target.is_dir():
             target.rename(backup)
         try:
@@ -90,15 +102,9 @@ class Lifecycle(ComponentBase):
                 backup.rename(target)
             shutil.rmtree(stage, ignore_errors=True)
             self.ctx.ui.warn("Could not install the downloaded skills; the previous set was put back.")
-            return
+            return None
         shutil.rmtree(stage, ignore_errors=True)
-        try:
-            skills.install(self.ctx)
-        except Failed:
-            self.ctx.ui.warn("The new skills are in the kit copy but could not be placed - run: exakit skills-install")
-            return
-        shutil.rmtree(backup, ignore_errors=True)
-        self.ctx.ui.ok(f"AI skills updated to {self.installed_version()}. Restart or reload your AI client to pick them up.")
+        return backup
 
     def uninstall(self, *, dry_run: bool) -> list[str]:
         from exakit.app import skills  # noqa: PLC0415

@@ -51,12 +51,12 @@ Update this file in the same commit as the work. Design sections are in
 ## Phase C: install, update, runtime, uninstall
 
 - [x] C1 `adapters/runtime/personal.py` (status decision tree, start/stop/wait/reap/deploy/record) + `adapters/process/services.py` (launchd, systemd user, Windows Startup) + `adapters/fs/notes.py` (failure note, install-lock holder) + fakes. `podman.py` is not needed: the container runtime is legacy-only and reaches Python solely through `migrate docker-nano` (C4)
-- [ ] C2 `app/install.py` (steps, resume, soft failures, legacy crossing, closing sequence, persona answers) + e2e dry-run matrix
+- [x] C2 `app/install.py` + `app/install_steps.py` (six ticked steps with resume, artifact and version-drift reruns, soft failures reported once, the persona's answers folded into the environment, the closing sequence), `app/deploy.py` (the deployment decision tree: reuse, start, replace with consent, deploy fresh), `app/requirements.py` (the compatibility gate, Podman on Linux, `exakit preflight`), `adapters/platform/machine.py`; `tests/unit/app/{test_install,test_deploy_requirements_migrate}.py` + contract PhaseCCommandsTest (D23, D24)
 - [x] C3 `exakit/components/{base,exapump,mcp_server,pyexasol,personal,kit,skill_set}.py` (one lifecycle per kit part: install, validate, update, uninstall) + `adapters/clients/handshake.py` + `app/update.py` (targets, ahead/current/unsupported/min-kit rules, the runtime offer with `--yes`/`EXAKIT_CONFIRM_RUNTIME_UPDATE`, kit self-update stage/swap/backup/marker, skills re-placed, what's-new card); `tests/unit/components/test_components.py`, `tests/unit/app/test_update.py` (D22). Left for C2: the exapump glibc container shim (Linux with glibc < 2.38) still comes from the legacy installer
 - [x] C4a `app/status.py`, `app/info.py` (the tri-state queries, every AGENTS.md key, `datasets_source`), `app/runtime.py` (`start` with orphan reaping, `stop`, `autostart`); `tests/unit/app/test_status_info_runtime.py` + contract StateQueryPhaseCTest (D21)
-- [ ] C4b `repair-runtime` and `migrate docker-nano` in Python (today they re-run the legacy setup script; they move with C2)
-- [ ] C5 `app/uninstall.py` (menu, typed confirmation, snapshots kept, add-on removal)
-- [ ] C6 `install.sh` / `install.ps1` hand over to `python -m exakit install` for the whole run; `setup/setup-*.{sh,ps1}` deleted
+- [x] C4b `app/repair.py` (consent, exit 5 when declined, the installer re-run in process with a forced fresh deployment) and `app/legacy_db.py` + `app/legacy_crossing.py` + `app/migrate.py` (the docker-nano crossing: asked once during the install, `exakit migrate docker-nano` afterwards) over `adapters/process/containers.py`
+- [x] C5 `app/uninstall.py` (the safe-target rule, the legacy removal order, the menu with the typed UNINSTALL gate, `--yes`, `--dry-run`, snapshots kept); `tests/unit/app/test_uninstall_repair.py`
+- [ ] C6 `install.sh` / `install.ps1` already hand over to `python -m exakit install`; delete `setup/setup-*.{sh,ps1}` and the `cli/legacy.py` install path once a real install has been run on macOS, Linux and Windows through the Python path (manual acceptance M-3, M-5). `exakit guide` and the kit2 scripts are the last legacy passthroughs
 
 ## Phase D: delete the legacy tree
 

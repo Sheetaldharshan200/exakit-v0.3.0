@@ -26,6 +26,7 @@ class Runner(Protocol):
     def run(self, cmd: Sequence[str], *, env: Mapping[str, str] | None = None, cwd: Path | None = None,
             timeout: float | None = None, stdin: str | None = None) -> Completed: ...
     def which(self, name: str) -> str | None: ...
+    def interactive(self, cmd: Sequence[str], *, env: Mapping[str, str] | None = None) -> int: ...
 
 
 class SubprocessRunner:
@@ -49,3 +50,15 @@ class SubprocessRunner:
 
     def which(self, name: str) -> str | None:
         return shutil.which(name)
+
+    def interactive(self, cmd: Sequence[str], *, env: Mapping[str, str] | None = None) -> int:
+        """Run with the terminal attached (a password prompt, a licence screen); the exit code is the answer."""
+        full_env = dict(os.environ)
+        if env:
+            full_env.update(env)
+        try:
+            return subprocess.call(list(cmd), env=full_env)
+        except FileNotFoundError:
+            return 127
+        except OSError:
+            return 126

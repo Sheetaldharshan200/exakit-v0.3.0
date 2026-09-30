@@ -7,7 +7,8 @@ without ``--yes`` before any question would be asked.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 
 from exakit.adapters.fs.log import Log, NullLog
 from exakit.domain.plan import Plan, Step
@@ -72,3 +73,8 @@ class SilentRenderer:
 
     def checkboxes(self, title: str, options: Sequence[Option], defaults: Sequence[str]) -> list[str]:
         return [o.id for o in options if o.id in set(defaults) and not o.disabled]
+
+    @contextmanager
+    def busy(self, label: str) -> Iterator[None]:
+        self.log.line("INFO", label)
+        yield

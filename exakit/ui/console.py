@@ -11,7 +11,8 @@ from __future__ import annotations
 import sys
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from typing import IO
 
 from exakit.adapters.fs.log import Log, NullLog
@@ -142,6 +143,21 @@ class ConsoleRenderer:
         self.panel(plan.title, lines)
 
     # --- steps -------------------------------------------------------------------
+
+    @contextmanager
+    def busy(self, label: str) -> Iterator[None]:
+        """A spinner with a label while a slow call runs; a single line elsewhere."""
+        if self.fancy and self.interactive and self._spin is None:
+            self._spin = _Spinner(self.out, f"{self.p.accent}{{frame}}{self.p.reset} {label}")
+            self._spin.start()
+            try:
+                yield
+            finally:
+                self._spin.stop()
+                self._spin = None
+            return
+        self.log.line("INFO", label)
+        yield
 
     def step_begin(self, step: Step | str) -> None:
         label = step if isinstance(step, str) else f"{SECTION_LABELS.get(step.section, step.section)}: {step.id}"

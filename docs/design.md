@@ -124,9 +124,11 @@ exakit/
     __init__.py          Context dataclass; UseCase Protocol (plan/apply)
     status.py info.py version.py help.py
     persona.py marketplace.py skills.py mcp.py mcp_readonly.py data.py data_files.py data_folder.py sql.py logs.py
+    install.py install_steps.py deploy.py requirements.py update.py uninstall.py repair.py
+    legacy_db.py legacy_crossing.py migrate.py                 the old-kit container database crossing (D24)
+    status.py info.py runtime.py                                status, info, start, stop, autostart
     services.py          the database plus each installed service add-on: status/start/stop/autostart
     runtime_ops.py       credentials, exapump and the personal runtime as the use cases reach them; ensure_running()
-    install.py update.py runtime.py uninstall.py            (Phase C)
     notice.py            the once-a-day pending-update notice
     machine.py           MachineState probe: what is on THIS machine (datasets, clients, add-ons, skills)
   components/
@@ -647,4 +649,7 @@ deletes `setup/`.
 | D20 | `install_addon_quietly` swaps the renderer for `SilentRenderer` around one install. | Loading a `.json` file needs json-tables; the file load is the story, the add-on install is a footnote that belongs in the log. |
 | D21 | `status`, `info`, `start`, `stop` and `autostart` are Python from Phase C on (supersedes D8). `status --json` keeps every legacy key and adds `datasets_source`, `persona` and `schema_version`; `NotInstalled.refusal()` leads with `installed`, `status`, `remedy` so every state query keeps its exit-4 shape. | The runtime adapter (C1) now answers the probe the legacy screen ran; the read-only query never writes (no failure note, no manifest heal), which the legacy `EXAKIT_READONLY_QUERY` flag only approximated. |
 | D22 | The kit's own parts (launcher, exapump, MCP server, pyexasol, the kit copy, the skill set) are `exakit/components/<id>.py` lifecycles with the same verbs as the add-on lifecycles, chosen by `components.for_component`. `app/update.py` drives them; `app/install.py` (C2) will drive the same `install` + `validate`. | The legacy tree had one `<id>_install` / `<id>_update` pair per shell module; one class per part keeps install and update from drifting (update is "force install, then validate, then record desired"). Components are not add-ons: they have no `service`, no marketplace state and their manifest keys are fixed by the 0.2.0 record. |
+| D23 | The installer keeps no rollback stack. A failed step says so, keeps partial progress and names the re-run; every lifecycle's `install` is idempotent, and `begin()` re-runs a step whose artifact is gone or whose version drifted. | The legacy `push_rollback` commands undid one step's files on request; in practice the answer was always "keep partial progress, re-run", which is the only path the new installer offers. Less code, one recovery story. |
+| D24 | The old-kit crossing (an Exasol container from a 0.1.x kit) is ported in full (`legacy_db`, `legacy_crossing`, `migrate`) instead of being dropped with the container runtime. | Machines that installed the first kits still exist; `status --json` documents `legacy_database`, and AGENTS.md documents `EXAKIT_LEGACY_DATA` and `exakit migrate docker-nano`. The port talks to docker/podman through one small adapter and never deletes the container. |
+| D25 | `exakit install --dry-run` prints the six-step plan; `EXAKIT_DRY_RUN=1` on `install.sh` still stops before the Python hand-over (nothing is installed, not even the kit's Python). | The shell dry run is the promise agents rely on ("nothing under EXAKIT_HOME changes"); the Python dry run is for an installed kit asking what a re-run would do. |
 

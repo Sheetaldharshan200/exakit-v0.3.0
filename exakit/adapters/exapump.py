@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Protocol
 
-from exakit.domain.errors import Failed
 
 from .fs.atomic import atomic_write_text
 from .process.runner import Completed, Runner
@@ -66,6 +65,7 @@ class Exapump(Protocol):
     def sql(self, profile: str, text: str, *, config: Path | None = None, json_rows: bool = False, timeout: float = 600) -> Completed: ...
     def sql_file(self, profile: str, path: Path, *, timeout: float = 3600) -> Completed: ...
     def upload(self, file: Path, table: str, profile: str, *, delimiter: str | None = None, timeout: float = 3600) -> Completed: ...
+    def export_query(self, profile: str, query: str, dest: Path, *, timeout: float = 3600) -> Completed: ...
     def version(self) -> str | None: ...
 
 
@@ -98,6 +98,10 @@ class ExapumpCli:
         cmd = [self.bin, "upload", str(file), "--table", table, "-p", profile]
         if delimiter and delimiter != ",":
             cmd += ["--delimiter", delimiter]
+        return self.runner.run(cmd, env=self._env(None), timeout=timeout)
+
+    def export_query(self, profile: str, query: str, dest: Path, *, timeout: float = 3600) -> Completed:
+        cmd = [self.bin, "export", "-p", profile, "--query", query, "--format", "csv", "-o", str(dest)]
         return self.runner.run(cmd, env=self._env(None), timeout=timeout)
 
     def version(self) -> str | None:

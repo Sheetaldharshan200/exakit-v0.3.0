@@ -6,7 +6,6 @@ import subprocess
 from pathlib import Path
 
 from exakit.adapters.fs.credentials import CredentialStore
-from exakit.adapters.net.github import release_assets
 from exakit.adapters.process.services import ServiceSpec
 from exakit.domain.errors import Failed
 from exakit.lifecycles.base import ServiceHooks, wait_for

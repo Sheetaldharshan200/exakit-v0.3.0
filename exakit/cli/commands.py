@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 
-from exakit.app import Context, data as data_app, help as help_app, info as info_app, runtime as runtime_app, status as status_app, update as update_app, logs as logs_app, marketplace as marketplace_app, mcp as mcp_app, persona as persona_app, skills as skills_app, sql as sql_app, version as version_app, whats_new
+from exakit.app import Context, data as data_app, help as help_app, info as info_app, install as install_app, migrate as migrate_app, repair as repair_app, requirements as requirements_app, uninstall as uninstall_app, runtime as runtime_app, status as status_app, update as update_app, logs as logs_app, marketplace as marketplace_app, mcp as mcp_app, persona as persona_app, skills as skills_app, sql as sql_app, version as version_app, whats_new
 from exakit.app.machine import kit_root
 from exakit.domain.errors import BadInput
 from exakit.domain.result import Result
@@ -169,24 +169,28 @@ def marketplace_command(args: list[str], ctx: Context) -> Result:
 
 
 def uninstall_command(args: list[str], ctx: Context) -> Result:
-    """One add-on by name runs here; the full uninstall (bare, --yes, --dry-run) stays with the legacy CLI."""
-    from . import legacy  # noqa: PLC0415
-    targets = [a for a in args if not a.startswith("-")]
+    return uninstall_app.run(ctx, args)
+
+
+def install_command(args: list[str], ctx: Context) -> Result:
     for arg in args:
-        if arg.startswith("-") and arg not in ("-y", "--yes", "-n", "--dry-run"):
-            raise BadInput(f"Unknown option '{arg}' for uninstall (supported: --yes, --dry-run, or one add-on id).")
-    if not targets:
-        flags = ["--yes"] if ctx.yes else []
-        flags += ["--dry-run"] if ctx.dry_run or "-n" in args or "--dry-run" in args else []
-        return Result(True, "legacy", exit_code=legacy.run(ctx, "uninstall", flags))
-    if len(targets) > 1:
-        raise BadInput("uninstall takes at most one add-on id.")
-    if not ctx.catalog.has_addon(targets[0]):
-        raise BadInput(f"Unknown uninstall target '{targets[0]}' (known add-ons: {marketplace_app.known_ids(ctx)}; "
-                       "bare 'exakit uninstall' removes the kit).")
-    ctx.yes = ctx.yes or "-y" in args or "--yes" in args
-    ctx.dry_run = ctx.dry_run or "-n" in args or "--dry-run" in args
-    return marketplace_app.uninstall_addon(ctx, targets[0])
+        if arg.startswith("-"):
+            raise BadInput(f"Unknown option '{arg}' for install (supported: --dry-run; answers come from EXAKIT_* variables or EXAKIT_PERSONA).")
+        raise BadInput("install takes no arguments; answer its questions with EXAKIT_* variables or name a persona with EXAKIT_PERSONA=<id>.")
+    return install_app.run(ctx)
+
+
+def preflight_command(args: list[str], ctx: Context) -> Result:
+    _split(args, JSON_FLAGS, "preflight")
+    return requirements_app.preflight(ctx)
+
+
+def repair_runtime_command(args: list[str], ctx: Context) -> Result:
+    return repair_app.run(ctx, args)
+
+
+def migrate_command(args: list[str], ctx: Context) -> Result:
+    return migrate_app.migrate(ctx, args)
 
 
 # --- skills -----------------------------------------------------------------------------

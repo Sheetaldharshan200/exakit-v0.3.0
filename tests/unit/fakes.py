@@ -69,6 +69,10 @@ class FakeRunner:
     def which(self, name: str):
         return self.which_table.get(name)
 
+    def interactive(self, cmd, *, env=None):
+        self.calls.append(tuple(cmd))
+        return self.run(cmd).code
+
 
 class FakeClientOps:
     """Canned documents per verb; records every call."""
@@ -123,6 +127,13 @@ class FakeExapump:
 
     def upload(self, file, table, profile, *, delimiter=None, timeout=3600):
         self.uploads.append((str(file), table, profile, delimiter))
+        return self.default
+
+    def export_query(self, profile, query, dest, *, timeout=3600):
+        self.exports = getattr(self, "exports", [])
+        self.exports.append((profile, query, str(dest)))
+        Path(dest).parent.mkdir(parents=True, exist_ok=True)
+        Path(dest).write_text("A,B\n1,x\n")
         return self.default
 
     def version(self):
@@ -184,8 +195,41 @@ class FakeRuntime:
 
     def record(self, manifest, credentials, status=None):
         manifest.set("runtime.type", "personal")
-        manifest.set("runtime.version", getattr(self, "launcher_version", "2.3.0"))
+        manifest.set("runtime.version", getattr(self, "launcher_version_value", "2.3.0"))
+        manifest.set("runtime.dsn", f"127.0.0.1:{self._status.port}")
+        manifest.set("runtime.user", "sys")
+        manifest.set("runtime.status", status or self._status.state)
         return None
+
+    def deploy_again(self):
+        self.deployed_again = getattr(self, "deployed_again", 0) + 1
+        return getattr(self, "deploy_again_ok", True)
+
+    def install_local(self):
+        self.installed_local = getattr(self, "installed_local", 0) + 1
+        ok = getattr(self, "install_ok", True)
+        if ok:
+            self._exists = True
+            self._status = self._status.__class__("running", self._status.port)
+        return ok, "launcher said things"
+
+    def recover_slow_first_boot(self, say):
+        return getattr(self, "recover_ok", False)
+
+    def podman_answers(self):
+        return getattr(self, "podman_ok", True), ""
+
+    def launcher_state(self):
+        return getattr(self, "state_word", "")
+
+    def launcher_version(self):
+        return getattr(self, "launcher_version_value", "2.3.0")
+
+    def tls_answers(self, port=None):
+        return self.running()
+
+    def guest_rebuild_expected(self, manifest_value, wanted):
+        return False
 
     def reap_orphan(self, port, say):
         self.reaped = getattr(self, "reaped", 0) + 1

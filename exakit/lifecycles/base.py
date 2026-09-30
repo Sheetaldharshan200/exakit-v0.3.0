@@ -11,8 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from exakit.adapters.net.digest import verify_sha256
-from exakit.adapters.net.github import asset_digest, download_url
+from exakit.adapters.net.github import asset_digest
 from exakit.adapters.process.services import ServiceSpec
 from exakit.adapters.uv import UvTool, find_uv
 from exakit.domain.catalog import Addon

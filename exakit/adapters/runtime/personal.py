@@ -54,6 +54,13 @@ class PersonalRuntime(Protocol):
     def cli(self) -> str: ...
     def destroy(self) -> bool: ...
     def deployed_version(self) -> str | None: ...
+    def deploy_again(self) -> bool: ...
+    def install_local(self) -> tuple[bool, str]: ...
+    def recover_slow_first_boot(self, say: Callable[[str], None]) -> bool: ...
+    def podman_answers(self) -> tuple[bool, str]: ...
+    def launcher_state(self) -> str: ...
+    def launcher_version(self) -> str | None: ...
+    def tls_answers(self, port: int | None = None) -> bool: ...
 
 
 class PersonalLauncher:
@@ -294,6 +301,54 @@ class PersonalLauncher:
         if not self.wait_ready_or_deploy(say):
             raise Failed("The database never answered after deployment. Read the state with 'exakit status', or repair with: exakit repair-runtime",
                          remedy="exakit repair-runtime")
+
+    def deploy_again(self) -> bool:
+        """The launcher's own ``deploy`` over a deployment it recorded as failed."""
+        done = self._run("deploy", *self.auto_approve("deploy"), timeout=1800)
+        self.log.line("CMD", f"{self.cli()} deploy -> {done.code}")
+        return done.ok
+
+    def install_local(self) -> tuple[bool, str]:
+        """``exasol install local``: the deployment from nothing. Returns (ok, the tail of what the launcher said)."""
+        done = self._run("install", "local", *self.auto_approve("install"), timeout=3600)
+        text = (done.out + done.err)
+        self.log.line("CMD", f"{self.cli()} install local -> {done.code}")
+        for line in text.splitlines()[-200:]:
+            self.log.line("LAUNCHER", line)
+        return done.ok, "\n".join(text.strip().splitlines()[-12:])
+
+    def recover_slow_first_boot(self, say: Callable[[str], None]) -> bool:
+        """The launcher gave up early but the deployment exists: wait for the database, then reconcile the launcher's record."""
+        env_budget = self.env.get("EXAKIT_PERSONAL_READY_TIMEOUT", "")
+        budget = int(env_budget) if env_budget.isdigit() else READY_TIMEOUT
+        say(f"The launcher stopped waiting after its own short budget, but the deployment exists - waiting up to {budget}s for the database")
+        started = time.monotonic()
+        while not self.tls_answers():
+            if time.monotonic() - started >= budget:
+                return False
+            time.sleep(5)
+        say(f"The database answered after {int(time.monotonic() - started)}s")
+        if self.deploy_again():
+            say("The launcher's record agrees with the running database")
+            return True
+        say(f"The launcher still records this deployment as failed although something answers on port {self.db_port()}.")
+        return False
+
+    def podman_answers(self) -> tuple[bool, str]:
+        """(ok, the last line it said): whether Podman can run containers here at all."""
+        done = self.runner.run(["podman", "info", "--format", "{{.Host.Arch}}"], timeout=30)
+        if done.ok:
+            return True, ""
+        lines = [l for l in (done.out + done.err).splitlines() if l.strip()]
+        return False, lines[-1] if lines else ""
+
+    def guest_rebuild_expected(self, manifest_value: str | None, wanted: str | None) -> bool:
+        """A deployment made by an older launcher rebuilds its VM guest on the first start under the new one, once."""
+        deployed = self.deployed_version()
+        launcher = self.launcher_version() or wanted
+        if not deployed or not launcher or deployed == launcher:
+            return False
+        return manifest_value != launcher
 
     def destroy(self) -> bool:
         """Remove the deployment and its data; True when the launcher accepted it."""

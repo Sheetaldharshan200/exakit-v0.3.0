@@ -310,6 +310,75 @@ class StateQueryPhaseCTest(unittest.TestCase):
         self.assertEqual(self.box.run("start", "--nope").returncode, 2)
 
 
+class PhaseCCommandsTest(unittest.TestCase):
+    """install, uninstall, repair-runtime, migrate, preflight: refusals and read-only answers against the real CLI."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.box = Sandbox(manifest=MANIFEST)
+        cls.box.env["EXAKIT_PERSONAL_DEPLOY_DIR"] = str(Path(cls.box.dir) / "no-deployment")
+        cls.empty = Sandbox(manifest=None)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.box.close()
+        cls.empty.close()
+
+    def test_install_dry_run_prints_the_plan_and_changes_nothing(self):
+        done = self.empty.run("install", "--dry-run")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        for step in ("launcher", "runtime", "exapump", "mcp", "pyexasol", "exakit_helper"):
+            self.assertIn(step, done.stdout)
+        self.assertFalse((self.empty.home / "manifest.json").exists())
+
+    def test_install_refuses_arguments(self):
+        self.assertEqual(self.box.run("install", "--frob").returncode, 2)
+        self.assertEqual(self.box.run("install", "now").returncode, 2)
+
+    def test_preflight_is_read_only_and_answers_a_document(self):
+        done = self.empty.run("preflight", "--json")
+        self.assertIn(done.returncode, (0, 1), done.stderr)
+        doc = _one_object(done.stdout)
+        self.assertEqual(list(doc)[:3], ["installed", "status", "remedy"])
+        self.assertIn(doc["status"], ("ready", "blocked"))
+        self.assertIn("failures", doc)
+        self.assertFalse((self.empty.home / "manifest.json").exists())
+
+    def test_repair_runtime_declines_with_exit_5_and_the_legacy_keys(self):
+        done = self.box.run("repair-runtime", "--json")
+        self.assertEqual(done.returncode, 5, done.stdout)
+        doc = _one_object(done.stdout)
+        self.assertEqual((doc["ok"], doc["status"], doc["changed"], doc["remedy"]), (False, "declined", False, "exakit repair-runtime --yes"))
+        self.assertEqual(self.box.run("repair-runtime", "--frob").returncode, 2)
+        self.assertEqual(self.empty.run("repair-runtime", "--json").returncode, 4)
+
+    def test_migrate_refusals(self):
+        self.assertEqual(self.box.run("migrate").returncode, 2)
+        self.assertEqual(self.box.run("migrate", "lxc").returncode, 2)
+        self.assertEqual(self.box.run("migrate", "docker-nano", "--password", "x").returncode, 2)
+        done = self.box.run("migrate", "docker-nano", "--json")
+        self.assertEqual(done.returncode, 3, done.stdout)
+        doc = _one_object(done.stdout)
+        self.assertEqual((doc["installed"], doc["ok"]), (True, False))
+        self.assertIn(doc["status"], ("no container", "no password"))
+
+    def test_uninstall_dry_run_and_refusals(self):
+        done = self.box.run("uninstall", "--dry-run")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("Dry run only", done.stdout)
+        self.assertTrue((self.box.home / "manifest.json").exists())
+        self.assertEqual(self.box.run("uninstall", "--frob").returncode, 2)
+        self.assertEqual(self.box.run("uninstall").returncode, 1)
+        bare = Sandbox(manifest=None)
+        try:
+            bare.home.rmdir()
+            done = bare.run("uninstall")
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertIn("Nothing to uninstall", done.stdout)
+        finally:
+            bare.close()
+
+
 class MigrationSplitTest(unittest.TestCase):
     def test_every_command_is_in_exactly_one_world(self):
         from exakit.cli.main import MIGRATED_COMMANDS, _LEGACY_WORDS

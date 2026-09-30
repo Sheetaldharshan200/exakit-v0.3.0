@@ -88,13 +88,14 @@ Recorded on 2026-09-30 on this Mac (macOS, bash 3.2, pwsh 7, Python 3.12.10).
 
 | Suite | Result |
 |---|---|
-| tests/unit (283 tests: domain, adapters, app incl. skills/mcp/data/sql/logs/marketplace/persona apply/status/info/runtime/update, add-on lifecycles, component lifecycles) | pass |
-| tests/contract (26 tests, incl. marketplace --list, uninstall <addon>, persona apply, status and info shapes and exit codes) | pass |
+| tests/unit (317 tests: domain, adapters, app incl. install/deploy/requirements/uninstall/repair/migrate and everything before, add-on and component lifecycles) | pass |
+| tests/contract (32 tests, incl. install --dry-run, preflight, repair-runtime, migrate and uninstall refusals) | pass |
 | tests/e2e (10 tests, 1 network test skipped) | pass |
 | Coding standard (ast sweep of `exakit/`): no function over 40 lines, no module over 400 | pass |
 | tests/e2e/test_bootstrap_network (real uv 0.12.21 + CPython 3.12.14) | pass, 5 s |
 | Legacy: whats-new, skills, agent-operability (645), dry-run-matrix (175), install-payload, kit-upgrade, install-resume-safety (52), agent-audit, uninstall (41), status-soft-components | pass |
 | Legacy (rerun after Phase B): marketplace (377), uninstall (41), skills (236) | pass |
+| Legacy (rerun after Phase C): dry-run-matrix (175), uninstall (41), install-resume-safety (52), agent-operability (645), status-soft-components (40) | pass |
 | Legacy: marketplace, versions-manifest (407), noninteractive-answers, agents-rosters (19), ps-table-twin, bash32-guard, ps-undefined-functions (19 files) | pass |
 | Legacy: ps-encoding-guard (111), ps-parse (31 files), ps51-json-contracts (45) | pass |
 | Legacy: legacy-crossing | 1 failure, "a stopped engine is unknown, never absent", identical on the untouched 0.2.0 checkout on this Mac: environmental (a stopped container engine), not a regression |

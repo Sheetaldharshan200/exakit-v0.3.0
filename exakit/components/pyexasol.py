@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from exakit.adapters.uv import UvTool, find_uv, package_version
+from exakit.adapters.uv import UvTool, find_uv
 from exakit.domain.errors import Failed
 
 from .base import ComponentBase

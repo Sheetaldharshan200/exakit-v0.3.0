@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from exakit.adapters.process.services import ServiceSpec, for_platform
-from exakit.domain.manifest import Manifest
 
 from . import Context
 from .machine import addon_installed_version
