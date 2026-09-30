@@ -203,7 +203,7 @@ exakit update     # apply what is pending (asks before it stops the database)
 - Install scripts, MCP configs, backups and logs stay on disk, where you can inspect them.
 - Everything stays local. The database listens only on `127.0.0.1`, passwords are kept in local files and never shown on screen, and AI client configs are backed up before every change.
 - The installer makes one edit outside its own directory: it appends a PATH line to your shell profile, marked with a kit comment so you can find it, and tells you when it does.
-- `exakit` manages the kit from start to finish: `status`, `start`/`stop`, `data-load`, MCP setup and maintenance (`mcp-setup`, `mcp-doctor`), `logs`, and a guarded `uninstall`. Run `exakit help` (or `exakit catalog`) to see the commands it offers. A few maintenance commands are left off both lists on purpose, but `exakit help <name>` still describes them.
+- `exakit` manages the kit from start to finish: `status`, `start`/`stop`, `data-load`, MCP setup and maintenance (`mcp-setup`, `mcp-doctor`), `logs`, and a guarded `uninstall`. Run `exakit help` (or `exakit catalog`) to see the commands it offers.
 
 ## See it in action
 
