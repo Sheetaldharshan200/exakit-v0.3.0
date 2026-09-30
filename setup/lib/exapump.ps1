@@ -1982,6 +1982,46 @@ function Get-ExakitLoadReceipt {
     }
 }
 
+# Get-ExakitFileAlreadyLanded <schema> <file> - has this exact file already been
+# loaded into this schema, and is every table it made still holding exactly what
+# it held? The total rows across them, or $null. Twin of
+# exakit_file_already_landed: a JSON document never lands in the table the plan
+# named, so its own receipts are the only way to tell it was loaded.
+function Get-ExakitFileAlreadyLanded {
+    param([Parameter(Mandatory)][string]$Schema, [Parameter(Mandatory)][string]$File)
+    try {
+        $path = Get-ExakitLoadReceiptsPath
+        if (-not (Test-Path $path)) { return $null }
+        $bytes = "" + (Get-Item -LiteralPath $File).Length
+        $pfx = $Schema.ToUpper() + "."
+        # Size before hash: no point reading a 2 GB file to answer a question
+        # its byte count settles.
+        $lines = @(Get-Content -LiteralPath $path -ErrorAction SilentlyContinue | Where-Object {
+            $f = $_ -split "`t"; $f.Count -ge 4 -and $f[0].StartsWith($pfx) -and $f[1] -eq $bytes })
+        if ($lines.Count -eq 0) { return $null }
+        $sha = Get-ExakitSha256 -Path $File
+        # Newest last wins, per table.
+        $seen = [ordered]@{}
+        foreach ($line in $lines) {
+            $f = $line -split "`t"
+            if ($f[2] -eq $sha) { $seen[$f[0]] = $f[3] }
+        }
+        if ($seen.Count -eq 0) { return $null }
+        $total = [long]0
+        foreach ($t in $seen.Keys) {
+            # Every one of them, not just the first: a document that shredded
+            # into four tables and lost one is a load to redo, not one to skip.
+            $n = Get-ExakitTableRowCount $t
+            if ($null -eq $n -or $n -eq "absent" -or "$n" -ne "$($seen[$t])") { return $null }
+            $total += [long]$n
+        }
+        if ($total -le 0) { return $null }
+        return $total
+    } catch {
+        return $null
+    }
+}
+
 function Remove-ExakitLoadReceipt {
     param([Parameter(Mandatory)][string]$Target)
     try {
@@ -2056,8 +2096,14 @@ function Get-ExakitBulkDecisions {
             } else {
                 $action = "clash"
             }
+        } elseif ($null -ne $rows -and $parts[0] -eq "json") {
+            # The named target holds nothing - but a JSON document does not land
+            # in the table the plan named, so "nothing there" is not the same as
+            # "never loaded". Ask what this FILE has landed.
+            $landedRows = Get-ExakitFileAlreadyLanded $Schema $file
+            if ($null -ne $landedRows) { $action = "done"; $had = $landedRows }
         }
-        $out += [pscustomobject]@{ Action = $action; File = $file; Target = $target; Table = $parts[1]; Kind = $parts[0]; Had = $had }
+        $out +=[pscustomobject]@{ Action = $action; File = $file; Target = $target; Table = $parts[1]; Kind = $parts[0]; Had = $had }
     }
     return $out
 }
@@ -2488,8 +2534,9 @@ function Import-ExakitLocalFolder {
             # taking the LAST emitted value keeps the boolean even if a helper
             # underneath it ever starts writing to the pipeline.
             $uploaded = $false
+            $script:ExakitLastLoadTarget = ""
             try {
-                if ($parts[0] -eq "json") {
+                if ($d.Kind -eq "json") {
                     # Through the JSON Tables engine, installed on first use -
                     # exapump cannot read JSON. Twin of the json branch in
                     # exakit_load_local_folder.
@@ -2499,19 +2546,31 @@ function Import-ExakitLocalFolder {
                 }
             } catch {
                 $uploaded = $false
+                # A throw is a failure too, and it must say why - a bare catch
+                # once turned a script bug into "not loaded" with no reason.
+                $script:ExakitUploadReason = "$($_.Exception.Message)"
+                Write-ExakitLog "ERROR" "$(Split-Path $file -Leaf) -> ${target}: $($_.Exception.Message)"
             }
             Clear-ExakitLoadInflight
             if ($uploaded) {
                 # To the logfile: the plan above the confirm already listed every
                 # file and its target, and a redrawing bar cannot share the row.
-                Write-ExakitLog "OK" "$(Split-Path $file -Leaf) -> $target"
+                # A JSON document shreds into tables of its own choosing - it is
+                # where they landed that gets counted, not the name planned for
+                # it. Twin of _blf_land in exakit_load_local_folder.
+                $targets = @($target)
+                if ($d.Kind -eq "json" -and $script:ExakitLastLoadTarget) {
+                    $targets = @($script:ExakitLastLoadTarget -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+                }
+                Write-ExakitLog "OK" "$(Split-Path $file -Leaf) -> $($targets -join ', ')"
                 $done++
                 $doneWeight += $w
                 # The row count is filled in by ONE listing after the loop, not
                 # one per file: each listing is a process start, a TLS handshake
                 # and an authentication.
-                $landed += [pscustomobject]@{ File = $file; Target = $target }
-                $outcomes += [pscustomobject]@{ Status = "ok"; File = $file; Table = $d.Table
+                $landed += [pscustomobject]@{ File = $file; Targets = $targets }
+                $outcomes += [pscustomobject]@{ Status = "ok"; File = $file
+                    Table = (@($targets | ForEach-Object { $_.Split('.', 2)[-1] }) -join ", ")
                     Detail = $null; Why = "" }
             } else {
                 $why = ""
@@ -2533,12 +2592,18 @@ function Import-ExakitLocalFolder {
     if ($landed.Count -gt 0) {
         Clear-ExakitTableListing
         foreach ($l in $landed) {
-            $n = Get-ExakitTableRowCount $l.Target
-            if ($null -eq $n -or $n -eq "absent") { $n = 0 }
-            Write-ExakitLoadReceipt -Target $l.Target -File $l.File -Rows $n
+            # Summed across every table the file made, with a receipt for each,
+            # so a later run can tell rows it put there from rows it did not.
+            $total = [long]0
+            foreach ($t in $l.Targets) {
+                $n = Get-ExakitTableRowCount $t
+                if ($null -eq $n -or $n -eq "absent") { $n = 0 }
+                $total += [long]$n
+                Write-ExakitLoadReceipt -Target $t -File $l.File -Rows $n
+            }
             foreach ($o in $outcomes) {
                 if ($o.Status -eq "ok" -and $o.File -eq $l.File -and $null -eq $o.Detail) {
-                    $o.Detail = Get-ExakitRowsLabel $n
+                    $o.Detail = Get-ExakitRowsLabel $total
                 }
             }
         }
