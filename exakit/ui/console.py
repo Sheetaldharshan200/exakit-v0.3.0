@@ -80,12 +80,15 @@ class ConsoleRenderer:
         sys.stderr.flush()
         self.log.line("ERROR", text)
 
-    def card(self, message: str, *, log_path: str | None = None) -> None:
-        """The failure card: a prominent cross header, then a dim line to the log."""
-        self._w()
-        self._w(f"  {self.p.err}{self.p.cross} {self.p.bold}{message}{self.p.reset}")
+    def card(self, message: str, *, log_path: str | None = None, remedy: str | None = None) -> None:
+        """The failure card, on stderr: a prominent cross header, the remedy, then a dim line to the log."""
+        lines = ["", f"  {self.p.err}{self.p.cross} {self.p.bold}{message}{self.p.reset}"]
+        if remedy:
+            lines.append(f"    {self.p.dim}{self.p.bullet}{self.p.reset} Next: {remedy}")
         if log_path:
-            self._w(f"    {self.p.dim}{self.p.vb} Log: {log_path}{self.p.reset}")
+            lines.append(f"    {self.p.dim}{self.p.vb} Log: {log_path}{self.p.reset}")
+        sys.stderr.write("\n".join(lines) + "\n")
+        sys.stderr.flush()
 
     def rule(self) -> None:
         width = min(76, max(8, term_cols() - 4))

@@ -610,7 +610,7 @@ echo "the CLI gate:"
 _nomanifest_out="$( (
     _nm_home="$WORK/no-install"
     mkdir -p "$_nm_home/home" "$_nm_home/bin"
-    EXAKIT_HOME="$_nm_home/home" EXAKIT_BIN_DIR="$_nm_home/bin" bash "$ROOT/setup/exakit" marketplace 2>&1
+    EXAKIT_HOME="$_nm_home/home" EXAKIT_BIN_DIR="$_nm_home/bin" bash "$ROOT/setup/legacy-exakit" marketplace 2>&1
     printf 'rc=%s' "$?"
 ) )"
 has "marketplace without an install refuses" "No installation found" "$_nomanifest_out"

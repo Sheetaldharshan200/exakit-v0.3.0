@@ -43,7 +43,7 @@ class SilentRenderer:
     def error(self, text: str) -> None:
         self.log.line("ERROR", text)
 
-    def card(self, message: str, *, log_path: str | None = None) -> None:
+    def card(self, message: str, *, log_path: str | None = None, remedy: str | None = None) -> None:
         self.log.line("FATAL", message)
 
     def rule(self) -> None:

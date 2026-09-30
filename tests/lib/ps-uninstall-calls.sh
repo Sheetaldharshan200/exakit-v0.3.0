@@ -21,7 +21,7 @@
 #   bash tests/lib/ps-uninstall-calls.sh
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-CLI="$ROOT/setup/exakit.ps1"
+CLI="$ROOT/setup/legacy-exakit.ps1"
 TEST="$ROOT/tests/uninstall-ps.ps1"
 fails=0
 

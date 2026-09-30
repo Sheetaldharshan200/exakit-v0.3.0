@@ -48,7 +48,7 @@ cat > "$EXAKIT_MANIFEST" <<JSON
  "runtime": {"type": "personal", "dsn": "127.0.0.1:8563"},
  "components": {}, "steps_completed": ["launcher", "runtime"]}
 JSON
-CLI="$ROOT/setup/exakit"
+CLI="$ROOT/setup/legacy-exakit"
 . "$ROOT/setup/lib/common.sh"
 
 echo "1. EXAKIT_MCP_CLIENTS=all means the clients detected on this machine:"
@@ -117,11 +117,11 @@ check "exit 3 with the database down" "3" "$_irc"
 echo "5. unattended data-load of a loaded dataset is a no-op, exit 0:"
 has "the named-dataset branch exists without --force" 'elif [ -n "${EXAKIT_DATASETS:-}" ] && [ -z "${EXAKIT_DATA_FILE:-}" ]; then' "$(cat "$CLI")"
 has "...and says already loaded" "is already loaded — nothing to do" "$(cat "$CLI")"
-has "the twin has the branch" 'elseif ($env:EXAKIT_DATASETS -and -not $env:EXAKIT_DATA_FILE)' "$(cat "$ROOT/setup/exakit.ps1")"
+has "the twin has the branch" 'elseif ($env:EXAKIT_DATASETS -and -not $env:EXAKIT_DATA_FILE)' "$(cat "$ROOT/setup/legacy-exakit.ps1")"
 
 echo "6. uninstall keeps the client-config snapshots and never deletes VS Code's file:"
 has "snapshots are moved beside the kit home before it goes" '-backups-$(date' "$(sed -n '/^exakit_uninstall_run()/,/^}/p' "$ROOT/setup/lib/common.sh")"
-has "...and the twin does the same" 'backups-$(Get-Date' "$(cat "$ROOT/setup/exakit.ps1")"
+has "...and the twin does the same" 'backups-$(Get-Date' "$(cat "$ROOT/setup/legacy-exakit.ps1")"
 has "the VS Code adapter never removes the file" "remove_file=False" "$(sed -n '/def render_removal/,/def validate_render/p' "$ROOT/mcp/adapters/vscode_copilot.py")"
 
 echo "7. sql remedies come first, on stdout, without the generic hint:"
@@ -412,8 +412,8 @@ lacks "the human screen no longer prescribes exakit start" "Start it:" "$_pre_pr
 has "...it names the installer instead" "Deploy it:" "$_pre_prose"
 has "...and says where the install stopped" "did not finish at step: runtime" "$_pre_prose"
 has "the PowerShell twin answers 'not installed' for a runtime-less kit too" \
-    'default { "not installed" }' "$(cat "$ROOT/setup/exakit.ps1")"
-has "...and its screen names the installer for that state" 'Write-Host "Deploy it:' "$(cat "$ROOT/setup/exakit.ps1")"
+    'default { "not installed" }' "$(cat "$ROOT/setup/legacy-exakit.ps1")"
+has "...and its screen names the installer for that state" 'Write-Host "Deploy it:' "$(cat "$ROOT/setup/legacy-exakit.ps1")"
 
 echo "R5-2. every remedy is a runnable command; the prose lives in remedy_hints:"
 check "no remedy in the pre-runtime state is an English sentence" "all-runnable" \
@@ -423,7 +423,7 @@ bad = [k for k, v in d["remedies"].items() if not v.startswith(("exakit ", "curl
 print("all-runnable" if not bad else "prose: %s" % ",".join(bad))' 2>/dev/null)"
 check "the hints are there, keyed the same way" "yes" \
     "$(printf '%s' "$_pre_sj" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("yes" if set(d["remedy_hints"]) <= set(d["remedies"]) and d["remedy_hints"] else "no")' 2>/dev/null)"
-_ps="$(cat "$ROOT/setup/exakit.ps1")"
+_ps="$(cat "$ROOT/setup/legacy-exakit.ps1")"
 has "the twin builds remedy_hints too" 'remedy_hints    = $remedyHints' "$_ps"
 lacks "...and no longer puts the installing sentence inside remedy" \
     'remedy = "exakit status --json   (the installer is still running' "$_ps"
@@ -533,12 +533,12 @@ echo "R6-1. autostart reports reality, not the recorded intent:"
 _cs_body="$(sed -n '/^cmd_status()/,/^}/p' "$CLI")"
 has "cmd_status probes the boot entries" "_exakit_autostart_registered" "$_cs_body"
 lacks "...and no longer reads the manifest's wish" "manifest_get autostart.enabled" "$_cs_body"
-_ps_status="$(awk '/^function Invoke-CmdStatus/{f=1} f{print} f&&/^}$/{if(f)exit}' "$ROOT/setup/exakit.ps1")"
+_ps_status="$(awk '/^function Invoke-CmdStatus/{f=1} f{print} f&&/^}$/{if(f)exit}' "$ROOT/setup/legacy-exakit.ps1")"
 has "the twin probes too" "Test-ExakitAutostartAll" "$_ps_status"
 lacks "...and no longer reads the manifest there either" \
     'Get-ExakitManifestValue "autostart.enabled"' "$_ps_status"
 has "the twin's probe requires EVERY service, like exakit autostart does" \
-    "Test-ExakitAutostartRegistered -Id" "$(awk '/^function Test-ExakitAutostartAll/{f=1} f{print} f&&/^}$/{if(f)exit}' "$ROOT/setup/exakit.ps1")"
+    "Test-ExakitAutostartRegistered -Id" "$(awk '/^function Test-ExakitAutostartAll/{f=1} f{print} f&&/^}$/{if(f)exit}' "$ROOT/setup/legacy-exakit.ps1")"
 
 echo "R6-2. a multi-line failure keeps the line that names the cause:"
 # The note file's line 1 is the reason and every reader takes it. Keeping line
@@ -574,7 +574,7 @@ echo "R6-3. a leading-dash argument is answered, not swallowed:"
 # lets a "-"-prefixed token fill a positional parameter: --version landed in
 # $RestArgs, $Command kept its "help" default, and the CLI printed help and
 # exited 0. A script asking a CLI its version got success and the wrong output.
-_ps_cli="$(cat "$ROOT/setup/exakit.ps1")"
+_ps_cli="$(cat "$ROOT/setup/legacy-exakit.ps1")"
 has "the twin promotes a leading --version" '"--version" { $Command = "version"' "$_ps_cli"
 has "...and refuses an unknown one instead of printing help" \
     "Unknown option '\$leading'" "$_ps_cli"
@@ -592,7 +592,7 @@ has "...and the declined answer is machine-readable" '"status": "declined"' "$_r
 # when it sits in argument position. See the note in tests/legacy-crossing.sh
 # and the guard in tests/bash32-guard.sh. This one survives today only because
 # its start address happens to carry no quotes; the next edit would not.
-_cmd_repair_ps="$(sed -n '/^function Invoke-CmdRepairRuntime {/,/^}/p' "$ROOT/setup/exakit.ps1")"
+_cmd_repair_ps="$(sed -n '/^function Invoke-CmdRepairRuntime {/,/^}/p' "$ROOT/setup/legacy-exakit.ps1")"
 has "the twin exits 5 too" "exit 5" "$_cmd_repair_ps"
 has "...and answers --json" 'status = "declined"' "$_ps"
 check "the help document names exit 5" "declined" \

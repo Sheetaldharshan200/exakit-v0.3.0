@@ -487,7 +487,7 @@ check "the run completes and the kit copy carries the manifest" \
 # Re-running the installer over an older install (the 0.1.0 -> 0.2.0 path) is the
 # one case where the step flag lies: install.sh has already replaced the kit copy,
 # but exakit_helper is marked and a command is on disk, so the step skips. The
-# installed command is a COPY of setup/exakit, so it has to be compared with the
+# installed command is a COPY of setup/legacy-exakit, so it has to be compared with the
 # kit's own script or the user drives the new library with the old command.
 rerun="$( EXAKIT_HOME="$WORK/rerun-home"
     EXAKIT_MANIFEST="$WORK/rerun-home/manifest.json"
@@ -515,7 +515,7 @@ rerun="$( EXAKIT_HOME="$WORK/rerun-home"
     else
         printf 'SILENT '
     fi
-    if cmp -s "$ROOT/setup/exakit" "$EXAKIT_BIN_DIR/exakit"; then printf 'refreshed'; else printf 'STALE'; fi )"
+    if cmp -s "$ROOT/setup/legacy-exakit" "$EXAKIT_BIN_DIR/exakit"; then printf 'refreshed'; else printf 'STALE'; fi )"
 check "a re-run refreshes the command an older install left behind" \
     "said-out-of-date refreshed" "$rerun"
 
@@ -534,7 +534,7 @@ noop="$( EXAKIT_HOME="$WORK/noop-home"
     exakit_maybe_offer_skills_install() { :; }
     ensure_path_hint() { :; }
     PATH="$WORK/failing-uv:$PATH"
-    install -m 755 "$ROOT/setup/exakit" "$EXAKIT_BIN_DIR/exakit"
+    install -m 755 "$ROOT/setup/legacy-exakit" "$EXAKIT_BIN_DIR/exakit"
     mark_step exakit_helper >/dev/null 2>&1
     _out="$(kit_shared_steps 3 6 "$ROOT/setup" "$WORK/fake-kit" 2>&1)"
     if printf '%s\n' "$_out" | grep -q 'out of date'; then
@@ -727,7 +727,7 @@ echo "one command renders the table, and it is exakit version:"
 version_out="$( EXAKIT_HOME="$UC" EXAKIT_MANIFEST="$UC/manifest.json" \
     EXAKIT_VERSIONS_CACHE="$UC/cache/versions.json" \
     EXAKIT_VERSIONS_URL="http://offline.invalid/versions.json" \
-    bash "$ROOT/setup/exakit" version 2>&1 )"
+    bash "$ROOT/setup/legacy-exakit" version 2>&1 )"
 # The Kit panel keeps its own shape: kit version, level, source and install date
 # have no component/version/status form. Match the label and value, not the
 # spacing between them, or this pins a padding that legitimately moves when a
@@ -744,11 +744,11 @@ has "version promotes update-all" "Bring everything up to date with: exakit upda
 lacks "version prints no separate updates panel" "Updates available" "$version_out"
 lacks "and points at no update-check" "update-check" "$version_out"
 uc_gone="$( EXAKIT_HOME="$UC" EXAKIT_MANIFEST="$UC/manifest.json" \
-    bash "$ROOT/setup/exakit" update-check 2>&1 || true )"
+    bash "$ROOT/setup/legacy-exakit" update-check 2>&1 || true )"
 has "update-check is not a command any more" "unknown command 'update-check'" "$uc_gone"
 uc_rc=0
 ( EXAKIT_HOME="$UC" EXAKIT_MANIFEST="$UC/manifest.json" \
-    bash "$ROOT/setup/exakit" update-check >/dev/null 2>&1 ) || uc_rc=$?
+    bash "$ROOT/setup/legacy-exakit" update-check >/dev/null 2>&1 ) || uc_rc=$?
 check "and it exits like any unknown command" "2" "$uc_rc"
 
 update_out="$( EXAKIT_HOME="$UC"
@@ -1033,7 +1033,7 @@ check "the MCP server keeps its recorded version" "1.10.1" "$(live_read mcp)"
 # tester's own install; python3 has to stay reachable for the manifest reads.
 absent_version="$( rm -f "$LIVE/bin/exapump" "$LIVE/venv/bin/python"
     EXAKIT_HOME="$LIVE" PATH="$(dirname "$(command -v python3)"):/usr/bin:/bin" \
-        bash "$ROOT/setup/exakit" version 2>&1 )"
+        bash "$ROOT/setup/legacy-exakit" version 2>&1 )"
 has "version agrees that a deleted exapump is gone" "exapump not installed" "$(row "$absent_version" exapump)"
 has "version agrees that a deleted venv is gone" "pyexasol not installed" "$(row "$absent_version" pyexasol)"
 # Put them back for anything that follows.
@@ -1327,7 +1327,7 @@ EOF
 # process, and a plain assignment in this shell would leave it reading the real
 # installation instead of the fixture.
 version_out() {
-    EXAKIT_HOME="$DR" bash "$ROOT/setup/exakit" version 2>&1
+    EXAKIT_HOME="$DR" bash "$ROOT/setup/legacy-exakit" version 2>&1
 }
 # A component upgraded outside the kit reads as what it now IS. The cell used to
 # carry a "(kit installed 0.11.2)" suffix as well, and it cost more than it said:
@@ -2082,13 +2082,13 @@ piped="$( EXAKIT_HOME="$NT"
 check "no terminal on stderr, no notice" "" "$(printf '%s' "$piped" | tr -d '[:space:]')"
 
 # The commands that must never carry it, and the ones that must.
-if grep -q '_with_notice cmd_status' "$ROOT/setup/exakit" && \
-   grep -q '_with_notice cmd_mcp_doctor' "$ROOT/setup/exakit" && \
-   ! grep -q '_with_notice cmd_update' "$ROOT/setup/exakit" && \
-   ! grep -q '_with_notice cmd_version' "$ROOT/setup/exakit" && \
-   ! grep -q '_with_notice cmd_uninstall' "$ROOT/setup/exakit" && \
-   ! grep -q '_with_notice usage' "$ROOT/setup/exakit" && \
-   ! grep -q '_with_notice cmd_catalog' "$ROOT/setup/exakit"; then
+if grep -q '_with_notice cmd_status' "$ROOT/setup/legacy-exakit" && \
+   grep -q '_with_notice cmd_mcp_doctor' "$ROOT/setup/legacy-exakit" && \
+   ! grep -q '_with_notice cmd_update' "$ROOT/setup/legacy-exakit" && \
+   ! grep -q '_with_notice cmd_version' "$ROOT/setup/legacy-exakit" && \
+   ! grep -q '_with_notice cmd_uninstall' "$ROOT/setup/legacy-exakit" && \
+   ! grep -q '_with_notice usage' "$ROOT/setup/legacy-exakit" && \
+   ! grep -q '_with_notice cmd_catalog' "$ROOT/setup/legacy-exakit"; then
     check "hooked into the right commands only" "yes" "yes"
 else
     check "hooked into the right commands only" "yes" "no"
@@ -2234,9 +2234,9 @@ make_kit_tarball() {
     rm -rf "$_mk_src"
     MK_LAST_SRC="$_mk_src/repo-main"
     mkdir -p "$_mk_src/repo-main/setup/lib"
-    for _mk_file in setup/exakit setup/lib/common.sh \
+    for _mk_file in setup/legacy-exakit setup/lib/common.sh \
                     setup/lib/runtime-personal.sh setup/lib/exapump.sh setup/lib/mcp.sh \
-                    setup/exakit.ps1 setup/lib/exakit-common.ps1; do
+                    setup/legacy-exakit.ps1 setup/lib/exakit-common.ps1; do
         [ "$_mk_file" = "$_mk_omit" ] && continue
         printf '# fake %s from kit %s\n' "$_mk_file" "$_mk_version" > "$_mk_src/repo-main/$_mk_file"
     done
@@ -2298,7 +2298,7 @@ self_update() (
     printf 'version=%s source=%s ' "$(manifest_get kit.version 2>/dev/null || printf none)" \
         "$(manifest_get kit.source 2>/dev/null || printf none)"
     [ -f "$EXAKIT_HOME/kit/versions.json" ] && printf 'kit-present ' || printf 'NO-KIT '
-    grep -q 'fake setup/exakit ' "$EXAKIT_HOME/kit/setup/exakit" 2>/dev/null && printf 'replaced ' || printf 'not-replaced '
+    grep -q 'fake setup/legacy-exakit ' "$EXAKIT_HOME/kit/setup/legacy-exakit" 2>/dev/null && printf 'replaced ' || printf 'not-replaced '
     [ -x "$EXAKIT_BIN_DIR/exakit" ] && printf 'cli-installed ' || printf 'NO-CLI '
     ls -d "$EXAKIT_HOME"/kit.backup-* >/dev/null 2>&1 && printf 'backup-kept' || printf 'NO-BACKUP'
 )
@@ -2386,7 +2386,7 @@ if command -v pwsh >/dev/null 2>&1; then
     ps_table="$(EXAKIT_HOME="$UC" EXAKIT_BIN_DIR="$UC/bin" \
         EXAKIT_VERSIONS_CACHE="$UC/cache/versions.json" \
         EXAKIT_VERSIONS_URL="http://offline.invalid/versions.json" \
-        pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" version 2>&1 | tr -d '\r')"
+        pwsh -NoProfile -File "$ROOT/setup/legacy-exakit.ps1" version 2>&1 | tr -d '\r')"
     check "powershell: Component / Version / Status" \
         "Component Version Status" "$(row "$ps_table" Component)"
     has "powershell: kit row is comparable" "exakit 0.2.0 current" "$(row "$ps_table" exakit)"
@@ -2404,7 +2404,7 @@ if command -v pwsh >/dev/null 2>&1; then
     ps_personal="$(EXAKIT_HOME="$UC" EXAKIT_BIN_DIR="$UC/bin" \
         EXAKIT_VERSIONS_CACHE="$UC/cache/versions.json" \
         EXAKIT_VERSIONS_URL="http://offline.invalid/versions.json" \
-        pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" version 2>&1 | tr -d '\r')"
+        pwsh -NoProfile -File "$ROOT/setup/legacy-exakit.ps1" version 2>&1 | tr -d '\r')"
     has "powershell: the installed runtime is the one listed" "personal 2.2.0" "$(row "$ps_personal" personal)"
     lacks "powershell: no second runtime row is invented" "runtime " "$ps_personal"
     # The inline runtime offer is mirrored code, and the half that decides whether a
@@ -2417,7 +2417,7 @@ if command -v pwsh >/dev/null 2>&1; then
         VM_ROOT="$ROOT" pwsh -NoProfile -Command '
         . (Join-Path $env:VM_ROOT "setup/lib/exakit-common.ps1")
         # The offer helpers live in the CLI; load it with a harmless command.
-        . (Join-Path $env:VM_ROOT "setup/exakit.ps1") -Command "help" *> $null
+        . (Join-Path $env:VM_ROOT "setup/legacy-exakit.ps1") -Command "help" *> $null
         $out = @()
         $out += (Get-ExakitRuntimeUpdatePreanswer -AssumeYes $true)
         $env:EXAKIT_CONFIRM_RUNTIME_UPDATE = "1"
@@ -2436,20 +2436,20 @@ if command -v pwsh >/dev/null 2>&1; then
     check "powershell(runtime_offer_decisions)" "yes yes no unanswered 2026 True" "$ps_offer"
     ps_explain="$(VM_ROOT="$ROOT" pwsh -NoProfile -Command '
         . (Join-Path $env:VM_ROOT "setup/lib/exakit-common.ps1")
-        . (Join-Path $env:VM_ROOT "setup/exakit.ps1") -Command "help" *> $null
+        . (Join-Path $env:VM_ROOT "setup/legacy-exakit.ps1") -Command "help" *> $null
         Write-ExakitRuntimeUpdateExplanation -Actual "personal" -Installed "2.2.0" -Advertised "2.3.0"
     ' 2>&1 | tr -d '\r')"
     has "powershell: the offer names the outage" "needs the database stopped" "$ps_explain"
     has "powershell: the offer promises the restart" "started again if it ends up down" "$ps_explain"
     has "powershell: the offer says the data survives" "Your data is kept" "$ps_explain"
     ps_pinned="$(EXAKIT_HOME="$UC" EXAKIT_BIN_DIR="$UC/bin" EXAKIT_VERSION_POLICY=pinned \
-        pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" version 2>&1 | tr -d '\r')"
+        pwsh -NoProfile -File "$ROOT/setup/legacy-exakit.ps1" version 2>&1 | tr -d '\r')"
     has "powershell: pinned policy uses the fallback" "built-in fallbacks" "$ps_pinned"
     ps_override="$(EXAKIT_HOME="$UC" EXAKIT_BIN_DIR="$UC/bin" \
         EXAKIT_VERSIONS_CACHE="$UC/cache/versions.json" \
         EXAKIT_VERSIONS_URL="http://offline.invalid/versions.json" \
         EXAKIT_EXAPUMP_VERSION=9.9.9 \
-        pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" version 2>&1 | tr -d '\r')"
+        pwsh -NoProfile -File "$ROOT/setup/legacy-exakit.ps1" version 2>&1 | tr -d '\r')"
     has "powershell: an override is credited" "EXAKIT_* environment overrides" "$ps_override"
     lacks "powershell: and withholds the maintainer note" "mis-detects CSV headers" "$ps_override"
     # The Windows self-update, for real: the download cmdlet is shadowed by a
@@ -2488,7 +2488,7 @@ PY
         $out += (Get-ExakitManifestValue "kit.version")
         $out += (Get-ExakitManifestValue "kit.source")
         if (Test-Path (Join-Path $kit "versions.json")) { $out += "kit-present" } else { $out += "NO-KIT" }
-        if ((Get-Content -Raw (Join-Path $kit "setup/exakit")) -like "*fake setup/exakit*") { $out += "replaced" } else { $out += "not-replaced" }
+        if ((Get-Content -Raw (Join-Path $kit "setup/legacy-exakit")) -like "*fake setup/legacy-exakit*") { $out += "replaced" } else { $out += "not-replaced" }
         if (Test-Path (Join-Path $env:EXAKIT_BIN_DIR "exakit.cmd")) { $out += "shim-written" } else { $out += "NO-SHIM" }
         if (Get-ChildItem -Path $env:EXAKIT_HOME -Filter "kit.backup-*" -ErrorAction SilentlyContinue) { $out += "backup-kept" } else { $out += "NO-BACKUP" }
         Write-Output ($out -join " ")
@@ -2511,7 +2511,7 @@ $env:EXAKIT_VERSIONS_URL = "http://offline.invalid/versions.json"
 $env:EXAKIT_NOTICE_STATE = "$env:NT/cache/notice-state.json"
 . "$env:VM_ROOT/setup/lib/exakit-common.ps1"
 # The component readers live in the CLI; load it with a harmless command.
-. "$env:VM_ROOT/setup/exakit.ps1" -Command "help" *> $null
+. "$env:VM_ROOT/setup/legacy-exakit.ps1" -Command "help" *> $null
 Show-ExakitUpdateNotice
 PSEOF
         case "$NOTICE_PTY" in
@@ -2531,7 +2531,7 @@ PSEOF
     ps_version="$(EXAKIT_HOME="$UC" EXAKIT_BIN_DIR="$UC/bin" \
         EXAKIT_VERSIONS_CACHE="$UC/cache/versions.json" \
         EXAKIT_VERSIONS_URL="http://offline.invalid/versions.json" \
-        pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" version 2>&1 | tr -d '\r')"
+        pwsh -NoProfile -File "$ROOT/setup/legacy-exakit.ps1" version 2>&1 | tr -d '\r')"
     has "powershell: version reports the kit version" "Version " "$ps_version"
     has "powershell: version reports the kit version value" "0.2.0" "$ps_version"
     has "powershell: version renders the table" "Component Version Status" "$(row "$ps_version" Component)"

@@ -41,7 +41,7 @@ try {
     # `exakit update` applies the runtime (which stops the database) only for an
     # answer it was actually given. Twin of the same block in the bash test; the
     # helpers live in the CLI, loaded with a harmless command.
-    . (Join-Path $PSScriptRoot "..\setup\exakit.ps1") -Command "help" *> $null
+    . (Join-Path $PSScriptRoot "..\setup\legacy-exakit.ps1") -Command "help" *> $null
     Remove-Item Env:EXAKIT_CONFIRM_RUNTIME_UPDATE -ErrorAction SilentlyContinue
     $unanswered = Get-ExakitRuntimeUpdatePreanswer
     if (-not $unanswered) { $unanswered = "" }

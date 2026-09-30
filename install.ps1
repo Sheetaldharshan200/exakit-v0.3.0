@@ -593,8 +593,29 @@ Write-Host ""
 # the wordmark appears exactly once through the installer. A direct
 # `-File setup\setup-windows.ps1` run (no installer) still shows it.
 $env:EXAKIT_BANNER_SHOWN = "1"
-& powershell -ExecutionPolicy Bypass -File (Join-Path $KitDir "setup\setup-windows.ps1")
-$setupExitCode = $LASTEXITCODE
+# --- 5. the kit's own Python, then the kit ---------------------------------------
+# From here on the kit is Python: bootstrap\ensure-python.ps1 puts a managed
+# interpreter under $ExakitHome\python (uv, digest-checked, never the system
+# Python) and `python -m exakit install` runs the install, handing it to the
+# setup script named above today. Twin of the same step in install.sh.
+$ensurePython = Join-Path $KitDir "bootstrap\ensure-python.ps1"
+if (Test-Path $ensurePython) {
+    $env:EXAKIT_KIT_DIR = $KitDir
+    . ([scriptblock]::Create([System.IO.File]::ReadAllText($ensurePython, [System.Text.Encoding]::UTF8)))
+    $pyCode = Confirm-ExakitPython
+    if ($pyCode -ne 0) {
+        Write-Host "  x The kit's Python could not be set up. Check your internet connection or proxy and re-run this installer." -ForegroundColor Red
+        $global:LASTEXITCODE = 1
+        if ($ExakitRanAsFile) { exit 1 }
+        return
+    }
+    $env:PYTHONPATH = if ($env:PYTHONPATH) { "$KitDir;$($env:PYTHONPATH)" } else { $KitDir }
+    & $env:EXAKIT_PYTHON -m exakit install
+    $setupExitCode = $LASTEXITCODE
+} else {
+    & powershell -ExecutionPolicy Bypass -File (Join-Path $KitDir "setup\setup-windows.ps1")
+    $setupExitCode = $LASTEXITCODE
+}
 # Pass the code through; do NOT re-wrap it. Re-throwing it as "Setup failed
 # with exit code 1" made the trap above print that number as THE reason and
 # then append its network hypothesis, so the last two lines of every failed

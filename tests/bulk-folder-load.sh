@@ -349,7 +349,7 @@ has "...into the table it was given" "upload customers.csv -> STARTER_KIT.CUSTOM
 
 printf '\n== the CLI takes the path too ==\n'
 
-CLI="$(cat "$ROOT/setup/exakit")"
+CLI="$(cat "$ROOT/setup/legacy-exakit")"
 has "data-load accepts a path argument" '_dl_path="$1"' "$CLI"
 has "a path pre-answers the local-data question" 'EXAKIT_DATA_FILE="$_dl_norm"' "$CLI"
 has "a missing path is refused" 'No such file or folder' "$CLI"

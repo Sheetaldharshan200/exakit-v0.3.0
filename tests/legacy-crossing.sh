@@ -484,14 +484,14 @@ echo
 echo "the CLI explains a legacy install instead of calling it broken:"
 # "nano - not installed" reads as a broken install. It is not: it is an
 # installation this kit does not manage, and the fix is the installer.
-has "status says which it is" "from an older kit, not managed here" "$(cat "$ROOT/setup/exakit")"
-has "...and the twin agrees"  "from an older kit, not managed here" "$(cat "$ROOT/setup/exakit.ps1")"
+has "status says which it is" "from an older kit, not managed here" "$(cat "$ROOT/setup/legacy-exakit")"
+has "...and the twin agrees"  "from an older kit, not managed here" "$(cat "$ROOT/setup/legacy-exakit.ps1")"
 has "the notice names the crossing command" "Re-run the installer to move across" \
     "$(cat "$ROOT/setup/lib/common.sh")"
 has "...on the Windows side too" "Re-run the installer to move across" \
     "$(cat "$ROOT/setup/lib/exakit-common.ps1")"
 _st="$(EXAKIT_HOME="$H1" EXAKIT_BIN_DIR="$H1/bin" \
-    bash "$ROOT/setup/exakit" status 2>&1 | sed 's/\x1b\[[0-9;]*m//g')"
+    bash "$ROOT/setup/legacy-exakit" status 2>&1 | sed 's/\x1b\[[0-9;]*m//g')"
 has "and a real status run says it" "not managed here" "$_st"
 
 echo
@@ -575,10 +575,10 @@ check "a database holding only the energy dataset has nothing of the user's" \
 
 echo
 echo "the after-the-install road: exakit migrate docker-nano"
-has "the CLI loads the crossing module"      'legacy-crossing.sh' "$(cat "$ROOT/setup/exakit")"
-has "...and dispatches migrate"               'cmd_migrate' "$(sed -n '/^case "\${1:-help}" in/,/^esac/p' "$ROOT/setup/exakit")"
-has "the twin loads it too"                   'legacy-crossing.ps1' "$(cat "$ROOT/setup/exakit.ps1")"
-has "...and dispatches migrate"               'Invoke-CmdMigrate' "$(cat "$ROOT/setup/exakit.ps1")"
+has "the CLI loads the crossing module"      'legacy-crossing.sh' "$(cat "$ROOT/setup/legacy-exakit")"
+has "...and dispatches migrate"               'cmd_migrate' "$(sed -n '/^case "\${1:-help}" in/,/^esac/p' "$ROOT/setup/legacy-exakit")"
+has "the twin loads it too"                   'legacy-crossing.ps1' "$(cat "$ROOT/setup/legacy-exakit.ps1")"
+has "...and dispatches migrate"               'Invoke-CmdMigrate' "$(cat "$ROOT/setup/legacy-exakit.ps1")"
 has "the help document describes it"          '"command": "migrate"' "$(cat "$ROOT/setup/help/exakit.json")"
 has "...with the source it takes"             'docker-nano' "$(cat "$ROOT/setup/help/exakit.json")"
 # THE RENDERED SURFACE, not a banner comment. These two lines used to sed the
@@ -589,7 +589,7 @@ has "...with the source it takes"             'docker-nano' "$(cat "$ROOT/setup/
 # document made the command invisible to everyone while all 199 checks passed.
 # The range was brittle in the ordinary way too: add 20 lines to the banner and
 # the check fails for a reason unrelated to the crossing.
-_lc_help="$(bash "$ROOT/setup/exakit" help --json 2>/dev/null)"
+_lc_help="$(bash "$ROOT/setup/legacy-exakit" help --json 2>/dev/null)"
 has "the rendered help offers the crossing"   '"command": "migrate"' "$_lc_help"
 has "...naming the source it takes"           'docker-nano' "$_lc_help"
 # ...and the capture is a document, not an error page that happens to contain
@@ -603,10 +603,10 @@ except Exception:
     print("no")' 2>/dev/null)"
 # The Windows twin renders from those same documents rather than carrying its
 # own help text, which is the property that keeps the two surfaces equal.
-has "...on the Windows side too"              'Show-ExakitHelpJson' "$(cat "$ROOT/setup/exakit.ps1")"
+has "...on the Windows side too"              'Show-ExakitHelpJson' "$(cat "$ROOT/setup/legacy-exakit.ps1")"
 # Bad input is refused BEFORE the install check, exit 2, so a typo never reads
 # as "not installed".
-_mg() { EXAKIT_HOME="$WORK/mg-nohome" EXAKIT_BIN_DIR="$WORK/mg-nohome/bin" bash "$ROOT/setup/exakit" migrate "$@" 2>&1; echo "RC=$?"; }
+_mg() { EXAKIT_HOME="$WORK/mg-nohome" EXAKIT_BIN_DIR="$WORK/mg-nohome/bin" bash "$ROOT/setup/legacy-exakit" migrate "$@" 2>&1; echo "RC=$?"; }
 _rc() { printf '%s\n' "$1" | sed -n 's/^RC=\([0-9]*\)$/\1/p' | tail -1; }
 _o="$(_mg)";                              check "no source is refused"                 "2" "$(_rc "$_o")"
 has "...naming the one there is"           "exakit migrate docker-nano [--container NAME]" "$_o"
@@ -625,7 +625,7 @@ _o="$(_mg docker-nano)";                  check "not installed exits 4"         
 _o="$(_mg docker-nano --json)";           has "...and says so in JSON"                '"installed": false' "$_o"
 # A legacy install that has not crossed yet has no deployment to copy INTO:
 # the installer is the road, and that is what the answer names.
-_o="$(EXAKIT_HOME="$H1" EXAKIT_BIN_DIR="$H1/bin" bash "$ROOT/setup/exakit" migrate docker-nano --json 2>&1; echo "RC=$?")"
+_o="$(EXAKIT_HOME="$H1" EXAKIT_BIN_DIR="$H1/bin" bash "$ROOT/setup/legacy-exakit" migrate docker-nano --json 2>&1; echo "RC=$?")"
 check "a not-yet-crossed legacy install exits 3"   "3" "$(_rc "$_o")"
 has "...as no database"                    '"status": "no database"' "$_o"
 has "...with the installer as the remedy"  'install' "$_o"
@@ -641,7 +641,7 @@ printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$STUBLOG"\nexit 1\n' > "$STUB4/docke
 cp "$STUB3/exapump" "$STUB4/exapump"; chmod +x "$STUB4/docker" "$STUB4/exapump"
 : > "$WORK/stub4.log"
 _o="$(EXAKIT_HOME="$H9" EXAKIT_BIN_DIR="$H9/bin" EXAKIT_EXAPUMP_BIN="$STUB4/exapump" STUBLOG="$WORK/stub4.log" \
-    PATH="$STUB4:$PATH" bash "$ROOT/setup/exakit" migrate docker-nano --engine docker --container old-db --password-file "$H1/credentials/nano_sys_password" --json --yes 2>/dev/null; echo "RC=$?")"
+    PATH="$STUB4:$PATH" bash "$ROOT/setup/legacy-exakit" migrate docker-nano --engine docker --container old-db --password-file "$H1/credentials/nano_sys_password" --json --yes 2>/dev/null; echo "RC=$?")"
 check "a container the engine does not know fails, exit 1" "1" "$(_rc "$_o")"
 has "...as one JSON object"                '"ok": false' "$_o"
 has "...with the status"                   '"status": "failed"' "$_o"
@@ -652,13 +652,13 @@ check "the engine named on the command line was the one asked" "yes" "$(grep -q 
 _o="$(EXAKIT_HOME="$H9" EXAKIT_BIN_DIR="$H9/bin" ROOT="$ROOT" \
     bash -c '. "$ROOT/setup/lib/common.sh"; manifest_set legacy.container remembered-db; manifest_set legacy.engine docker; manifest_set legacy.dsn 127.0.0.1:9999' 2>/dev/null
     EXAKIT_HOME="$H9" EXAKIT_BIN_DIR="$H9/bin" EXAKIT_EXAPUMP_BIN="$STUB4/exapump" STUBLOG="$WORK/stub4.log" \
-    PATH="$STUB4:$PATH" bash "$ROOT/setup/exakit" migrate docker-nano --password-file "$H1/credentials/nano_sys_password" --json --yes 2>/dev/null; echo "RC=$?")"
+    PATH="$STUB4:$PATH" bash "$ROOT/setup/legacy-exakit" migrate docker-nano --password-file "$H1/credentials/nano_sys_password" --json --yes 2>/dev/null; echo "RC=$?")"
 has "the remembered container is the default" '"container": "remembered-db"' "$_o"
 has "...and the remembered port"           '"dsn": "127.0.0.1:9999"' "$_o"
 # Never a password on argv, on either side; the prompt reads without echo.
-lacks "the sh CLI has no --password option that works" '--password)' "$(sed -n '/^cmd_migrate()/,/^}/p' "$ROOT/setup/exakit" | grep -v 'password-file' | grep -v 'reject')"
-has "the sh prompt does not echo"          'read -rs' "$(cat "$ROOT/setup/exakit")"
-has "the ps prompt does not echo"          'Read-Host -AsSecureString' "$(cat "$ROOT/setup/exakit.ps1")"
+lacks "the sh CLI has no --password option that works" '--password)' "$(sed -n '/^cmd_migrate()/,/^}/p' "$ROOT/setup/legacy-exakit" | grep -v 'password-file' | grep -v 'reject')"
+has "the sh prompt does not echo"          'read -rs' "$(cat "$ROOT/setup/legacy-exakit")"
+has "the ps prompt does not echo"          'Read-Host -AsSecureString' "$(cat "$ROOT/setup/legacy-exakit.ps1")"
 
 echo
 echo "a crossing that could not ask is not a crossing that was answered:"

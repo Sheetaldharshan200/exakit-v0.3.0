@@ -31,7 +31,7 @@ New-Item -ItemType Directory -Force -Path $kitHome | Out-Null
 $env:EXAKIT_HOME = $kitHome
 $env:EXAKIT_NO_UPDATE_NOTICE = "1"
 $env:EXAKIT_VERSION_POLICY = "pinned"
-$cli = Join-Path $repo "setup\exakit.ps1"
+$cli = Join-Path $repo "setup\legacy-exakit.ps1"
 
 function Run-Cli {
     param([string[]]$CliArgs)

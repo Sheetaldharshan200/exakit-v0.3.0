@@ -74,7 +74,7 @@ mkdir -p "$EXAKIT_HOME" "$EXAKIT_BIN_DIR"
 ) || fail "could not seed the sandbox manifest"
 
 say "1/9 exakit marketplace installs dash-server from its GitHub release"
-if ! EXAKIT_MARKETPLACE_ADDONS=dash-server bash "$ROOT/setup/exakit" marketplace; then
+if ! EXAKIT_MARKETPLACE_ADDONS=dash-server bash "$ROOT/setup/legacy-exakit" marketplace; then
     fail "exakit marketplace did not complete"
 fi
 
@@ -110,19 +110,19 @@ case "$_targets" in
     *dash-server*) echo "  ok  update all now covers: $_targets" ;;
     *) fail "exakit update targets (all) does not include dash-server: $_targets" ;;
 esac
-_version_out="$(bash "$ROOT/setup/exakit" version 2>/dev/null)"
+_version_out="$(bash "$ROOT/setup/legacy-exakit" version 2>/dev/null)"
 case "$_version_out" in
     *dash-server*) echo "  ok  exakit version reports the add-on" ;;
     *) fail "exakit version does not report dash-server" ;;
 esac
 
 say "5/9 update says already current; a second marketplace run offers nothing"
-_update_out="$(bash "$ROOT/setup/exakit" update dash-server 2>&1)" || fail "exakit update failed: $_update_out"
+_update_out="$(bash "$ROOT/setup/legacy-exakit" update dash-server 2>&1)" || fail "exakit update failed: $_update_out"
 case "$_update_out" in
     *"already current"*) echo "  ok  exakit update: already current" ;;
     *) fail "unexpected update output: $_update_out" ;;
 esac
-_second="$(EXAKIT_MARKETPLACE_ADDONS=dash-server bash "$ROOT/setup/exakit" marketplace 2>&1)" || fail "second marketplace run failed"
+_second="$(EXAKIT_MARKETPLACE_ADDONS=dash-server bash "$ROOT/setup/legacy-exakit" marketplace 2>&1)" || fail "second marketplace run failed"
 case "$_second" in
     *"already installed"*|*"already present"*) echo "  ok  second run installs nothing" ;;
     *) fail "second marketplace run did not recognize the install: $_second" ;;
@@ -144,7 +144,7 @@ if [ -z "$_code_cli" ]; then
 else
     export EXAKIT_EXASOL_VSCODE_EXTDIR="$SANDBOX/vscode-ext"
     mkdir -p "$EXAKIT_EXASOL_VSCODE_EXTDIR"
-    if ! EXAKIT_MARKETPLACE_ADDONS=exasol-vscode bash "$ROOT/setup/exakit" marketplace; then
+    if ! EXAKIT_MARKETPLACE_ADDONS=exasol-vscode bash "$ROOT/setup/legacy-exakit" marketplace; then
         fail "exakit marketplace did not complete for exasol-vscode"
     fi
     _ext_live="$(
@@ -162,7 +162,7 @@ else
     echo "  ok  exasol.exasol-vscode@$_ext_live installed into the sandbox extensions dir"
 
     say "7/9 the extension joins the update flow and a second run offers nothing"
-    _ext_update="$(bash "$ROOT/setup/exakit" update exasol-vscode 2>&1)" || fail "exakit update failed: $_ext_update"
+    _ext_update="$(bash "$ROOT/setup/legacy-exakit" update exasol-vscode 2>&1)" || fail "exakit update failed: $_ext_update"
     case "$_ext_update" in
         *"already current"*) echo "  ok  exakit update: already current" ;;
         *) fail "unexpected update output: $_ext_update" ;;
@@ -177,7 +177,7 @@ else
         *exasol-vscode*) echo "  ok  update all now covers: $_ext_targets" ;;
         *) fail "update targets (all) does not include exasol-vscode: $_ext_targets" ;;
     esac
-    _ext_second="$(EXAKIT_MARKETPLACE_ADDONS=exasol-vscode bash "$ROOT/setup/exakit" marketplace 2>&1)" || fail "second exasol-vscode marketplace run failed"
+    _ext_second="$(EXAKIT_MARKETPLACE_ADDONS=exasol-vscode bash "$ROOT/setup/legacy-exakit" marketplace 2>&1)" || fail "second exasol-vscode marketplace run failed"
     case "$_ext_second" in
         *"already installed"*|*"already present"*) echo "  ok  second run installs nothing" ;;
         *) fail "second run did not recognize the install: $_ext_second" ;;

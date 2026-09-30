@@ -31,7 +31,7 @@ fail() { FAIL=$((FAIL+1)); printf 'FAIL %s\n' "$1"; }
 # Assign first, then pass the variable.
 # ---------------------------------------------------------------------------
 offenders=""
-for f in "$ROOT"/tests/*.sh "$ROOT"/setup/*.sh "$ROOT"/setup/lib/*.sh "$ROOT"/setup/exakit; do
+for f in "$ROOT"/tests/*.sh "$ROOT"/setup/*.sh "$ROOT"/setup/lib/*.sh "$ROOT"/setup/legacy-exakit; do
     [ -f "$f" ] || continue
     # This file quotes the construct in its own comments and fixtures.
     case "$f" in */bash32-guard.sh) continue ;; esac

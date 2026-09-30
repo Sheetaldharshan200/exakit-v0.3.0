@@ -157,7 +157,7 @@ for _hardcode in $(ls -1 "$ROOT/skills" 2>/dev/null); do
     # rather than appending a second count.
     _hits="$(grep -cE -- "$_pat" "$ROOT/setup/lib/common.sh" 2>/dev/null || true)"
     check "common.sh does not hardcode $_hardcode" "0" "${_hits:-0}"
-    _hits_ps="$(grep -cE -- "$_pat" "$ROOT/setup/exakit.ps1" 2>/dev/null || true)"
+    _hits_ps="$(grep -cE -- "$_pat" "$ROOT/setup/legacy-exakit.ps1" 2>/dev/null || true)"
     check "exakit.ps1 does not hardcode $_hardcode" "0" "${_hits_ps:-0}"
 done
 
@@ -377,7 +377,7 @@ done
 # 6. The PowerShell twin, asserted as text: there is no pwsh here, and Windows
 #    runs the same marketplace.
 _ZZ_PS_COMMON="$ROOT/setup/lib/exakit-common.ps1"
-_ZZ_PS_CLI="$ROOT/setup/exakit.ps1"
+_ZZ_PS_CLI="$ROOT/setup/legacy-exakit.ps1"
 # The WIRING, on both sides. The lifecycle above calls the two functions
 # directly, so it stays green even if nothing ever calls them from the install
 # and uninstall paths -- which is the whole feature.
@@ -449,9 +449,9 @@ check "skills sits in the Reference group" "True" "$(python3 -c "
 import json
 doc = json.load(open('$ROOT/setup/help/exakit.json'))
 print('skills' in [g for g in doc['groups'] if g['title'] == 'Reference'][0]['commands'])")"
-lacks "the overview screen does not list skills-install" "skills-install" "$(bash "$ROOT/setup/exakit" help 2>/dev/null)"
-lacks "neither does exakit help --all" "skills-install" "$(bash "$ROOT/setup/exakit" help --all 2>/dev/null)"
-lacks "nor the catalogue" "skills-install" "$(bash "$ROOT/setup/exakit" catalog 2>/dev/null)"
+lacks "the overview screen does not list skills-install" "skills-install" "$(bash "$ROOT/setup/legacy-exakit" help 2>/dev/null)"
+lacks "neither does exakit help --all" "skills-install" "$(bash "$ROOT/setup/legacy-exakit" help --all 2>/dev/null)"
+lacks "nor the catalogue" "skills-install" "$(bash "$ROOT/setup/legacy-exakit" catalog 2>/dev/null)"
 # MARKED HIDDEN, NOT ABSENT. This asserted that catalog --json contained no
 # skills-install at all, which is what the code did and what AGENTS.md
 # contradicts: it describes catalog --json as "every supported command (a
@@ -462,20 +462,20 @@ lacks "nor the catalogue" "skills-install" "$(bash "$ROOT/setup/exakit" catalog 
 # conclude one of them was lying. The screens above still must not advertise
 # it; the machine surface must disclose it with the flag.
 check "catalog --json discloses skills-install, marked hidden" "True" \
-    "$(bash "$ROOT/setup/exakit" catalog --json 2>/dev/null | python3 -c 'import json, sys
+    "$(bash "$ROOT/setup/legacy-exakit" catalog --json 2>/dev/null | python3 -c 'import json, sys
 d = json.load(sys.stdin)
 rows = [c for c in d["commands"] if c["invocation"] == "exakit skills-install"]
 print(bool(rows) and rows[0].get("hidden") is True)' 2>/dev/null)"
-has "but exakit skills-install --help still renders its page" "The installer already does this" "$(bash "$ROOT/setup/exakit" skills-install --help 2>/dev/null)"
+has "but exakit skills-install --help still renders its page" "The installer already does this" "$(bash "$ROOT/setup/legacy-exakit" skills-install --help 2>/dev/null)"
 has "the PowerShell renderer filters hidden entries the same way" 'Get-ExakitHelpVisibleCommands' "$(cat "$ROOT/setup/lib/help.ps1")"
 has "exakit skills names the repair only when a skill is missing" 'exakit skills-install' "$(sed -n '/^exakit_skills_list()/,/^}/p' "$ROOT/setup/lib/common.sh")"
 has "skills --json carries the verdict" '"installed_version"' "$(sed -n '/^exakit_skills_list()/,/^}/p' "$ROOT/setup/lib/common.sh")"
-has "info --json carries the skills block" 'doc["skills"] = {' "$(sed -n '/^cmd_info_json()/,/^}/p' "$ROOT/setup/exakit")"
+has "info --json carries the skills block" 'doc["skills"] = {' "$(sed -n '/^cmd_info_json()/,/^}/p' "$ROOT/setup/legacy-exakit")"
 has "the info panel has a Skills row" 'ui_panel_line "Skills:' "$(cat "$ROOT/setup/lib/common.sh")"
-has "PowerShell info carries the skills block" '"skills" -NotePropertyValue' "$(cat "$ROOT/setup/exakit.ps1")"
+has "PowerShell info carries the skills block" '"skills" -NotePropertyValue' "$(cat "$ROOT/setup/legacy-exakit.ps1")"
 lacks "no document tells a reader to run skills-install after the install" "Run \`exakit skills-install\`" "$(cat "$ROOT/AGENTS.md" "$ROOT/README.md" "$ROOT/QUICKSTART.md")"
-has "the bash CLI dispatches skills"      "skills)" "$(cat "$ROOT/setup/exakit")"
-has "the PowerShell CLI dispatches skills" '"skills"' "$(cat "$ROOT/setup/exakit.ps1")"
+has "the bash CLI dispatches skills"      "skills)" "$(cat "$ROOT/setup/legacy-exakit")"
+has "the PowerShell CLI dispatches skills" '"skills"' "$(cat "$ROOT/setup/legacy-exakit.ps1")"
 
 # versions.json carries the skill set, so a stale installed copy is detectable
 # after a kit update rather than being invisible.
@@ -518,7 +518,7 @@ has "the twin lists it too" 'if (Get-ExakitSkillsDir) { $targets += "skills" }' 
 has "the shell updater exists" "exakit_update_skills()" "$SH_UPD"
 has "...and dispatches to it" "skills) exakit_update_skills ;;" "$SH_UPD"
 has "the twin updater exists" "function Update-ExakitSkills" "$PS_COMMON"
-has "...and the Windows CLI dispatches to it" 'Update-ExakitSkills -Advertised $available -Installed $current' "$(cat "$ROOT/setup/exakit.ps1")"
+has "...and the Windows CLI dispatches to it" 'Update-ExakitSkills -Advertised $available -Installed $current' "$(cat "$ROOT/setup/legacy-exakit.ps1")"
 has "the twin records what it placed" "function Set-ExakitSkillsRecord" "$PS_COMMON"
 
 # A kit copy under EXAKIT_HOME, so the updater takes the real path rather than

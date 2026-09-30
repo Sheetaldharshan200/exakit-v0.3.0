@@ -1,0 +1,48 @@
+#!/bin/sh
+# exakit - the launcher. Finds the kit and its Python, runs `python -m exakit`. Nothing else.
+#
+# Installed to ~/.local/bin/exakit (setup/exakit is a byte-identical copy so the
+# 0.2.0 self-update installs this file). Also runs from a checkout.
+# Every command, every option and every answer lives in the Python package.
+set -u
+EXAKIT_HOME="${EXAKIT_HOME:-$HOME/.exasol-starter-kit}"
+export EXAKIT_HOME
+
+# The kit copy: beside this file when run from a checkout, else the installed one.
+_here="$(cd "$(dirname "$0")" 2>/dev/null && pwd -P)"
+if [ -f "$_here/../exakit/__main__.py" ]; then
+    EXAKIT_KIT_DIR="$(cd "$_here/.." && pwd -P)"
+else
+    EXAKIT_KIT_DIR="$EXAKIT_HOME/kit"
+fi
+export EXAKIT_KIT_DIR
+
+if [ ! -f "$EXAKIT_KIT_DIR/exakit/__main__.py" ]; then
+    case " $* " in
+        *" --json "*|*" -j "*)
+            printf '{"installed": false, "status": "not installed", "manifest": "%s", "reason": "no kit copy at %s", "remedy": "curl -fsSL https://www.exasol.com/install/starter-kit.sh | sh"}\n' \
+                "$EXAKIT_HOME/manifest.json" "$EXAKIT_KIT_DIR" ;;
+        *) printf 'exakit: no kit at %s (run the installer first)\n' "$EXAKIT_KIT_DIR" >&2 ;;
+    esac
+    exit 4
+fi
+
+# Read-only queries never download a Python; they degrade to the documented answer.
+case " $1 " in
+    " status "|" info "|" version "|" help "|" catalog "|" whats-new "|" skills "|" logs "|" mcp-status ")
+        EXAKIT_READONLY_QUERY=1; export EXAKIT_READONLY_QUERY ;;
+esac
+
+. "$EXAKIT_KIT_DIR/bootstrap/ensure-python.sh"
+ensure_python
+_rc=$?
+if [ "$_rc" -ne 0 ]; then
+    case " $* " in
+        *" --json "*|*" -j "*)
+            printf '{"installed": true, "status": "unknown", "remedy": "exakit update", "remedy_hint": "no Python runtime is available on this machine, so the kit cannot read its own install record; exakit update restores it"}\n' ;;
+        *) printf 'exakit: the kit'"'"'s Python is not set up yet - run: exakit update\n' >&2 ;;
+    esac
+    exit "$_rc"
+fi
+
+PYTHONPATH="$EXAKIT_KIT_DIR${PYTHONPATH:+:$PYTHONPATH}" exec "$EXAKIT_PYTHON" -m exakit "$@"

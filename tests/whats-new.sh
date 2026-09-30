@@ -126,7 +126,7 @@ assert "whats-new" in ref["commands"], "not in the Reference group"
 assert any(c["command"] == "whats-new" and c["summary"] for c in doc["commands"]), "no command entry"
 PYCHECK
 then pass "whats-new is in the help document's Reference group"; else fail "whats-new is missing from setup/help/exakit.json (Reference group + command entry)"; fi
-_wn_help="$(NO_COLOR=1 EXAKIT_NO_FANCY=1 bash "$ROOT/setup/exakit" whats-new --help 2>/dev/null)"
+_wn_help="$(NO_COLOR=1 EXAKIT_NO_FANCY=1 bash "$ROOT/setup/legacy-exakit" whats-new --help 2>/dev/null)"
 case "$_wn_help" in
     *"exakit whats-new"*"Examples"*) pass "exakit whats-new --help renders its page" ;;
     *) fail "exakit whats-new --help does not render a page: $_wn_help" ;;

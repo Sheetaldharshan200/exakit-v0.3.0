@@ -205,7 +205,7 @@ check "...and the restore itself still exists" "yes" \
 # where the recovery has to be. Driven for real: an installed exakit with no
 # lib/ beside it, pointed at a kit home in the interrupted state.
 _ku_w="$(mktemp -d)"; mkdir -p "$_ku_w/bin" "$_ku_w/home"
-cp "$ROOT/setup/exakit" "$_ku_w/bin/exakit"; chmod +x "$_ku_w/bin/exakit"
+cp "$ROOT/setup/legacy-exakit" "$_ku_w/bin/exakit"; chmod +x "$_ku_w/bin/exakit"
 mkdir -p "$_ku_w/home/kit.backup-20260101-000000/setup/lib"
 printf '%s
 ' "$_ku_w/home/kit.backup-20260101-000000" > "$_ku_w/home/.update-in-progress"

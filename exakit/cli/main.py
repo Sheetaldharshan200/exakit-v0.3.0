@@ -61,9 +61,7 @@ def _emit_refusal(err: ExakitError, ctx: Context | None, json_mode: bool) -> Non
         sys.stdout.flush()
         return
     if ctx is not None:
-        ctx.ui.card(err.message, log_path=str(ctx.log.path) if ctx.log.path else None)
-        if err.remedy:
-            ctx.ui.info(f"Next: {err.remedy}")
+        ctx.ui.card(err.message, log_path=str(ctx.log.path) if ctx.log.path else None, remedy=err.remedy)
     else:
         sys.stderr.write(f"\n  [x] {err.message}\n")
 

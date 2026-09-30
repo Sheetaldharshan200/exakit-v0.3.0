@@ -211,12 +211,12 @@ update_targets="$(bash -c "EXAKIT_HOME=\$(mktemp -d); EXAKIT_BIN_DIR=\"\$EXAKIT_
 check "update_targets(all)" "exakit runtime exapump mcp pyexasol skills " "$update_targets"
 personal_target="$(bash -c ". '$ROOT/setup/lib/common.sh'; exakit_update_targets personal" | tr '\n' ' ')"
 check "update_targets(personal)" "personal " "$personal_target"
-if grep -q 'mcp.sh' "$ROOT/setup/exakit"; then
+if grep -q 'mcp.sh' "$ROOT/setup/legacy-exakit"; then
     check "exakit_sources(mcp)" "yes" "yes"
 else
     check "exakit_sources(mcp)" "yes" "no"
 fi
-if grep -q 'cmd_update "$@"' "$ROOT/setup/exakit" && \
+if grep -q 'cmd_update "$@"' "$ROOT/setup/legacy-exakit" && \
    grep -q 'exakit_update_component "$_component" "$@"' "$ROOT/setup/lib/common.sh"; then
     check "update_options(forwarded)" "yes" "yes"
 else
@@ -442,8 +442,8 @@ done
 # A timestamp nobody can parse is still better shown than swallowed.
 tz_passthrough="$(bash -c ". '$ROOT/setup/lib/common.sh'; exakit_format_local_time 'not-a-date'")"
 check "local_time(unparseable passes through)" "not-a-date" "$tz_passthrough"
-if grep -q 'exakit_format_local_time "$(manifest_get installed_at' "$ROOT/setup/exakit" && \
-   grep -q 'Format-ExakitLocalTime (Get-ExakitManifestValue' "$ROOT/setup/exakit.ps1"; then
+if grep -q 'exakit_format_local_time "$(manifest_get installed_at' "$ROOT/setup/legacy-exakit" && \
+   grep -q 'Format-ExakitLocalTime (Get-ExakitManifestValue' "$ROOT/setup/legacy-exakit.ps1"; then
     check "local_time(wired on both platforms)" "yes" "yes"
 else
     check "local_time(wired on both platforms)" "yes" "no"
@@ -480,7 +480,7 @@ if grep -q 'function Update-ExakitSelf' "$ROOT/setup/lib/exakit-common.ps1" && \
    grep -q 'archive/refs/heads/main.zip' "$ROOT/setup/lib/exakit-common.ps1" && \
    grep -q '"versions.json"' "$ROOT/setup/lib/exakit-common.ps1" && \
    grep -q 'Complete-ExakitSelfUpdateDeferred' "$ROOT/setup/lib/exakit-common.ps1" && \
-   grep -q 'Update-ExakitSelf -Advertised' "$ROOT/setup/exakit.ps1"; then
+   grep -q 'Update-ExakitSelf -Advertised' "$ROOT/setup/legacy-exakit.ps1"; then
     check "self_update(windows_path)" "yes" "yes"
 else
     check "self_update(windows_path)" "yes" "no"
@@ -489,7 +489,7 @@ fi
 echo "Windows parity guards:"
 if command -v pwsh >/dev/null 2>&1; then
     ps_parse="$(pwsh -NoProfile -Command '
-      $files = @("setup/lib/exakit-common.ps1","setup/lib/runtime-personal.ps1","setup/lib/mcp.ps1","setup/lib/dash-server.ps1","setup/lib/dbt-exasol.ps1","setup/lib/exasol-vscode.ps1","setup/lib/json-tables.ps1","setup/setup-windows.ps1","setup/exakit.ps1")
+      $files = @("setup/lib/exakit-common.ps1","setup/lib/runtime-personal.ps1","setup/lib/mcp.ps1","setup/lib/dash-server.ps1","setup/lib/dbt-exasol.ps1","setup/lib/exasol-vscode.ps1","setup/lib/json-tables.ps1","setup/setup-windows.ps1","setup/legacy-exakit.ps1")
       foreach ($f in $files) {
         $errors = $null
         $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw $f), [ref]$errors)
@@ -607,9 +607,9 @@ check "self_heal(missing, no deploy -> dies)"  "die"         "$(heal_case 1 1 ""
 # ...and the commands that speak SQL actually use it, on both sides.
 if grep -q 'exakit_ensure_runtime_running$' "$ROOT/setup/lib/common.sh" >/dev/null 2>&1 || \
    grep -q 'exakit_ensure_runtime_running' <(awk '/^exakit_mcp_setup\(\)/,/^}/' "$ROOT/setup/lib/common.sh") && \
-   grep -q 'exakit_ensure_runtime_running deploy' "$ROOT/setup/exakit" && \
+   grep -q 'exakit_ensure_runtime_running deploy' "$ROOT/setup/legacy-exakit" && \
    grep -q 'Confirm-ExakitRuntimeRunning' "$ROOT/setup/lib/mcp.ps1" && \
-   grep -q 'Confirm-ExakitRuntimeRunning -Deploy' "$ROOT/setup/exakit.ps1"; then
+   grep -q 'Confirm-ExakitRuntimeRunning -Deploy' "$ROOT/setup/legacy-exakit.ps1"; then
     check "self_heal(wired_into_sql_commands)" "yes" "yes"
 else
     check "self_heal(wired_into_sql_commands)" "yes" "no"
@@ -646,7 +646,7 @@ if grep -q 'exakit_marketplace_addons()' "$ROOT/setup/lib/common.sh" && \
    grep -q 'exakit_marketplace_installed_addons' "$ROOT/setup/lib/common.sh" && \
    grep -q 'dash_server_update' "$ROOT/setup/lib/dash-server.sh" && \
    grep -q 'dash_server_install' "$ROOT/setup/lib/dash-server.sh" && \
-   grep -q 'marketplace) shift; .*_with_notice cmd_marketplace' "$ROOT/setup/exakit" && \
+   grep -q 'marketplace) shift; .*_with_notice cmd_marketplace' "$ROOT/setup/legacy-exakit" && \
    grep -q 'function Get-ExakitMarketplaceAddons' "$ROOT/setup/lib/exakit-common.ps1" && \
    grep -q 'Get-ExakitMarketplaceInstalledAddons' "$ROOT/setup/lib/exakit-common.ps1" && \
    grep -q 'function Update-DashServer' "$ROOT/setup/lib/dash-server.ps1" && \
@@ -666,7 +666,7 @@ if grep -q 'exakit_marketplace_addons()' "$ROOT/setup/lib/common.sh" && \
    grep -q 'function Update-DbtExasol' "$ROOT/setup/lib/dbt-exasol.ps1" && \
    grep -q 'function Install-DbtExasol' "$ROOT/setup/lib/dbt-exasol.ps1" && \
    grep -q '"dbt-exasol"' "$ROOT/setup/lib/exakit-common.ps1" && \
-   grep -q '"marketplace"  { Invoke-CmdMarketplace' "$ROOT/setup/exakit.ps1"; then
+   grep -q '"marketplace"  { Invoke-CmdMarketplace' "$ROOT/setup/legacy-exakit.ps1"; then
     check "marketplace(twins)" "yes" "yes"
 else
     check "marketplace(twins)" "yes" "no"
@@ -674,7 +674,7 @@ fi
 # The advertised-version resolver an add-on install needs, both sides. On the
 # shell side exakit_component_available lives in common.sh, so the setup script
 # and the CLI both have it. On the PowerShell side its twin,
-# Get-ExakitComponentAvailable, is defined in the CLI (setup/exakit.ps1) and the
+# Get-ExakitComponentAvailable, is defined in the CLI (setup/legacy-exakit.ps1) and the
 # SETUP script never loads the CLI — so an add-on Install-* that called it
 # directly died with a CommandNotFoundException the moment the closing
 # marketplace offer tried to install one, and every Windows add-on install
@@ -719,7 +719,7 @@ fi
 
 # The PowerShell shared layer must be SELF-SUFFICIENT for an install.
 #
-# setup/exakit.ps1 is the CLI. setup/setup-windows.ps1 is the installer,
+# setup/legacy-exakit.ps1 is the CLI. setup/setup-windows.ps1 is the installer,
 # and it dot-sources setup/lib/exakit-common.ps1 plus the component and add-on
 # modules — never the CLI. So a function defined only in the CLI is invisible
 # during an install, and calling it there dies with CommandNotFoundException.
@@ -822,9 +822,9 @@ if grep -q 'exakit_log_targets()' "$ROOT/setup/lib/common.sh" && \
    grep -q 'exakit_logs_overview()' "$ROOT/setup/lib/common.sh" && \
    grep -q 'exakit_logs_show()' "$ROOT/setup/lib/common.sh" && \
    grep -q 'dash_server_log_path()' "$ROOT/setup/lib/dash-server.sh" && \
-   grep -q 'function Get-ExakitLogTargets' "$ROOT/setup/exakit.ps1" && \
-   grep -q 'function Show-ExakitLogsOverview' "$ROOT/setup/exakit.ps1" && \
-   grep -q 'function Show-ExakitLog' "$ROOT/setup/exakit.ps1" && \
+   grep -q 'function Get-ExakitLogTargets' "$ROOT/setup/legacy-exakit.ps1" && \
+   grep -q 'function Show-ExakitLogsOverview' "$ROOT/setup/legacy-exakit.ps1" && \
+   grep -q 'function Show-ExakitLog' "$ROOT/setup/legacy-exakit.ps1" && \
    grep -q 'function Get-DashServerLogPath' "$ROOT/setup/lib/dash-server.ps1" && \
    grep -q 'LogFn' "$ROOT/setup/lib/exakit-common.ps1"; then
     check "logs(viewer_twins)" "yes" "yes"
@@ -840,13 +840,13 @@ if grep -q 'exakit_service_ids()' "$ROOT/setup/lib/common.sh" && \
    grep -q 'dash_server_status()' "$ROOT/setup/lib/dash-server.sh" && \
    grep -q 'dash_server_start()' "$ROOT/setup/lib/dash-server.sh" && \
    grep -q 'dash_server_autostart_command()' "$ROOT/setup/lib/dash-server.sh" && \
-   grep -q 'autostart) shift; _with_notice cmd_autostart' "$ROOT/setup/exakit" && \
-   grep -q 'function Get-ExakitServiceIds' "$ROOT/setup/exakit.ps1" && \
+   grep -q 'autostart) shift; _with_notice cmd_autostart' "$ROOT/setup/legacy-exakit" && \
+   grep -q 'function Get-ExakitServiceIds' "$ROOT/setup/legacy-exakit.ps1" && \
    grep -q 'function Register-ExakitAutostart' "$ROOT/setup/lib/exakit-common.ps1" && \
-   grep -q 'function Enable-ExakitAutostart' "$ROOT/setup/exakit.ps1" && \
+   grep -q 'function Enable-ExakitAutostart' "$ROOT/setup/legacy-exakit.ps1" && \
    grep -q 'function Get-DashServerStatus' "$ROOT/setup/lib/dash-server.ps1" && \
    grep -q 'function Start-DashServer' "$ROOT/setup/lib/dash-server.ps1" && \
-   grep -q '"autostart"    { Invoke-CmdAutostart' "$ROOT/setup/exakit.ps1"; then
+   grep -q '"autostart"    { Invoke-CmdAutostart' "$ROOT/setup/legacy-exakit.ps1"; then
     check "services(autostart_twins)" "yes" "yes"
 else
     check "services(autostart_twins)" "yes" "no"
@@ -854,7 +854,7 @@ fi
 # The install turns it on, and the uninstall takes the boot entries away.
 if grep -q 'exakit_autostart_enable' <(awk '/^kit_shared_steps\(\)/,/^}/' "$ROOT/setup/lib/common.sh") && \
    grep -q '_exakit_autostart_unregister' <(awk '/^exakit_uninstall_run\(\)/,/^}/' "$ROOT/setup/lib/common.sh") && \
-   grep -q 'Unregister-ExakitAutostart' "$ROOT/setup/exakit.ps1"; then
+   grep -q 'Unregister-ExakitAutostart' "$ROOT/setup/legacy-exakit.ps1"; then
     check "services(autostart_install_and_sweep)" "yes" "yes"
 else
     check "services(autostart_install_and_sweep)" "yes" "no"
@@ -916,12 +916,12 @@ if grep -q 'exakit_runtime_is_running()' "$ROOT/setup/lib/common.sh" && \
    grep -q 'exakit_loaded_datasets()' "$ROOT/setup/lib/common.sh" && \
    grep -q 'exakit_apply_readonly_allowlist()' "$ROOT/setup/lib/common.sh" && \
    grep -q 'exakit_explain_db_error()' "$ROOT/setup/lib/common.sh" && \
-   grep -q 'exit 3' "$ROOT/setup/exakit" && \
-   grep -q 'exit 4' "$ROOT/setup/exakit" && \
-   grep -q 'function Get-ExakitLoadedDatasets' "$ROOT/setup/exakit.ps1" && \
+   grep -q 'exit 3' "$ROOT/setup/legacy-exakit" && \
+   grep -q 'exit 4' "$ROOT/setup/legacy-exakit" && \
+   grep -q 'function Get-ExakitLoadedDatasets' "$ROOT/setup/legacy-exakit.ps1" && \
    grep -q 'function Set-ExakitReadonlyAllowlist' "$ROOT/setup/lib/exakit-common.ps1" && \
-   grep -q 'exit 3' "$ROOT/setup/exakit.ps1" && \
-   grep -q 'exit 4' "$ROOT/setup/exakit.ps1" && \
+   grep -q 'exit 3' "$ROOT/setup/legacy-exakit.ps1" && \
+   grep -q 'exit 4' "$ROOT/setup/legacy-exakit.ps1" && \
    grep -q 'EXAKIT_MCP_RESULT_JSON' "$ROOT/setup/lib/common.sh" && \
    grep -q 'EXAKIT_MCP_RESULT_JSON' "$ROOT/setup/lib/mcp.ps1"; then
     check "agent_operability(twins)" "yes" "yes"
@@ -933,11 +933,11 @@ fi
 # card file travelling into the kit copy (without that last part `exakit whats-new`
 # works from a checkout and then dies with it). setup/whats-new.json lives under
 # setup/, and only setup/lib is staged, so the copy has to name it explicitly.
-if grep -q 'cmd_whats_new' "$ROOT/setup/exakit" && \
+if grep -q 'cmd_whats_new' "$ROOT/setup/legacy-exakit" && \
    grep -q 'exakit_whats_new_file' "$ROOT/setup/lib/common.sh" && \
    grep -q 'exakit_print_whats_new "$_staged_version"' "$ROOT/setup/lib/common.sh" && \
    grep -q 'setup/whats-new.json" "$EXAKIT_HOME/kit/setup/' "$ROOT/setup/lib/common.sh" && \
-   grep -q 'Invoke-CmdWhatsNew' "$ROOT/setup/exakit.ps1" && \
+   grep -q 'Invoke-CmdWhatsNew' "$ROOT/setup/legacy-exakit.ps1" && \
    grep -q 'Get-ExakitWhatsNewFile' "$ROOT/setup/lib/exakit-common.ps1" && \
    grep -q 'Write-ExakitWhatsNew -Version $stagedVersion' "$ROOT/setup/lib/exakit-common.ps1" && \
    grep -q 'whats-new.json' "$ROOT/setup/setup-windows.ps1" && \
@@ -997,7 +997,7 @@ check "whats_new_box(order_windows)" "panel,box,next" \
 # behind `--all`. Staying current has to be visible there, or the update path
 # exists and nobody finds it. The bash half is run for real; the PowerShell half
 # is a mirrored string array, so it is read.
-short_help="$(EXAKIT_NO_UPDATE_NOTICE=1 bash "$ROOT/setup/exakit" help 2>&1 || true)"
+short_help="$(EXAKIT_NO_UPDATE_NOTICE=1 bash "$ROOT/setup/legacy-exakit" help 2>&1 || true)"
 ps_help_lines=0
 # _ui_visible_len measures what the user SEES, and ui_panel_end uses it twice:
 # once to pick the box width, once to pad each line. It used a BRE alternation
@@ -1053,7 +1053,7 @@ print(' '.join(groups[0]['commands']) if groups else '')" 2>/dev/null || true)"
 for _hl in version update; do
     printf '%s' "$_upd_group" | grep -qw "$_hl" && ps_help_lines=$((ps_help_lines + 1))
 done
-grep -q 'Show-ExakitHelpOverview' "$ROOT/setup/exakit.ps1" && ps_help_lines=$((ps_help_lines + 1))
+grep -q 'Show-ExakitHelpOverview' "$ROOT/setup/legacy-exakit.ps1" && ps_help_lines=$((ps_help_lines + 1))
 if printf '%s' "$short_help" | grep -q 'Keeping up to date' && \
    printf '%s' "$short_help" | grep -qE '^ +exakit version {2,}' && \
    printf '%s' "$short_help" | grep -qE '^ +exakit update {2,}' && \
@@ -1074,9 +1074,9 @@ fi
 _ij="$(mktemp -d)"
 mkdir -p "$_ij/have" "$_ij/none"
 printf '{\n  "kit": {\n    "version": "0.2.0"\n  }\n}\n' > "$_ij/have/manifest.json"
-_ij_out="$(EXAKIT_HOME="$_ij/have" bash "$ROOT/setup/exakit" info --json 2>"$_ij/err")"
-_ij_alias="$(EXAKIT_HOME="$_ij/have" bash "$ROOT/setup/exakit" info -j 2>/dev/null)"
-_ij_none="$(EXAKIT_HOME="$_ij/none" bash "$ROOT/setup/exakit" info --json 2>/dev/null)"; _ij_rc=$?
+_ij_out="$(EXAKIT_HOME="$_ij/have" bash "$ROOT/setup/legacy-exakit" info --json 2>"$_ij/err")"
+_ij_alias="$(EXAKIT_HOME="$_ij/have" bash "$ROOT/setup/legacy-exakit" info -j 2>/dev/null)"
+_ij_none="$(EXAKIT_HOME="$_ij/none" bash "$ROOT/setup/legacy-exakit" info --json 2>/dev/null)"; _ij_rc=$?
 # The record PLUS the keys every state query carries (installed/status/remedy,
 # and remedy_hint when the remedy needs explaining) and the `skills` verdict
 # block: strip those and what is left must be the manifest.
@@ -1086,12 +1086,12 @@ if python3 -c 'import json,sys; d=json.loads(sys.argv[2]); r=json.load(open(sys.
    printf '%s' "$_ij_none" | python3 -m json.tool >/dev/null 2>&1 && \
    case "$_ij_none" in *'"remedy"'*) true ;; *) false ;; esac && \
    [ "$_ij_rc" = 4 ] && \
-   grep -q 'cmd_info_json' "$ROOT/setup/exakit" && \
-   ! grep -q '_with_notice cmd_info_json' "$ROOT/setup/exakit" && \
-   grep -q 'Invoke-CmdInfoJson' "$ROOT/setup/exakit.ps1" && \
-   grep -q 'JsonOutput = \$true' "$ROOT/setup/exakit.ps1" && \
-   grep -q 'if (-not \$script:JsonOutput -and' "$ROOT/setup/exakit.ps1" && \
-   grep -qF 'Get-Content -Raw -Encoding UTF8 -Path $script:ManifestPath' "$ROOT/setup/exakit.ps1"; then
+   grep -q 'cmd_info_json' "$ROOT/setup/legacy-exakit" && \
+   ! grep -q '_with_notice cmd_info_json' "$ROOT/setup/legacy-exakit" && \
+   grep -q 'Invoke-CmdInfoJson' "$ROOT/setup/legacy-exakit.ps1" && \
+   grep -q 'JsonOutput = \$true' "$ROOT/setup/legacy-exakit.ps1" && \
+   grep -q 'if (-not \$script:JsonOutput -and' "$ROOT/setup/legacy-exakit.ps1" && \
+   grep -qF 'Get-Content -Raw -Encoding UTF8 -Path $script:ManifestPath' "$ROOT/setup/legacy-exakit.ps1"; then
     check "info(json_is_the_record_verbatim)" "yes" "yes"
 else
     check "info(json_is_the_record_verbatim)" "yes" "no"
@@ -1124,14 +1124,14 @@ if grep -q '_exakit_notice_plan_fresh' "$ROOT/setup/lib/common.sh" && \
    grep -q '_exakit_notice_still_behind' "$ROOT/setup/lib/common.sh" && \
    grep -q 'Get-ExakitNoticeStillBehind' "$ROOT/setup/lib/exakit-common.ps1" && \
    grep -q 'rm -f "$EXAKIT_NOTICE_PLAN"' "$ROOT/setup/lib/common.sh" && \
-   grep -q 'Remove-Item -Force $script:NoticePlanPath' "$ROOT/setup/exakit.ps1"; then
+   grep -q 'Remove-Item -Force $script:NoticePlanPath' "$ROOT/setup/legacy-exakit.ps1"; then
     check "notice(plan_cached_both_sides)" "yes" "yes"
 else
     check "notice(plan_cached_both_sides)" "yes" "no"
 fi
 # Re-run freshness, both sides: the exakit_helper flag says "installed", not
 # "current", so a re-run over an older install has to compare what is on disk with
-# what this kit would write. bash compares the installed COPY of setup/exakit; the
+# what this kit would write. bash compares the installed COPY of setup/legacy-exakit; the
 # Windows shim only points at the kit copy, so there it is the shim's own content.
 # The behavioural halves live in tests/versions-manifest.sh.
 if grep -q 'cmp -s "$_script_dir/exakit" "$EXAKIT_BIN_DIR/exakit"' "$ROOT/setup/lib/common.sh" && \
@@ -1150,8 +1150,8 @@ fi
 # `exakit upgrade-kit2 --help` answers with while keeping it out of discovery.
 # Whether Kit 2 is ADVERTISED is a separate switch (the kit2 block in
 # versions.json) and is asserted in tests/versions-manifest.sh.
-if grep -q 'upgrade-kit2)  cmd_kit2_script' "$ROOT/setup/exakit" && \
-   grep -q 'rollback-kit2) cmd_kit2_script' "$ROOT/setup/exakit" && \
+if grep -q 'upgrade-kit2)  cmd_kit2_script' "$ROOT/setup/legacy-exakit" && \
+   grep -q 'rollback-kit2) cmd_kit2_script' "$ROOT/setup/legacy-exakit" && \
    grep -q 'exakit_update_kit2' "$ROOT/setup/lib/common.sh" && \
    grep -q 'manifest_set kit2.version' "$ROOT/upgrade/upgrade-kit2.sh" && \
    python3 -c '
@@ -1161,7 +1161,7 @@ for name in ("upgrade-kit2", "rollback-kit2"):
     entry = [c for c in doc["commands"] if c["command"] == name]
     assert entry and entry[0].get("hidden") is True, name
 ' "$ROOT/setup/help/exakit.json" && \
-   bash "$ROOT/setup/exakit" catalog --json 2>/dev/null | python3 -c '
+   bash "$ROOT/setup/legacy-exakit" catalog --json 2>/dev/null | python3 -c '
 # OUT OF DISCOVERY, NOT OUT OF THE DOCUMENT. This used to assert the string was
 # absent from catalog --json altogether, which contradicted AGENTS.md ("a
 # handful of internal upgrade paths are marked hidden") and meant no row
@@ -1174,9 +1174,9 @@ by = {r["invocation"]: r for r in d["commands"]}
 for name in ("exakit upgrade-kit2", "exakit rollback-kit2"):
     assert by.get(name, {}).get("hidden") is True, name
 ' && \
-   ! bash "$ROOT/setup/exakit" help --all 2>/dev/null | grep -q 'upgrade-kit2' && \
-   ! bash "$ROOT/setup/exakit" help 2>/dev/null | grep -q 'upgrade-kit2' && \
-   grep -q 'Write-ExakitKit2NotAvailable' "$ROOT/setup/exakit.ps1"; then
+   ! bash "$ROOT/setup/legacy-exakit" help --all 2>/dev/null | grep -q 'upgrade-kit2' && \
+   ! bash "$ROOT/setup/legacy-exakit" help 2>/dev/null | grep -q 'upgrade-kit2' && \
+   grep -q 'Write-ExakitKit2NotAvailable' "$ROOT/setup/legacy-exakit.ps1"; then
     check "kit2(cli_surface)" "yes" "yes"
 else
     check "kit2(cli_surface)" "yes" "no"
@@ -1188,7 +1188,7 @@ fi
 if grep -q 'personal_upgrade_backup' "$ROOT/setup/lib/runtime-personal.sh" && \
    grep -q '\-\-plan' "$ROOT/setup/lib/runtime-personal.sh" && \
    grep -q 'exakit_runtime_update_is_staged' "$ROOT/setup/lib/common.sh" && \
-   grep -q 'function Test-ExakitRuntimeUpdateStaged' "$ROOT/setup/exakit.ps1"; then
+   grep -q 'function Test-ExakitRuntimeUpdateStaged' "$ROOT/setup/legacy-exakit.ps1"; then
     check "personal_update(recoverability)" "yes" "yes"
 else
     check "personal_update(recoverability)" "yes" "no"
@@ -1209,8 +1209,8 @@ fi
 if grep -q 'exakit_component_current mcp' "$ROOT/setup/lib/mcp.sh" && \
    grep -q 'mcp_refresh_client_pins' "$ROOT/setup/lib/mcp.sh" && \
    grep -q 'Update-McpClientPins' "$ROOT/setup/lib/mcp.ps1" && \
-   grep -q 'Update-McpClientPins' "$ROOT/setup/exakit.ps1" && \
-   ! grep -q 'Run exakit mcp-setup to refresh AI client configs' "$ROOT/setup/exakit.ps1"; then
+   grep -q 'Update-McpClientPins' "$ROOT/setup/legacy-exakit.ps1" && \
+   ! grep -q 'Run exakit mcp-setup to refresh AI client configs' "$ROOT/setup/legacy-exakit.ps1"; then
     check "mcp_update(live_pin_guard)" "yes" "yes"
 else
     check "mcp_update(live_pin_guard)" "yes" "no"
@@ -1222,7 +1222,7 @@ fi
 if grep -q 'exakit_component_current exapump' "$ROOT/setup/lib/exapump.sh" && \
    grep -q 'exapump_confirm_installed_version' "$ROOT/setup/lib/exapump.sh" && \
    grep -q 'Confirm-ExapumpInstalledVersion' "$ROOT/setup/lib/exapump.ps1" && \
-   grep -q 'Confirm-ExapumpInstalledVersion' "$ROOT/setup/exakit.ps1"; then
+   grep -q 'Confirm-ExapumpInstalledVersion' "$ROOT/setup/legacy-exakit.ps1"; then
     check "exapump_update(live_probe_guard)" "yes" "yes"
 else
     check "exapump_update(live_probe_guard)" "yes" "no"

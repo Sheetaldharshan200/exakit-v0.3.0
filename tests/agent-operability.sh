@@ -31,9 +31,9 @@ print(chr(10).join(c['command'] for c in doc['commands']))"
 }
 
 echo "status exit codes are the answer:"
-check "not installed exits 4" "4" "$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/exakit" status >/dev/null 2>&1; echo $?)"
-has "and the JSON form says so" '"installed": false' "$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/exakit" status --json 2>/dev/null)"
-check "not installed --json exits 4 too" "4" "$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/exakit" status --json >/dev/null 2>&1; echo $?)"
+check "not installed exits 4" "4" "$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/legacy-exakit" status >/dev/null 2>&1; echo $?)"
+has "and the JSON form says so" '"installed": false' "$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/legacy-exakit" status --json 2>/dev/null)"
+check "not installed --json exits 4 too" "4" "$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/legacy-exakit" status --json >/dev/null 2>&1; echo $?)"
 
 # A manifest whose deployment does not exist reads as a stopped database.
 #
@@ -59,7 +59,7 @@ _stopped() {
         EXAKIT_PERSONAL_DEPLOY_DIR="$WORK/no-deployment" \
         EXAKIT_BIN_DIR="$WORK/no-bin" \
         PATH="$_HERMETIC_PATH" \
-        bash "$ROOT/setup/exakit" "$@"
+        bash "$ROOT/setup/legacy-exakit" "$@"
 }
 printf '{\n  "runtime": {\n    "type": "personal"\n  },\n  "data": {\n    "datasets": {\n      "tpch": {\n        "loaded": true\n      }\n    }\n  }\n}\n' > "$WORK/stopped/manifest.json"
 check "stopped database exits 3" "3" "$(_stopped status >/dev/null 2>&1; echo $?)"
@@ -97,7 +97,7 @@ has "and carries the remedy" '"remedy": "exakit start"' "$_docj"
 
 echo "every subcommand answers --help from the catalog:"
 for _cmd in status data-load logs uninstall marketplace; do
-    _h="$(bash "$ROOT/setup/exakit" "$_cmd" --help 2>&1; echo "rc=$?")"
+    _h="$(bash "$ROOT/setup/legacy-exakit" "$_cmd" --help 2>&1; echo "rc=$?")"
     has "$_cmd --help shows its entry" "exakit $_cmd" "$_h"
     has "and exits 0" "rc=0" "$_h"
 done
@@ -258,26 +258,26 @@ echo "every state query answers machine-readably in BOTH states (audit regressio
 # agent piping --json into a parser got "Expecting value: line 1 column 1" on
 # exactly the path where structured signal decides the next action.
 for _q in "info --json" "mcp-doctor --json"; do
-    _out="$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/exakit" $_q 2>/dev/null)"
-    _rc="$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/exakit" $_q >/dev/null 2>&1; echo $?)"
+    _out="$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/legacy-exakit" $_q 2>/dev/null)"
+    _rc="$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/legacy-exakit" $_q >/dev/null 2>&1; echo $?)"
     check "$_q exits 4 when not installed" "4" "$_rc"
     check "$_q is parseable JSON when not installed" "yes" \
         "$(printf '%s' "$_out" | python3 -m json.tool >/dev/null 2>&1 && echo yes || echo no)"
     has  "$_q names a remedy" '"remedy"' "$_out"
 done
 check "mcp-doctor (human) exits 4 when not installed" "4" \
-    "$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/exakit" mcp-doctor >/dev/null 2>&1; echo $?)"
+    "$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/legacy-exakit" mcp-doctor >/dev/null 2>&1; echo $?)"
 check "version exits 4 when not installed" "4" \
-    "$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/exakit" version >/dev/null 2>&1; echo $?)"
+    "$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/legacy-exakit" version >/dev/null 2>&1; echo $?)"
 # `exakit update-check` was merged into `exakit version`; it is not a command any
 # more, so it must answer like any other unknown one rather than lingering as a
 # hidden alias an agent could keep depending on.
 check "update-check is gone, and exits like an unknown command" "2" \
-    "$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/exakit" update-check >/dev/null 2>&1; echo $?)"
+    "$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/legacy-exakit" update-check >/dev/null 2>&1; echo $?)"
 
 echo
 echo "the JSON carries the remedy the prose already had:"
-_rj="$(EXAKIT_HOME="$WORK/stopped" bash "$ROOT/setup/exakit" status --json 2>/dev/null)"
+_rj="$(EXAKIT_HOME="$WORK/stopped" bash "$ROOT/setup/legacy-exakit" status --json 2>/dev/null)"
 has "status --json has a remedies map" '"remedies"' "$_rj"
 # A missing runtime (this fixture's container does not exist) is repaired by
 # the installer; a merely STOPPED one still answers "exakit start" - see the
@@ -348,7 +348,7 @@ echo "round-2 audit regressions:"
 # note that outlived its cause is how a healthy machine came to look broken.
 _nf="$(sed -n '/^exakit_note_failure()/,/^}/p' "$ROOT/setup/lib/common.sh")"
 has "the failure note records when it happened" '_exakit_ts' "$_nf"
-_sj2="$(EXAKIT_HOME="$WORK/stopped" bash "$ROOT/setup/exakit" status --json 2>/dev/null)"
+_sj2="$(EXAKIT_HOME="$WORK/stopped" bash "$ROOT/setup/legacy-exakit" status --json 2>/dev/null)"
 has "status --json exposes last_failure_at" '"last_failure_at"' "$_sj2"
 
 # A kit update replaces the whole kit copy, so a release that adds or rewords a
@@ -363,7 +363,7 @@ has "a kit self-update refreshes the installed skills" "exakit_install_skills" "
 # header comment's length, so adding a command to the usage block broke an
 # assertion that has nothing to do with the usage block.
 has "the lib-not-found error names the path actually searched" \
-    'kit/setup/lib)' "$(grep -n 'cannot find the kit library' -A2 "$ROOT/setup/exakit")"
+    'kit/setup/lib)' "$(grep -n 'cannot find the kit library' -A2 "$ROOT/setup/legacy-exakit")"
 
 # doctor's findings carry remedies; returning next_actions=[] beside a non-empty
 # findings list reads as "nothing to do" on a machine with problems.
@@ -536,9 +536,9 @@ has "and says why, rather than 'what it installed is missing'" "interrupted" \
 # healthy database and destroy its data.
 EXAKIT_PERSONAL_DEPLOY_DIR="$_wedge/absent"
 check "a stopped deployment is still left alone" "unknown" "$(step_artifact_state runtime)"
-has "repair-runtime is a real command" "repair-runtime" "$(grep -c '^    repair-runtime)' "$ROOT/setup/exakit" >/dev/null && echo repair-runtime)"
+has "repair-runtime is a real command" "repair-runtime" "$(grep -c '^    repair-runtime)' "$ROOT/setup/legacy-exakit" >/dev/null && echo repair-runtime)"
 has "and it is in the catalog" "repair-runtime" "$(exakit_help_commands)"
-has "and the PowerShell twin exists" "Invoke-CmdRepairRuntime" "$(cat "$ROOT/setup/exakit.ps1")"
+has "and the PowerShell twin exists" "Invoke-CmdRepairRuntime" "$(cat "$ROOT/setup/legacy-exakit.ps1")"
 
 echo "a removed exapump profile is repaired by re-running the installer:"
 # THE BUG: the exapump step writes a binary AND a connection profile, but its
@@ -589,7 +589,7 @@ echo "status reports the datasets that are really there:"
 has "loaded datasets are verified against the database, not just read" \
     "exakit_verified_datasets" "$(sed -n '/^exakit_loaded_datasets()/,/^}/p' "$ROOT/setup/lib/common.sh")"
 has "and the PowerShell twin verifies too" "Get-ExakitVerifiedDatasets" \
-    "$(sed -n '/^function Get-ExakitLoadedDatasets/,/^}/p' "$ROOT/setup/exakit.ps1")"
+    "$(sed -n '/^function Get-ExakitLoadedDatasets/,/^}/p' "$ROOT/setup/legacy-exakit.ps1")"
 # THE SECOND HALF: the self-heal wrote data.loaded (tpch's flag= override) while
 # status read data.datasets.tpch.loaded, so the heal fired and status kept lying.
 has "the self-heal writes the key status reads" "data.datasets.\${_dl_id}.loaded" \
@@ -627,10 +627,10 @@ print("yes" if not missing else "missing %s" % missing)
 PY
 }
 for _shape in status mcp-doctor; do
-    EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/exakit" $_shape --json > "$WORK/shape.json" 2>/dev/null
+    EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/legacy-exakit" $_shape --json > "$WORK/shape.json" 2>/dev/null
     check "$_shape --json (not installed) carries installed/status/remedy" "yes" \
         "$(_common_keys "$WORK/shape.json")"
-    EXAKIT_HOME="$WORK/stopped" bash "$ROOT/setup/exakit" $_shape --json > "$WORK/shape.json" 2>/dev/null
+    EXAKIT_HOME="$WORK/stopped" bash "$ROOT/setup/legacy-exakit" $_shape --json > "$WORK/shape.json" 2>/dev/null
     check "$_shape --json (database down) carries them too" "yes" \
         "$(_common_keys "$WORK/shape.json")"
 done
@@ -643,18 +643,18 @@ echo "the documented exit codes are the real ones:"
 check "info --json exits 3 when the database is down" "3" \
     "$(_stopped info --json >/dev/null 2>&1; echo $?)"
 check "info --json exits 4 when nothing is installed" "4" \
-    "$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/exakit" info --json >/dev/null 2>&1; echo $?)"
+    "$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/legacy-exakit" info --json >/dev/null 2>&1; echo $?)"
 check "and still prints an object in both states" "yes" "$(
-    EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/exakit" info --json 2>/dev/null | python3 -m json.tool >/dev/null 2>&1 && echo yes || echo no)"
+    EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/legacy-exakit" info --json 2>/dev/null | python3 -m json.tool >/dev/null 2>&1 && echo yes || echo no)"
 # `exakit version` reports on VERSIONS, which a stopped database does not
 # change. AGENTS.md must not promise a database-health code they never return.
 check "version does not fake a database-health code" "0" \
-    "$(EXAKIT_HOME="$WORK/stopped" bash "$ROOT/setup/exakit" version >/dev/null 2>&1; echo $?)"
+    "$(EXAKIT_HOME="$WORK/stopped" bash "$ROOT/setup/legacy-exakit" version >/dev/null 2>&1; echo $?)"
 lacks "and AGENTS.md no longer claims otherwise" \
     'Exit codes on `status`, `version`, `update-check`, `info --json` and `mcp-doctor`: `0` healthy/running, `3` database not running' \
     "$(cat "$ROOT/AGENTS.md")"
 check "an unknown subcommand still exits 2" "2" \
-    "$(bash "$ROOT/setup/exakit" frobnicate >/dev/null 2>&1; echo $?)"
+    "$(bash "$ROOT/setup/legacy-exakit" frobnicate >/dev/null 2>&1; echo $?)"
 
 echo "the SQL path an agent is told to use names its remedy:"
 # THE BUG: exakit_explain_db_error was wired ONLY into the kit's internal setup
@@ -662,11 +662,11 @@ echo "the SQL path an agent is told to use names its remedy:"
 # raw engine text, so "every error message names its remedy" was true of the
 # lifecycle commands and false of the SQL path the skill mandates for every
 # validation.
-has "exakit sql exists" "cmd_sql" "$(cat "$ROOT/setup/exakit")"
+has "exakit sql exists" "cmd_sql" "$(cat "$ROOT/setup/legacy-exakit")"
 has "and routes failures through the translator" "exakit_db_error_remedy" \
-    "$(sed -n '/^cmd_sql()/,/^}/p' "$ROOT/setup/exakit")"
+    "$(sed -n '/^cmd_sql()/,/^}/p' "$ROOT/setup/legacy-exakit")"
 has "and is in the catalog" "sql" "$(exakit_help_commands)"
-has "the PowerShell twin exists" "Invoke-CmdSql" "$(cat "$ROOT/setup/exakit.ps1")"
+has "the PowerShell twin exists" "Invoke-CmdSql" "$(cat "$ROOT/setup/legacy-exakit.ps1")"
 # PowerShell had NO translator at all: the Windows path got raw engine text and
 # nothing else, making the promise macOS-only.
 has "PowerShell has the translator too" "Show-ExakitDbErrorRemedy" \
@@ -677,9 +677,9 @@ for _case in "LIMIT" "exakit start" "describe it first"; do
 done
 # The gate: a seatbelt, not a sandbox -- but it must at least refuse the two
 # shapes that are never wanted from a "read" command.
-_sqlw="$(EXAKIT_HOME="$WORK/stopped" bash "$ROOT/setup/exakit" sql "DROP TABLE T" 2>&1)"
+_sqlw="$(EXAKIT_HOME="$WORK/stopped" bash "$ROOT/setup/legacy-exakit" sql "DROP TABLE T" 2>&1)"
 has "a write is refused without --write" "not a read statement" "$_sqlw"
-_sqlm="$(EXAKIT_HOME="$WORK/stopped" bash "$ROOT/setup/exakit" sql "SELECT 1; DROP TABLE T" 2>&1)"
+_sqlm="$(EXAKIT_HOME="$WORK/stopped" bash "$ROOT/setup/legacy-exakit" sql "SELECT 1; DROP TABLE T" 2>&1)"
 has "and a smuggled second statement is refused" "Only one statement" "$_sqlm"
 # A REJECTED STATEMENT IS NOT AN INSTALL FAILURE. `.last-failure` is what
 # `exakit status --json` reports as `last_failure`, so recording a typo there
@@ -688,17 +688,17 @@ has "and a smuggled second statement is refused" "Only one statement" "$_sqlm"
 check "a rejected statement leaves no failure note" "clean" \
     "$([ -f "$WORK/stopped/.last-failure" ] && echo "POLLUTED: $(head -1 "$WORK/stopped/.last-failure")" || echo clean)"
 check "and exits 2, like any other bad input" "2" \
-    "$(EXAKIT_HOME="$WORK/stopped" bash "$ROOT/setup/exakit" sql "DROP TABLE T" >/dev/null 2>&1; echo $?)"
+    "$(EXAKIT_HOME="$WORK/stopped" bash "$ROOT/setup/legacy-exakit" sql "DROP TABLE T" >/dev/null 2>&1; echo $?)"
 
 echo "data-load --force honours the dataset selection:"
 # THE BUG: EXAKIT_DATASETS=tpch,energy,weather exakit data-load --force reloaded
 # tpch ALONE and reported success, with no non-interactive way to reload the
 # others short of a full re-install. --force means "reload anyway", not "reload
 # something else".
-_dlf="$(sed -n '/^cmd_data_load()/,/^}/p' "$ROOT/setup/exakit")"
+_dlf="$(sed -n '/^cmd_data_load()/,/^}/p' "$ROOT/setup/legacy-exakit")"
 has "--force still reads EXAKIT_DATASETS" "EXAKIT_DATASETS" "$_dlf"
 has "and the PowerShell twin does too" "EXAKIT_DATASETS" \
-    "$(sed -n '/^function Invoke-CmdDataLoad/,/^}/p' "$ROOT/setup/exakit.ps1")"
+    "$(sed -n '/^function Invoke-CmdDataLoad/,/^}/p' "$ROOT/setup/legacy-exakit.ps1")"
 # ...and it has to be discoverable from the CLI, not only from AGENTS.md.
 has "the catalog documents the variable" "EXAKIT_DATASETS" "$(cat "$ROOT/setup/help/exakit.json")"
 
@@ -730,8 +730,8 @@ echo "the discovery surfaces are machine-readable:"
 # THE BUG: an agent told to "discover every command with exakit catalog" had to
 # pattern-match an ANSI-decorated screen; `exakit logs` was prose only too.
 check "catalog --json is one object" "yes" \
-    "$(bash "$ROOT/setup/exakit" catalog --json 2>/dev/null | python3 -m json.tool >/dev/null 2>&1 && echo yes || echo no)"
-bash "$ROOT/setup/exakit" catalog --json > "$WORK/catalog.json" 2>/dev/null
+    "$(bash "$ROOT/setup/legacy-exakit" catalog --json 2>/dev/null | python3 -m json.tool >/dev/null 2>&1 && echo yes || echo no)"
+bash "$ROOT/setup/legacy-exakit" catalog --json > "$WORK/catalog.json" 2>/dev/null
 check "and it finds the commands" "yes" "$(python3 - "$WORK/catalog.json" <<'PY'
 import json, sys
 want = {"status", "sql", "repair-runtime"}
@@ -745,15 +745,15 @@ PY
 # called 'dash-server'. Available: setup json-tables ..." - a list that does not
 # contain it, leaving the reader to work out why theirs is missing. A registered
 # add-on that is simply not installed is a state, not an unknown name.
-_log_addon="$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/exakit" logs dash-server 2>&1 || true)"
+_log_addon="$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/legacy-exakit" logs dash-server 2>&1 || true)"
 has "an uninstalled add-on's log says it is not installed" "is not installed" "$_log_addon"
 has "and says how to get it" "exakit marketplace" "$_log_addon"
 lacks "and does not call it an unknown name" "No log called" "$_log_addon"
-_log_bogus="$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/exakit" logs banana 2>&1 || true)"
+_log_bogus="$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/legacy-exakit" logs banana 2>&1 || true)"
 has "a name that is nothing at all is still unknown" "No log called" "$_log_bogus"
 
 check "logs --json is one object even with no logs" "yes" \
-    "$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/exakit" logs --json 2>/dev/null | python3 -m json.tool >/dev/null 2>&1 && echo yes || echo no)"
+    "$(EXAKIT_HOME="$WORK/none" bash "$ROOT/setup/legacy-exakit" logs --json 2>/dev/null | python3 -m json.tool >/dev/null 2>&1 && echo yes || echo no)"
 # The rows go through argv, not stdin: run_python reads the PROGRAM from stdin,
 # so a piped payload silently produced zero targets.
 lacks "logs --json does not feed data on stdin" 'printf .%s. "$_loj_rows" | run_python' \
@@ -880,9 +880,9 @@ printf '\n== repair-runtime actually replaces the database ==\n'
 # EXAKIT_REUSE_DB=0 is what makes the deployment step replace instead of adopt,
 # and both halves of the mirror have to honour it or the command lies on that
 # platform.
-EXAKIT_SH="$(cat "$ROOT/setup/exakit")"
+EXAKIT_SH="$(cat "$ROOT/setup/legacy-exakit")"
 has "repair-runtime forces a fresh deployment" 'export EXAKIT_REUSE_DB=0' "$EXAKIT_SH"
-has "...and the Windows twin does too" '$env:EXAKIT_REUSE_DB = "0"' "$(cat "$ROOT/setup/exakit.ps1")"
+has "...and the Windows twin does too" '$env:EXAKIT_REUSE_DB = "0"' "$(cat "$ROOT/setup/legacy-exakit.ps1")"
 # The runtime asks, and takes the flag as the answer.
 has "the personal runtime honours it" 'confirm_env EXAKIT_REUSE_DB' \
     "$(cat "$ROOT/setup/lib/runtime-personal.sh")"
@@ -907,12 +907,12 @@ echo "the JSON contract holds on the unhappy paths too:"
 # the parser bash's own "No such file or directory" line-number noise when
 # exapump was missing (exit 127).
 _jc="$WORK/jc"; mkdir -p "$_jc"
-_jc_out="$(EXAKIT_HOME="$_jc" bash "$ROOT/setup/exakit" sql --json 'SELECT 1' 2>/dev/null)"
+_jc_out="$(EXAKIT_HOME="$_jc" bash "$ROOT/setup/legacy-exakit" sql --json 'SELECT 1' 2>/dev/null)"
 check "sql --json answers JSON when not installed" "yes" \
     "$(printf '%s' "$_jc_out" | python3 -m json.tool >/dev/null 2>&1 && echo yes || echo no)"
 has "and says why, with a runnable remedy" '"remedy": "curl -fsSL' "$_jc_out"
 check "with the not-installed exit code" "4" \
-    "$(EXAKIT_HOME="$_jc" bash "$ROOT/setup/exakit" sql --json 'SELECT 1' >/dev/null 2>&1; echo $?)"
+    "$(EXAKIT_HOME="$_jc" bash "$ROOT/setup/legacy-exakit" sql --json 'SELECT 1' >/dev/null 2>&1; echo $?)"
 printf '{\n  "runtime": {\n    "type": "personal"\n  }\n}\n' > "$_jc/manifest.json"
 # EXAKIT_BIN_DIR must be sandboxed too: exapump.sh derives its binary path
 # from it at load time, so leaving it at the default finds the developer's
@@ -926,7 +926,7 @@ printf '{\n  "runtime": {\n    "type": "personal"\n  }\n}\n' > "$_jc/manifest.js
 _jc_tools="$_jc/tools"; mkdir -p "$_jc_tools"
 _jc_py="$(command -v python3 2>/dev/null || true)"
 [ -n "$_jc_py" ] && ln -sf "$_jc_py" "$_jc_tools/python3"
-_jc_nx="$(EXAKIT_HOME="$_jc" EXAKIT_BIN_DIR="$_jc/bin" EXAKIT_UV_BIN="$(command -v uv 2>/dev/null || true)" PATH="$_jc_tools:/usr/bin:/bin" bash "$ROOT/setup/exakit" sql --json 'SELECT 1' 2>/dev/null)"
+_jc_nx="$(EXAKIT_HOME="$_jc" EXAKIT_BIN_DIR="$_jc/bin" EXAKIT_UV_BIN="$(command -v uv 2>/dev/null || true)" PATH="$_jc_tools:/usr/bin:/bin" bash "$ROOT/setup/legacy-exakit" sql --json 'SELECT 1' 2>/dev/null)"
 has "a missing exapump is a real error, not bash noise" '"error": "exapump (the SQL client) is not installed"' "$_jc_nx"
 has "...with a runnable remedy" '"remedy": "exakit update"' "$_jc_nx"
 
@@ -939,7 +939,7 @@ has "...with a runnable remedy" '"remedy": "exakit update"' "$_jc_nx"
 # assertions below flipped on ambient host state — red locally, green in CI
 # only because CI runners lack the binaries. uv is handed through so manifest
 # reads still work where the system python is below the kit's floor.
-_jc_ver="$(EXAKIT_HOME="$_jc" EXAKIT_BIN_DIR="$_jc/bin" EXAKIT_UV_BIN="$(command -v uv 2>/dev/null || true)" PATH="$_jc_tools:/usr/bin:/bin" bash "$ROOT/setup/exakit" version --json 2>/dev/null)"
+_jc_ver="$(EXAKIT_HOME="$_jc" EXAKIT_BIN_DIR="$_jc/bin" EXAKIT_UV_BIN="$(command -v uv 2>/dev/null || true)" PATH="$_jc_tools:/usr/bin:/bin" bash "$ROOT/setup/legacy-exakit" version --json 2>/dev/null)"
 check "no component status is a shell command" "0" \
     "$(printf '%s' "$_jc_ver" | python3 -c "
 import json,sys
@@ -955,7 +955,7 @@ print('%s|%s' % (row['status'], row['remedy']))")"
 # status --json: 'installed: true' beside 'status: not installed' was one
 # object contradicting itself; and a state query must never write the
 # .last-failure note it reports.
-EXAKIT_SH_JC="$(cat "$ROOT/setup/exakit")"
+EXAKIT_SH_JC="$(cat "$ROOT/setup/legacy-exakit")"
 has "the kit-level status says no database, not 'not installed'" 'top_status = "no database"' "$EXAKIT_SH_JC"
 has "...with the runnable installer command as the remedy, never exakit start" \
     'remedies["database"] = install_cmd' "$EXAKIT_SH_JC"
@@ -1000,7 +1000,7 @@ echo "the lifecycle keeps its promises on the unhappy paths:"
 # launchd/systemd fired a launcher that no longer exists on every login.
 has "add-on uninstall retires the boot entry" '_exakit_autostart_unregister "$_uc_key"' \
     "$(cat "$ROOT/setup/lib/common.sh")"
-has "...and on Windows too" 'Unregister-ExakitAutostart -Id $Key' "$(cat "$ROOT/setup/exakit.ps1")"
+has "...and on Windows too" 'Unregister-ExakitAutostart -Id $Key' "$(cat "$ROOT/setup/legacy-exakit.ps1")"
 # AGK-07: the uv bootstrap runs lazily from INSIDE a --json answer; its
 # narration must never share stdout with the JSON object.
 check "uv bootstrap narration goes to stderr" "4" \
@@ -1023,7 +1023,7 @@ printf '{\n  "runtime": {\n    "type": "personal"\n  }\n}\n' > "$_su/manifest.js
 # installing. Unscrubbed it inherits the developer's ~/.local/bin and takes
 # their launcher with it - which is exactly what happened, downgrading a
 # working machine mid-test-run.
-_su_out="$(EXAKIT_HOME="$_su" EXAKIT_BIN_DIR="$_su/bin" bash "$ROOT/setup/exakit" update runtime --plan 2>&1)"
+_su_out="$(EXAKIT_HOME="$_su" EXAKIT_BIN_DIR="$_su/bin" bash "$ROOT/setup/legacy-exakit" update runtime --plan 2>&1)"
 lacks "update runtime --plan is not refused" "Unknown option" "$_su_out"
 # ...and --plan DESCRIBES. It used to describe only across a major gap and
 # install across every other one, so the flag that promises to touch nothing
@@ -1035,7 +1035,7 @@ check "...leaving no launcher behind" "absent" \
 # AGK-02: a DEAD installer answers with installing:false, the step it died at,
 # and remedies.install naming the re-run - the exact shape AGENTS.md promises.
 printf '{\n  "runtime": {\n    "type": "personal"\n  },\n  "install": {\n    "current_step": "mcp"\n  }\n}\n' > "$_su/manifest.json"
-_su_dead="$(EXAKIT_HOME="$_su" bash "$ROOT/setup/exakit" status --json 2>/dev/null)"
+_su_dead="$(EXAKIT_HOME="$_su" bash "$ROOT/setup/legacy-exakit" status --json 2>/dev/null)"
 check "dead installer keeps its step and remedy" "False|mcp|yes" "$(printf '%s' "$_su_dead" | python3 -c "
 import json,sys
 d = json.load(sys.stdin)
@@ -1134,7 +1134,7 @@ printf '{\n  "runtime": {\n    "type": "personal"\n  },\n  "components": {\n    
 # runner reason - the stub exapump on this PATH is the thing under test.
 _r3_tools="$_r3/tools"; mkdir -p "$_r3_tools"
 [ -n "$_jc_py" ] && ln -sf "$_jc_py" "$_r3_tools/python3"
-_r3_out="$(EXAKIT_HOME="$_r3" EXAKIT_BIN_DIR="$_r3/bin" EXAKIT_UV_BIN="$(command -v uv 2>/dev/null || true)" PATH="$_r3_tools:$_r3/bin:/usr/bin:/bin" bash "$ROOT/setup/exakit" sql --json 'SELECT 1' 2>/dev/null)"
+_r3_out="$(EXAKIT_HOME="$_r3" EXAKIT_BIN_DIR="$_r3/bin" EXAKIT_UV_BIN="$(command -v uv 2>/dev/null || true)" PATH="$_r3_tools:$_r3/bin:/usr/bin:/bin" bash "$ROOT/setup/legacy-exakit" sql --json 'SELECT 1' 2>/dev/null)"
 check "sql --json remedy is the runnable command" "exakit start" "$(printf '%s' "$_r3_out" | python3 -c "
 import json,sys
 print(json.load(sys.stdin).get('remedy'))" 2>/dev/null)"
@@ -1672,7 +1672,7 @@ has "windows repairs the same start" "function Wait-PersonalReadyOrDeploy" "$_p2
 has "...keeping the fatal wrapper for its own callers" "function Wait-PersonalReady {" "$_p2winh"
 has "...and the probe answers instead of failing" "function Test-PersonalReadyProbe" "$_p2winh"
 has "...exakit start waits for it there too" "Wait-PersonalReadyOrDeploy" \
-    "$(cat "$ROOT/setup/exakit.ps1")"
+    "$(cat "$ROOT/setup/legacy-exakit.ps1")"
 lacks "...while Start-Personal stays a nudge" "Wait-PersonalReadyOrDeploy" \
     "$(sed -n '/^function Start-Personal/,/^}/p' "$ROOT/setup/lib/runtime-personal.ps1")"
 # ONE FLAG, because it stopped meaning "no podman" the moment a declined reuse
@@ -1786,7 +1786,7 @@ echo "the machine contract holds on the paths that REFUSE, not only those that a
 # nothing to parse and the reason on a stream it was not reading. The kit
 # already had the right pattern in exactly one place (the loader's no-library
 # branch), applied nowhere else.
-_rj() { bash "$ROOT/setup/exakit" "$@" 2>/dev/null; }
+_rj() { bash "$ROOT/setup/legacy-exakit" "$@" 2>/dev/null; }
 _rj_ok() { # _rj_ok <args...> -> "object" | "empty" | "not-json"
     _rjo="$(_rj "$@")"
     [ -n "$_rjo" ] || { printf 'empty'; return; }
@@ -1807,7 +1807,7 @@ _rj status --bogus-zz --json >/dev/null 2>&1; check "a refusal still exits 2" "2
 check "no --json means nothing on stdout" "empty" "$(_rj_ok status --bogus-zz)"
 # sql keeps its own parsing: its argument is arbitrary SQL, and a statement
 # containing --json is a query, not a request for a machine answer.
-has "sql still parses --json itself" '_sql_json' "$(cat "$ROOT/setup/exakit")"
+has "sql still parses --json itself" '_sql_json' "$(cat "$ROOT/setup/legacy-exakit")"
 
 echo
 echo "hidden commands are MARKED for machines, not deleted:"
@@ -1817,7 +1817,7 @@ echo "hidden commands are MARKED for machines, not deleted:"
 # commands were absent - including skills-install, which `exakit skills --json`
 # hands a machine as its "next". An agent holding both documents had to
 # conclude one of them was lying.
-_cat="$(bash "$ROOT/setup/exakit" catalog --json 2>/dev/null)"
+_cat="$(bash "$ROOT/setup/legacy-exakit" catalog --json 2>/dev/null)"
 check "every catalog row carries a hidden key" "yes" \
     "$(printf '%s' "$_cat" | python3 -c 'import json,sys
 d = json.load(sys.stdin)
@@ -1835,9 +1835,9 @@ d = json.load(sys.stdin)
 print("yes" if any(r["invocation"] == "exakit skills-install" for r in d["commands"]) else "no")' 2>/dev/null)"
 # The SCREENS stay clean - these exist for repair, not for discovery.
 check "the overview does not advertise them" "0" \
-    "$(bash "$ROOT/setup/exakit" help 2>/dev/null | grep -c 'skills-install')"
+    "$(bash "$ROOT/setup/legacy-exakit" help 2>/dev/null | grep -c 'skills-install')"
 check "--all does not advertise them either" "0" \
-    "$(bash "$ROOT/setup/exakit" help --all 2>/dev/null | grep -c 'skills-install')"
+    "$(bash "$ROOT/setup/legacy-exakit" help --all 2>/dev/null | grep -c 'skills-install')"
 
 echo
 echo "what the kit thinks this CPU is:"
@@ -1872,8 +1872,8 @@ echo "the five state queries use ONE word per state:"
 #
 # Asserted on the EMITTERS, because the live machine can only be in one state
 # at a time and this suite must not stop a running database to see the other.
-_sv_src="$(cat "$ROOT/setup/exakit")"
-_sv_ps="$(cat "$ROOT/setup/exakit.ps1")"
+_sv_src="$(cat "$ROOT/setup/legacy-exakit")"
+_sv_ps="$(cat "$ROOT/setup/legacy-exakit.ps1")"
 lacks "no shell emitter invents a status word" '"status": "database not running"' "$_sv_src"
 lacks "...nor does the Python info block"      'doc["status"] = "database not running"' "$_sv_src"
 lacks "...nor either PowerShell twin"          'status = "database not running"' "$_sv_ps"
@@ -1948,8 +1948,8 @@ echo "a refusal is the same refusal on both CLIs:"
 # as an unfinished install step on a machine where nothing was wrong). An agent
 # scripting it from a document could not even classify what came back.
 if command -v pwsh >/dev/null 2>&1; then
-    _rp_sh_rc="$(bash "$ROOT/setup/exakit" autostart off >/dev/null 2>&1; echo $?)"
-    _rp_ps_rc="$(pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" autostart off >/dev/null 2>&1; echo $?)"
+    _rp_sh_rc="$(bash "$ROOT/setup/legacy-exakit" autostart off >/dev/null 2>&1; echo $?)"
+    _rp_ps_rc="$(pwsh -NoProfile -File "$ROOT/setup/legacy-exakit.ps1" autostart off >/dev/null 2>&1; echo $?)"
     check "bad input exits 2 on the shell CLI"      "2" "$_rp_sh_rc"
     check "...and 2 on the PowerShell CLI too"      "2" "$_rp_ps_rc"
     # And with --json, one object on stdout and NOTHING else there - which is
@@ -1957,7 +1957,7 @@ if command -v pwsh >/dev/null 2>&1; then
     # the object on exactly the machines the kit cares most about (a domain
     # profile with a redirected home), leaving it unparseable; it now goes to
     # stderr when a machine is asking.
-    _rp_ps_json="$(pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" autostart off --json 2>/dev/null)"
+    _rp_ps_json="$(pwsh -NoProfile -File "$ROOT/setup/legacy-exakit.ps1" autostart off --json 2>/dev/null)"
     check "the PowerShell refusal is one parseable object" "yes" \
         "$(printf '%s' "$_rp_ps_json" | python3 -c 'import json,sys
 try:
@@ -1971,13 +1971,13 @@ except Exception:
     check "...with remedy null, as on the shell side" "null null" \
         "$(printf '%s|%s' \
             "$(printf '%s' "$_rp_ps_json" | python3 -c 'import json,sys;print("null" if json.load(sys.stdin)["remedy"] is None else "notnull")' 2>/dev/null)" \
-            "$(bash "$ROOT/setup/exakit" autostart off --json 2>/dev/null | python3 -c 'import json,sys;print("null" if json.load(sys.stdin)["remedy"] is None else "notnull")' 2>/dev/null)" \
+            "$(bash "$ROOT/setup/legacy-exakit" autostart off --json 2>/dev/null | python3 -c 'import json,sys;print("null" if json.load(sys.stdin)["remedy"] is None else "notnull")' 2>/dev/null)" \
           | tr '|' ' ')"
 else
     echo "  (pwsh not available - PowerShell parity checks skipped)"
 fi
 has "the PowerShell refusal goes through Deny-ExakitInput" 'Deny-ExakitInput "autostart takes no arguments' \
-    "$(cat "$ROOT/setup/exakit.ps1")"
+    "$(cat "$ROOT/setup/legacy-exakit.ps1")"
 has "the home notice is kept off a machine's stdout" '[Console]::Error.WriteLine' \
     "$(sed -n '/^function Show-ExakitHomeNotice/,/^}/p' "$ROOT/setup/lib/exakit-common.ps1")"
 
@@ -1995,7 +1995,7 @@ echo "an error message that ends the run says what to do next:"
 # log, but it must name the command that opens it. "log" on its own is not a
 # remedy; "exakit logs setup" is.
 _sl_bad=""
-for _sl_f in "$ROOT"/setup/lib/*.sh "$ROOT"/setup/exakit "$ROOT"/setup/lib/*.ps1 "$ROOT"/setup/exakit.ps1; do
+for _sl_f in "$ROOT"/setup/lib/*.sh "$ROOT"/setup/legacy-exakit "$ROOT"/setup/lib/*.ps1 "$ROOT"/setup/legacy-exakit.ps1; do
     [ -f "$_sl_f" ] || continue
     # Only lines that RAISE something - a comment about the old wording is not
     # a message anyone sees.
@@ -2021,7 +2021,7 @@ check "...and it scanned real raisers" "yes" \
 _sl_home="$WORK/logs-target-home"
 mkdir -p "$_sl_home/logs"
 printf 'installer run\n' > "$_sl_home/logs/install-20260101-000000.log"
-_sl_targets="$(EXAKIT_HOME="$_sl_home" bash "$ROOT/setup/exakit" logs --json 2>/dev/null | python3 -c 'import json,sys
+_sl_targets="$(EXAKIT_HOME="$_sl_home" bash "$ROOT/setup/legacy-exakit" logs --json 2>/dev/null | python3 -c 'import json,sys
 try: print(" ".join(t.get("target","") for t in json.load(sys.stdin)["targets"]))
 except Exception: print("")' 2>/dev/null)"
 case "$_sl_targets" in
@@ -2040,18 +2040,18 @@ echo "the --json shapes AGENTS.md documents are the shapes the CLIs emit:"
 # any command".
 _jc_home="$WORK/json-contract-none"
 for _jc_cmd in mcp-status status version info skills catalog logs; do
-    _jc_rc="$(EXAKIT_HOME="$_jc_home" bash "$ROOT/setup/exakit" "$_jc_cmd" --bogus-zz >/dev/null 2>&1; echo $?)"
+    _jc_rc="$(EXAKIT_HOME="$_jc_home" bash "$ROOT/setup/legacy-exakit" "$_jc_cmd" --bogus-zz >/dev/null 2>&1; echo $?)"
     check "bad input on '$_jc_cmd' exits 2 even with nothing installed" "2" "$_jc_rc"
 done
 # ...and the legitimate not-installed answer is still 4, not swallowed by the above.
-_jc_rc="$(EXAKIT_HOME="$_jc_home" bash "$ROOT/setup/exakit" mcp-status --json >/dev/null 2>&1; echo $?)"
+_jc_rc="$(EXAKIT_HOME="$_jc_home" bash "$ROOT/setup/legacy-exakit" mcp-status --json >/dev/null 2>&1; echo $?)"
 check "...while a real not-installed answer stays 4" "4" "$_jc_rc"
 
 # AGK-05: the paragraph forbade `status` on the document commands and then
 # listed `status` for skills, and described its shape as two keys when it has
 # five. A parser written to either half was wrong.
 _jc_doc="$(grep -o '`skills --json` is `{[^}]*}`' "$ROOT/AGENTS.md" | head -1)"
-_jc_keys="$(bash "$ROOT/setup/exakit" skills --json 2>/dev/null | python3 -c 'import json,sys
+_jc_keys="$(bash "$ROOT/setup/legacy-exakit" skills --json 2>/dev/null | python3 -c 'import json,sys
 print(" ".join(sorted(json.load(sys.stdin))))' 2>/dev/null)"
 for _jc_k in $_jc_keys; do
     case "$_jc_doc" in
@@ -2088,7 +2088,7 @@ printf '{"components":{"dash_server":{"version":"0.1.0","validated":true}},"runt
 printf '#!/bin/sh\necho 0.1.0\n' > "$_dc_w/kit/dash-server-venv/bin/python"
 chmod +x "$_dc_w/kit/dash-server-venv/bin/python"
 _dc_run() { EXAKIT_HOME="$_dc_w/kit" EXAKIT_BIN_DIR="$_dc_w/bin" \
-    bash "$ROOT/setup/exakit" uninstall "$@" </dev/null >/dev/null 2>&1; echo $?; }
+    bash "$ROOT/setup/legacy-exakit" uninstall "$@" </dev/null >/dev/null 2>&1; echo $?; }
 check "declining an add-on removal exits 5, not 0" "5" "$(_dc_run dash-server)"
 check "...a dry run still exits 0"                 "0" "$(_dc_run dash-server --dry-run)"
 check "...an unknown target still exits 2"         "2" "$(_dc_run not-a-thing)"
@@ -2096,7 +2096,7 @@ check "...an unknown target still exits 2"         "2" "$(_dc_run not-a-thing)"
 # LIF-05: --yes is what AGENTS.md documents for automation, so it is the path
 # an agent takes when a user says "uninstall the kit" - and it printed one warn
 # line and destroyed, leaving no record of WHAT went.
-_dc_yes="$(sed -n '/if \[ "\$_uni_yes" = 1 \]; then/,/^    fi/p' "$ROOT/setup/exakit")"
+_dc_yes="$(sed -n '/if \[ "\$_uni_yes" = 1 \]; then/,/^    fi/p' "$ROOT/setup/legacy-exakit")"
 has "a --yes uninstall prints the plan first" 'exakit_uninstall_run 1' "$_dc_yes"
 has "...and says there is no export step"     'no export step' "$_dc_yes"
 has "...and still performs the removal"       'exakit_uninstall_run 0' "$_dc_yes"
@@ -2105,7 +2105,7 @@ has "...and still performs the removal"       'exakit_uninstall_run 0' "$_dc_yes
 # --json`, whose {"ok","rows","row_count"} envelope nothing in the kit ingests
 # - so the one instruction given before a command that destroys the database
 # produced a file its owner could not restore from.
-for _dc_f in setup/exakit setup/exakit.ps1; do
+for _dc_f in setup/legacy-exakit setup/legacy-exakit.ps1; do
     _dc_src="$(sed -n '/copy out anything you want to keep/,+3p' "$ROOT/$_dc_f")"
     lacks "$_dc_f no longer advises an unloadable format" "sql --json 'SELECT" "$_dc_src"
     has   "$_dc_f names a format the kit can load back"   "-f csv" "$_dc_src"
@@ -2116,7 +2116,7 @@ done
 # and every place it was suggested called it "reload" - which sounds additive.
 # The schema scripts are CREATE OR REPLACE TABLE, and the kit teaches people to
 # work in exactly those schemas.
-for _dc_f in README.md setup/exakit setup/lib/exapump.sh setup/help/exakit.json; do
+for _dc_f in README.md setup/legacy-exakit setup/lib/exapump.sh setup/help/exakit.json; do
     _dc_hits="$(grep -o '\-\-force[^."]\{0,40\}' "$ROOT/$_dc_f" 2>/dev/null | grep -ci 'reload' || true)"
     check "$_dc_f no longer calls --force a reload" "0" "${_dc_hits:-0}"
 done
@@ -2125,7 +2125,7 @@ has "the help document says what --force does to the tables" 'dropped and rebuil
 
 echo
 echo "the two entry points describe what they actually implement:"
-# DOC-02. setup/exakit.ps1's header is the one place the Windows entry point
+# DOC-02. setup/legacy-exakit.ps1's header is the one place the Windows entry point
 # describes itself, and it listed 22 of the 25 commands it dispatches. Missing:
 # sql - which AGENTS.md tells every agent to reach for first - repair-runtime,
 # the only exit from an interrupted database, and skills. It also documented
@@ -2150,9 +2150,9 @@ else:
     names = {n for n in names if n and n != "*"}
 print(" ".join(sorted(n for n in names if not n.startswith("-") and n not in hdr)))'
 }
-check "every command the Windows CLI dispatches is in its header" "" "$(_hd_missing setup/exakit.ps1 75)"
-check "...and the same holds for the shell CLI"                   "" "$(_hd_missing setup/exakit 84)"
-_hd_ps="$(sed -n '4,75p' "$ROOT/setup/exakit.ps1")"
+check "every command the Windows CLI dispatches is in its header" "" "$(_hd_missing setup/legacy-exakit.ps1 75)"
+check "...and the same holds for the shell CLI"                   "" "$(_hd_missing setup/legacy-exakit 84)"
+_hd_ps="$(sed -n '4,75p' "$ROOT/setup/legacy-exakit.ps1")"
 has "the Windows header documents the add-on uninstall" 'uninstall [<addon-id>]' "$_hd_ps"
 
 # DOC-03: the shell header advertised the staged major-upgrade route with no
@@ -2160,16 +2160,16 @@ has "the Windows header documents the add-on uninstall" 'uninstall [<addon-id>]'
 # Windows user meeting a major upgrade was pointed at a route that does not
 # exist there and got "Unknown option '--plan'".
 has "the staged-upgrade claim names its platforms" 'macOS, Linux and WSL only' \
-    "$(sed -n '1,84p' "$ROOT/setup/exakit")"
+    "$(sed -n '1,84p' "$ROOT/setup/legacy-exakit")"
 if command -v pwsh >/dev/null 2>&1; then
-    _hd_plan="$(pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" update runtime --plan 2>&1)"
+    _hd_plan="$(pwsh -NoProfile -File "$ROOT/setup/legacy-exakit.ps1" update runtime --plan 2>&1)"
     has "...and Windows says so instead of 'unknown option'" 'does not implement' "$_hd_plan"
     lacks "...without calling it a typo"                     "Unknown option '--plan'" "$_hd_plan"
-    _hd_rc="$(pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" update runtime --plan >/dev/null 2>&1; echo $?)"
+    _hd_rc="$(pwsh -NoProfile -File "$ROOT/setup/legacy-exakit.ps1" update runtime --plan >/dev/null 2>&1; echo $?)"
     check "...still exit 2, it is still bad input here" "2" "$_hd_rc"
     # A genuinely unknown option must still read as one.
     has "an ordinary unknown option is unchanged" "Unknown option '--bogus-zz'" \
-        "$(pwsh -NoProfile -File "$ROOT/setup/exakit.ps1" update --bogus-zz 2>&1)"
+        "$(pwsh -NoProfile -File "$ROOT/setup/legacy-exakit.ps1" update --bogus-zz 2>&1)"
 fi
 
 # DOC-06: EXAKIT_LOCAL_KIT sat in a table headed "They work on all platforms"
@@ -2241,7 +2241,7 @@ echo "one shape for the five state queries, and a token for which machine this i
 _js_home="$WORK/json-shape-none"
 for _js_cmd in status info version mcp-status mcp-doctor; do
     check "$_js_cmd --json carries the shared keys when nothing is installed" "all present" \
-        "$(EXAKIT_HOME="$_js_home" bash "$ROOT/setup/exakit" "$_js_cmd" --json 2>/dev/null | python3 -c '
+        "$(EXAKIT_HOME="$_js_home" bash "$ROOT/setup/legacy-exakit" "$_js_cmd" --json 2>/dev/null | python3 -c '
 import json, sys
 try:
     d = json.load(sys.stdin)
@@ -2254,7 +2254,7 @@ done
 # WSL-08: every WSL remedy asks for an action on ANOTHER operating system, and
 # nothing in the payload said the host was WSL - so an agent could not tell a
 # remedy it can run from one it must hand to the user.
-_js_status="$(bash "$ROOT/setup/exakit" status --json 2>/dev/null)"
+_js_status="$(bash "$ROOT/setup/legacy-exakit" status --json 2>/dev/null)"
 check "status --json names the platform" "yes" \
     "$(printf '%s' "$_js_status" | python3 -c '
 import json, sys
@@ -2392,7 +2392,7 @@ has "one definition of 'this is our runner'" '_personal_is_runner_process' \
     "$(sed -n '/^personal_is_orphan_daemon()/,/^}/p' "$ROOT/setup/lib/runtime-personal.sh")"
 has "...used by the starting probe too"      '_personal_is_runner_process' \
     "$(sed -n '/^personal_starting()/,/^}/p' "$ROOT/setup/lib/runtime-personal.sh")"
-has "exakit start waits instead of reaping"  'already starting' "$(cat "$ROOT/setup/exakit")"
+has "exakit start waits instead of reaping"  'already starting' "$(cat "$ROOT/setup/legacy-exakit")"
 
 echo
 echo "WSL is detected by more than one signal, and free disk means the real disk:"
@@ -2632,13 +2632,13 @@ echo "the rescue advice names a file that can actually be loaded back:"
 #   Protocol error: table name not allowed since it is a keyword: TABLE
 # Exporting worked; the load in the very next line of the same message did not.
 # Proven on a live Linux install: <TABLE>.csv round-trips 5 rows out and 5 back.
-for _rs_f in setup/exakit setup/exakit.ps1; do
+for _rs_f in setup/legacy-exakit setup/legacy-exakit.ps1; do
     _rs_src="$(cat "$ROOT/$_rs_f")"
     lacks "$_rs_f does not name a file that becomes a keyword" 'data-load table.csv' "$_rs_src"
     has   "$_rs_f names the file after the table"              '<TABLE>.csv' "$_rs_src"
 done
 has "...and says why the name matters" 'file name becomes the table name' \
-    "$(cat "$ROOT/setup/exakit")"
+    "$(cat "$ROOT/setup/legacy-exakit")"
 
 echo "passed: $PASS, failed: $FAIL"
 [ "$FAIL" -eq 0 ]

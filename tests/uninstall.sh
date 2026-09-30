@@ -150,7 +150,7 @@ check "and does not point at a raw repository URL" "no" "$_ic_raw"
 # thing that must never regress is Windows being handed the shell form.
 _psc="$(grep -c 'irm \$(\$script:InstallUrl) | iex' "$ROOT/setup/lib/exakit-common.ps1" 2>/dev/null; true)"
 check "the Windows twin hands back the irm form" "1" "$_psc"
-_psbad="$(grep -c 'Install it again any time: curl' "$ROOT/setup/exakit.ps1" 2>/dev/null; true)"
+_psbad="$(grep -c 'Install it again any time: curl' "$ROOT/setup/legacy-exakit.ps1" 2>/dev/null; true)"
 check "and Windows is never told to curl into sh" "0" "$_psbad"
 
 # The by-name form accepts exactly the MARKETPLACE ADD-ON ids (the selective
@@ -161,7 +161,7 @@ check "and Windows is never told to curl into sh" "0" "$_psbad"
 echo
 echo "uninstall accepts add-on ids and rejects internal piece names:"
 for _c in database mcp_configs skills exapump pyexasol; do
-    _uout="$(/bin/bash "$ROOT/setup/exakit" uninstall "$_c" --dry-run 2>&1 | sed 's/\x1b\[[0-9;]*m//g')"
+    _uout="$(/bin/bash "$ROOT/setup/legacy-exakit" uninstall "$_c" --dry-run 2>&1 | sed 's/\x1b\[[0-9;]*m//g')"
     case "$_uout" in
         *"Unknown uninstall target"*) check "exakit uninstall $_c is rejected" "rejected" "rejected" ;;
         *)                            check "exakit uninstall $_c is rejected" "rejected" "ACCEPTED" ;;
@@ -169,7 +169,7 @@ for _c in database mcp_configs skills exapump pyexasol; do
 done
 # A registered add-on id is a real target. Any of the three honest answers
 # passes; the one wrong answer is calling it unknown.
-_uout="$(EXAKIT_HOME="$SANDBOX/none-such" /bin/bash "$ROOT/setup/exakit" uninstall dash-server --dry-run 2>&1 | sed 's/\x1b\[[0-9;]*m//g')"
+_uout="$(EXAKIT_HOME="$SANDBOX/none-such" /bin/bash "$ROOT/setup/legacy-exakit" uninstall dash-server --dry-run 2>&1 | sed 's/\x1b\[[0-9;]*m//g')"
 case "$_uout" in
     *"Unknown uninstall target"*|*"Unknown option"*)
         check "exakit uninstall dash-server is a real target" "accepted" "REJECTED" ;;

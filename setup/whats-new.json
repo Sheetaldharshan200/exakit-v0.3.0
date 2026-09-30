@@ -20,6 +20,13 @@
     "install shows no cards at all, so every line here is read by someone who",
     "already had the kit working and wants to know what is different."
   ],
+  "0.3.0": [
+    "exakit persona: pick a role, get its data, clients and add-ons.",
+    "Four personas ship: analyst, data-scientist, data-engineer, minimal.",
+    "EXAKIT_PERSONA=<id> on the install command applies one unattended.",
+    "exakit persona plan <id> shows what is left; apply lands next.",
+    "The kit now runs on its own Python, set up for you by uv."
+  ],
   "0.2.0": [
     "exakit marketplace with powerful add-ons.",
     "exakit update applies the recommended updates, latest AI skills.",

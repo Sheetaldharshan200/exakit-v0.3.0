@@ -54,7 +54,7 @@ STUB="$WORK/exakit"
 ln -s "$ROOT/setup/lib" "$WORK/lib"
 {
     # Everything up to and including the last library source line...
-    sed -n '1,/^\[ -f "\$_lib_dir\/json-tables.sh" \]/p' "$ROOT/setup/exakit"
+    sed -n '1,/^\[ -f "\$_lib_dir\/json-tables.sh" \]/p' "$ROOT/setup/legacy-exakit"
     # ...then the override, so it wins over the real probe...
     cat <<'STUB_EOF'
 if [ -n "${EXAKIT_TEST_ABSENT:-}${EXAKIT_TEST_PRESENT:-}" ]; then
@@ -67,12 +67,12 @@ if [ -n "${EXAKIT_TEST_ABSENT:-}${EXAKIT_TEST_PRESENT:-}" ]; then
 fi
 STUB_EOF
     # ...then the rest of the script.
-    sed -n '/^\[ -f "\$_lib_dir\/json-tables.sh" \]/,$p' "$ROOT/setup/exakit" | tail -n +2
+    sed -n '/^\[ -f "\$_lib_dir\/json-tables.sh" \]/,$p' "$ROOT/setup/legacy-exakit" | tail -n +2
 } > "$STUB"
 chmod +x "$STUB"
 # The stub is worthless if the injection missed, and a silent miss would make
 # every check below "pass" by reporting nothing.
-grep -q 'EXAKIT_TEST_ABSENT' "$STUB" || { printf 'FAIL could not build the test stub (injection point moved in setup/exakit)\n'; exit 1; }
+grep -q 'EXAKIT_TEST_ABSENT' "$STUB" || { printf 'FAIL could not build the test stub (injection point moved in setup/legacy-exakit)\n'; exit 1; }
 bash -n "$STUB" || { printf 'FAIL the test stub does not parse\n'; exit 1; }
 
 status_with_absent() { EXAKIT_TEST_ABSENT="$1" bash "$STUB" status 2>/dev/null; }
@@ -285,7 +285,7 @@ EOF
 
 # The PowerShell twin carries the identical fault, and carried the identical
 # stale comment claiming the outcomes stay on screen through OkStep.
-ps_un="$(code_only "$(fn_body "$ROOT/setup/exakit.ps1" 'function Invoke-ExakitUninstallRun {')")"
+ps_un="$(code_only "$(fn_body "$ROOT/setup/legacy-exakit.ps1" 'function Invoke-ExakitUninstallRun {')")"
 # Checked on OkStep, not on the name of the helper that wraps it: a body can
 # call Write-UninstallRecord all day with no such function defined in it, which
 # is how removing the definition left this passing. OkStep is the thing that
@@ -399,7 +399,7 @@ fi
 #     die()/Fail() rendered it as a red error card, exited 1, and -- because
 #     die() records a failure note -- left `exakit status --json` reporting a
 #     last_failure on a machine where nothing had gone wrong.
-for f in "setup/exakit|cmd_repair_runtime() {|die" "setup/exakit.ps1|function Invoke-CmdRepairRuntime {|Fail"; do
+for f in "setup/legacy-exakit|cmd_repair_runtime() {|die" "setup/legacy-exakit.ps1|function Invoke-CmdRepairRuntime {|Fail"; do
     file="${f%%|*}"; rest="${f#*|}"; opener="${rest%%|*}"; fatal="${rest##*|}"
     body="$(fn_body "$ROOT/$file" "$opener")"
     # 30 lines, not 12: the declined branch now answers in --json as well as in
@@ -434,7 +434,7 @@ if has "$note_fn" 'yyyy-MM-dd HH:mm:ss'; then
 else
     fail "the failure note is undated, so a stale one makes a healthy machine look broken"
 fi
-json_body="$(fn_body "$ROOT/setup/exakit.ps1" 'function Invoke-CmdStatus {')"
+json_body="$(fn_body "$ROOT/setup/legacy-exakit.ps1" 'function Invoke-CmdStatus {')"
 if has "$json_body" "last_failure" && has "$json_body" "last_failure_at"; then
     pass "the PowerShell status --json carries last_failure and last_failure_at"
 else

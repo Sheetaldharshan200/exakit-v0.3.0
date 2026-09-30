@@ -375,7 +375,7 @@ printf '\n== exakit help lists each command once ==\n'
 # \x1b). The screen is rendered for real, not read out of the catalog: the
 # catalog is ALLOWED to name a command in two groups - what must not happen is
 # printing it twice.
-HELP_OUT="$(NO_COLOR=1 EXAKIT_NO_UPDATE_NOTICE=1 /bin/bash "$ROOT/setup/exakit" help 2>&1)"
+HELP_OUT="$(NO_COLOR=1 EXAKIT_NO_UPDATE_NOTICE=1 /bin/bash "$ROOT/setup/legacy-exakit" help 2>&1)"
 HELP_ROWS="$(printf '%s\n' "$HELP_OUT" | grep -oE '^    exakit [a-z-]+' || true)"
 check "no command is listed twice" "" "$(printf '%s\n' "$HELP_ROWS" | sort | uniq -d)"
 has "mcp-setup is listed" "exakit mcp-setup" "$HELP_OUT"
@@ -400,7 +400,7 @@ doc["groups"][-1]["commands"].append("status")
 json.dump(doc, open(path, "w"), indent=2)
 EXAKIT_DEDUPE_PY
 check "the fixture lists a command twice" "2" "$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(sum(g["commands"].count("status") for g in d["groups"]))' "$DEDUPE_DIR/setup/help/exakit.json")"
-DEDUPE_OUT="$(NO_COLOR=1 EXAKIT_NO_UPDATE_NOTICE=1 /bin/bash "$DEDUPE_DIR/setup/exakit" help 2>&1)"
+DEDUPE_OUT="$(NO_COLOR=1 EXAKIT_NO_UPDATE_NOTICE=1 /bin/bash "$DEDUPE_DIR/setup/legacy-exakit" help 2>&1)"
 check "the renderer collapses it to one row" "1" \
     "$(printf '%s\n' "$DEDUPE_OUT" | grep -cE '^    exakit status')"
 rm -rf "$DEDUPE_DIR"

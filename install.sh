@@ -8,7 +8,8 @@
 #   2. downloads the starter kit to ~/.exasol-starter-kit/kit (so you can
 #      read every script before or after it runs)
 #   3. shows the installation plan
-#   4. hands off to the matching setup script, which installs and connects
+#   4. sets up the kit's own Python (uv-managed, never the system one)
+#   5. hands off to `python -m exakit install`, which installs and connects
 #      a local Exasol database, exapump, and the Exasol MCP server
 #
 # Options (environment variables, because flags don't travel through a pipe):
@@ -53,6 +54,10 @@
 #   EXAKIT_MARKETPLACE_ADDONS=...  answer the closing marketplace offer: add-on
 #                           ids (csv, e.g. "dash-server"), all, or none; unset,
 #                           a non-interactive install skips the offer
+#   EXAKIT_PERSONA=...      a named bundle of the answers above: analyst,
+#                           data-scientist, data-engineer, minimal, or your own
+#                           (~/.exasol-starter-kit/personas/<id>.json); the
+#                           explicit answers above still win over it
 #   GITHUB_TOKEN=...        auth for downloading from a private repo
 #
 # Windows (PowerShell): use install.ps1 instead.
@@ -272,6 +277,23 @@ main() {
     # own so the wordmark appears exactly once through the installer. A direct
     # `bash setup/setup-*.sh` run (no installer) still shows it.
     export EXAKIT_BANNER_SHOWN=1
+    # --- 6. the kit's own Python, then the kit ------------------------------
+    # From here on the kit is Python: bootstrap/ensure-python.sh puts a managed
+    # interpreter under $EXAKIT_HOME/python (uv, digest-checked, never the
+    # system Python) and `python -m exakit install` runs the install. The setup
+    # script named above is what that command hands the install to today.
+    if [ -f "$kit_dir/bootstrap/ensure-python.sh" ]; then
+        EXAKIT_KIT_DIR="$kit_dir"; export EXAKIT_KIT_DIR
+        . "$kit_dir/bootstrap/ensure-python.sh"
+        ensure_python || fail "The kit's Python could not be set up. Check your internet connection or proxy (set HTTPS_PROXY if needed) and re-run this installer."
+        export EXAKIT_PYTHON
+        PYTHONPATH="$kit_dir${PYTHONPATH:+:$PYTHONPATH}"; export PYTHONPATH
+        if [ ! -t 0 ] && (: < /dev/tty) 2>/dev/null; then
+            exec "$EXAKIT_PYTHON" -m exakit install < /dev/tty
+        else
+            exec "$EXAKIT_PYTHON" -m exakit install
+        fi
+    fi
     if [ ! -t 0 ] && (: < /dev/tty) 2>/dev/null; then
         exec bash "$kit_dir/$setup_script" < /dev/tty
     else

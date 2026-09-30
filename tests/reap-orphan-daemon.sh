@@ -136,7 +136,7 @@ echo "a runner that is still coming up is NOT an orphan:"
 # `conflict` as "probably our own orphan" and calls this reaper, which
 # escalates to pkill -9 -P plus kill -9. So a second `exakit start` during
 # startup (two shells, an agent that retries) SIGKILLed the starting runner.
-# setup/exakit records what that costs: a SIGKILLed runner leaves the launcher
+# setup/legacy-exakit records what that costs: a SIGKILLed runner leaves the launcher
 # `interrupted`, after which every start fails identically forever, and the
 # only cure is `exakit repair-runtime` - which deletes the database.
 P4="$(pick_port $((P3 + 1)))"
@@ -190,7 +190,7 @@ echo "exakit start reaps before it refuses:"
 # passed with the fix REVERTED, because the comment explaining the fix names
 # personal_reap_orphan_daemon too - a guard satisfied by prose about the thing
 # rather than the thing. Comment lines go before anything is located.
-_cs_body="$(awk '/^cmd_start\(\)/{f=1} f{print} f&&/^}$/{if(f)exit}' "$ROOT/setup/exakit" \
+_cs_body="$(awk '/^cmd_start\(\)/{f=1} f{print} f&&/^}$/{if(f)exit}' "$ROOT/setup/legacy-exakit" \
     | sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d')"
 _cs_reap="$(printf '%s\n' "$_cs_body" | grep -n 'personal_reap_orphan_daemon' | head -1 | cut -d: -f1)"
 _cs_die="$(printf '%s\n' "$_cs_body" | grep -n 'not by Exasol' | head -1 | cut -d: -f1)"

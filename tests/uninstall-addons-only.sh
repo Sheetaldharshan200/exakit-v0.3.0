@@ -200,7 +200,7 @@ case "$_sk_out" in
 esac
 
 # 8. The PowerShell twin routes the same way; it cannot be executed here.
-PS="$ROOT/setup/exakit.ps1"
+PS="$ROOT/setup/legacy-exakit.ps1"
 if grep -q '__all_addons__' "$PS" && grep -q 'keeps: nothing' "$PS"; then
     pass "the PowerShell twin carries the sweep row"
 else
@@ -214,7 +214,7 @@ else
     fail "the PowerShell twin checks the sweep key after the __ skip - the pick is discarded"
 fi
 
-PS_MAIN="$ROOT/setup/exakit.ps1"
+PS_MAIN="$ROOT/setup/legacy-exakit.ps1"
 if grep -q 'The kit is gone' "$PS_MAIN"; then
     pass "the PowerShell twin has the full-uninstall closing line"
 else

@@ -66,7 +66,7 @@ for needed in \
     setup/lib/help.sh \
     setup/help/exakit.json \
     setup/help/exapump.json \
-    setup/exakit \
+    setup/legacy-exakit \
     data/datasets/tpch/data/lineitem.csv
 do
     if printf '%s\n' "$listing" | grep -qxF "$needed"; then

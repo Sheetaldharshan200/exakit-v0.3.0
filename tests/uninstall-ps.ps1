@@ -1,6 +1,6 @@
 #!/usr/bin/env pwsh
 # uninstall-ps.ps1 - regression test for Invoke-ExakitUninstallRun in
-# setup/exakit.ps1 (the Windows CLI). Extracts just that function via the AST,
+# setup/legacy-exakit.ps1 (the Windows CLI). Extracts just that function via the AST,
 # runs it against a fully sandboxed fake $HOME, and asserts the same behavior as
 # the bash tests/uninstall.sh: dry-run removes nothing; a real run deletes
 # skills, exapump, the kit home and the CLI binaries AND invokes the database
@@ -20,7 +20,7 @@ function Check($label, $expected, $actual) {
 # --- pull only the function under test out of the CLI via the AST ----------
 $errors = $null; $tokens = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile(
-    (Join-Path $repo "setup/exakit.ps1"), [ref]$tokens, [ref]$errors)
+    (Join-Path $repo "setup/legacy-exakit.ps1"), [ref]$tokens, [ref]$errors)
 if ($errors.Count -gt 0) { throw "exakit.ps1 has parse errors" }
 # EVERY function definition, not just the one under test.
 #
@@ -92,7 +92,7 @@ function Unregister-ExakitAutostart { param([string]$Id) $script:markers.autosta
 function Get-ExakitMarketplaceInstalledAddons { @() }
 function Get-ExakitMarketplaceAddon { param([string]$Id) $null }
 function Get-ExakitMarketplaceAddons { @() }
-# These four live in setup/lib/, not setup/exakit.ps1, so extracting the CLI's
+# These four live in setup/lib/, not setup/legacy-exakit.ps1, so extracting the CLI's
 # functions does not bring them along.
 #
 # The skill names are the two the sandbox seeds, because the assertions below

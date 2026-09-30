@@ -1,7 +1,7 @@
 # ps-parse.ps1 - every .ps1 in this repo must PARSE under Windows PowerShell 5.1.
 #
 # This guard exists because a file that does not parse is not a broken feature,
-# it is a broken PRODUCT: setup/exakit.ps1 dot-sources the library and the
+# it is a broken PRODUCT: setup/legacy-exakit.ps1 dot-sources the library and the
 # marketplace modules at startup, so one parse error anywhere in that set makes
 # EVERY exakit command on Windows fail before it runs a line.
 #
