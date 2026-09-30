@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 
-from exakit.app import Context, help as help_app, persona as persona_app, skills as skills_app, version as version_app, whats_new
+from exakit.app import Context, help as help_app, mcp as mcp_app, persona as persona_app, skills as skills_app, version as version_app, whats_new
 from exakit.app.machine import kit_root
 from exakit.domain.errors import BadInput
 from exakit.domain.result import Result
@@ -145,3 +145,34 @@ def skills_install_command(args: list[str], ctx: Context) -> Result:
     _split(args, (), "skills-install")
     ctx.manifest()   # exit 4 without an install record
     return skills_app.skills_install_command(ctx)
+
+
+# --- MCP --------------------------------------------------------------------------------
+
+
+def mcp_setup_command(args: list[str], ctx: Context) -> Result:
+    for arg in args:
+        if arg.startswith("-"):
+            raise BadInput(f"Unknown option '{arg}' for mcp-setup (it takes none; name clients with EXAKIT_MCP_CLIENTS=claude,codex exakit mcp-setup).")
+        raise BadInput("mcp-setup takes no arguments; name clients with EXAKIT_MCP_CLIENTS=<x> exakit mcp-setup")
+    ctx.manifest()
+    if not ctx.manifest().runtime_type():
+        from exakit.domain.errors import NotRunning
+        raise NotRunning("No runtime recorded in the manifest yet - re-run the installer, it resumes at the unfinished step.",
+                         remedy=ctx.install_command())
+    return mcp_app.setup(ctx)
+
+
+def mcp_status_command(args: list[str], ctx: Context) -> Result:
+    positional, _ = _split(args, JSON_FLAGS, "mcp-status")
+    return mcp_app.status(ctx, positional)
+
+
+def mcp_doctor_command(args: list[str], ctx: Context) -> Result:
+    positional, _ = _split(args, JSON_FLAGS, "mcp-doctor")
+    return mcp_app.doctor(ctx, positional)
+
+
+def mcp_remove_command(args: list[str], ctx: Context) -> Result:
+    positional, _ = _split(args, (), "mcp-remove")
+    return mcp_app.remove(ctx, positional)

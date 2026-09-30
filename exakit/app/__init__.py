@@ -12,12 +12,18 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from exakit.adapters.clients import ClientOps
+from exakit.adapters.exapump import Exapump
+from exakit.adapters.fs.credentials import CredentialStore
 from exakit.adapters.fs.log import Log, NullLog
 from exakit.adapters.fs.manifest_store import ManifestStore
 from exakit.adapters.fs.paths import Paths
 from exakit.adapters.net.http import Downloader
 from exakit.adapters.net.versions_cache import VersionsSource
 from exakit.adapters.process.runner import Runner
+from exakit.adapters.process.services import Services
+from exakit.adapters.runtime.personal import PersonalRuntime
+from exakit.adapters.uv import Uv
 from exakit.domain.catalog import Catalog
 from exakit.domain.errors import ExakitError, NotConfirmed
 from exakit.domain.manifest import Manifest
@@ -47,6 +53,13 @@ class Context:
     dry_run: bool = False
     readonly: bool = False
     kit_repo: str = "krishna-exasol/update-path"
+    # Machine-facing adapters the CLI wires; tests pass fakes. None means "not wired yet".
+    credentials: CredentialStore | None = None
+    clients: ClientOps | None = None
+    runtime: PersonalRuntime | None = None
+    services: Services | None = None
+    uv: Uv | None = None
+    exapump: Exapump | None = None
 
     @property
     def policy(self) -> VersionPolicy:
