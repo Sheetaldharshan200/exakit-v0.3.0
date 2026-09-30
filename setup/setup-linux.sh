@@ -102,6 +102,9 @@ if begin_step runtime "Step 2/6  Local database deployment"; then
         warn "The database was not installed - carrying on so the rest of the install completes"
     fi
 else
+    # A deployment recorded by an earlier run can still carry the old
+    # container's keys; this is the run that clears them.
+    personal_clear_stale_record
     # The resume arms: redeploy what is gone (disarming the destroy the deploy
     # registers, since there is no mark_step here to do it), start what is
     # merely stopped - every later step talks SQL to the database.

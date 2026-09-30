@@ -75,13 +75,28 @@ $script:LegacyMigrateRemedy = ""
 # question from the same place.
 function Test-LegacyDbRecorded { return (Test-ExakitLegacyRuntimeRecorded) }
 
+# Get-LegacyRecordValue <key> - the old container's container/volume/engine:
+# the copy under legacy.* first, runtime.* only when none was kept.
+#
+# runtime.* describes the OLD database only until the new one is recorded:
+# Set-PersonalManifest then drops these keys, so status stops calling a
+# Podman-run Exasol Personal "personal (docker)". Save-LegacyRecord copies
+# them under legacy.* before that, and the restore after the deployment reads
+# them from there. Twin of legacy_record_value.
+function Get-LegacyRecordValue {
+    param([Parameter(Mandatory)][string]$Key)
+    $v = "" + (Get-ExakitManifestValue "legacy.$Key")
+    if ($v) { return $v }
+    return "" + (Get-ExakitManifestValue "runtime.$Key")
+}
+
 function Get-LegacyContainer {
     if ($env:EXAKIT_LEGACY_CONTAINER) { return "" + $env:EXAKIT_LEGACY_CONTAINER }
-    return "" + (Get-ExakitManifestValue "runtime.container")
+    return (Get-LegacyRecordValue "container")
 }
 function Get-LegacyVolume {
     if ($env:EXAKIT_LEGACY_VOLUME) { return "" + $env:EXAKIT_LEGACY_VOLUME }
-    return "" + (Get-ExakitManifestValue "runtime.volume")
+    return (Get-LegacyRecordValue "volume")
 }
 function Get-LegacyDsn {
     if ($env:EXAKIT_LEGACY_DSN) { return "" + $env:EXAKIT_LEGACY_DSN }
@@ -110,7 +125,7 @@ function Get-LegacyEngineName {
     # name stand on its own, so a message can still say what is missing.
     $path = Get-LegacyEngine
     if ($path) { return [System.IO.Path]::GetFileNameWithoutExtension($path) }
-    return "" + (Get-ExakitManifestValue "runtime.engine")
+    return (Get-LegacyRecordValue "engine")
 }
 
 # Get-LegacyEngine - the engine that can actually reach this database, as a
@@ -156,7 +171,7 @@ function Get-LegacyEngine {
     }
     if ($null -ne $script:LegacyEnginePath) { return $script:LegacyEnginePath }
     $path = ""
-    $recorded = "" + (Get-ExakitManifestValue "runtime.engine")
+    $recorded = Get-LegacyRecordValue "engine"
     if ($recorded) {
         $cmd = Get-Command $recorded -ErrorAction SilentlyContinue
         if ($cmd) { $path = $cmd.Source }

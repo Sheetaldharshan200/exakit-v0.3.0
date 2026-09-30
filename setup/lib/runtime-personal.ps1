@@ -613,6 +613,31 @@ function Install-PersonalLauncher {
     }
 }
 
+# Clear-PersonalStaleRecord - drop the old container's keys from runtime.*.
+#
+# An install that crossed from the Docker-era kit kept runtime.engine,
+# container, image and volume from the nano record, so status read "personal
+# (docker)" - and the record named a container that is not this deployment's -
+# while the database ran in Podman. Those keys describe the OLD database, and
+# legacy.* is where the kit keeps it: migrate and the restore read it from
+# there (Get-LegacyRecordValue). Copied across first when legacy.* has none, so
+# a record saved before Save-LegacyRecord existed loses nothing. Called when
+# the runtime is recorded and on every resumed install, so an install already
+# carrying the stale keys heals on its next run. Twin of
+# personal_clear_stale_record.
+function Clear-PersonalStaleRecord {
+    foreach ($key in @("container", "engine", "volume")) {
+        $old = Get-ExakitManifestValue "runtime.$key"
+        if ($null -eq $old -or "$old" -eq "") { continue }
+        if (-not (Get-ExakitManifestValue "legacy.$key")) { Set-ExakitManifestValue "legacy.$key" $old }
+    }
+    foreach ($key in @("runtime.container", "runtime.image", "runtime.volume")) {
+        if ($null -ne (Get-ExakitManifestValue $key)) { Remove-ExakitManifestValue $key }
+    }
+    # On Windows the launcher always runs the database in Podman (see header).
+    Set-ExakitManifestValue "runtime.engine" "podman"
+}
+
 # Set-PersonalManifest [status] - the connection details this kit hands to every
 # client, plus the runtime state. The deployment directory has everything a
 # client needs: deployment.json (host, dbPort, username) and secrets.json
@@ -621,6 +646,7 @@ function Install-PersonalLauncher {
 function Set-PersonalManifest {
     param([string]$Status = "")
     Set-ExakitManifestValue "runtime.type" "personal"
+    Clear-PersonalStaleRecord
     # runtime.version is the COMPONENT the kit installs and compares against
     # versions.json, and that component is the LAUNCHER. The deployment's own
     # version - which decides whether a guest rebuild is still ahead - is

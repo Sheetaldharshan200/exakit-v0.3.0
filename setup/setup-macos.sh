@@ -97,6 +97,9 @@ if begin_step runtime "Step 2/6  Local database deployment"; then
         warn "The database was not installed - carrying on so the rest of the install completes"
     fi
 else
+    # A deployment recorded by an earlier run can still carry the old
+    # container's keys; this is the run that clears them.
+    personal_clear_stale_record
     if ! personal_deployment_exists; then
         info "Deployment marked done but not reachable — redeploying"
         # Same one non-zero as the first-run arm above: Podman is not here, so

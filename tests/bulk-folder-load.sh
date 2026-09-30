@@ -379,8 +379,8 @@ check "both entry points ask"           "2" \
 lacks "no blanket refusal"              'if ((Get-ExakitDataFileKind $path) -eq "json") {'  "$EXAPUMP_PS1"
 lacks "...on either path"               'if ((Get-ExakitDataFileKind $name) -eq "json") {'  "$EXAPUMP_PS1"
 
-# A local file and a downloaded one take the same path.
-check "both routes reach the loader"    "2" \
+# A local file, a downloaded one and a folder's JSON files take the same path.
+check "all three routes reach the loader" "3" \
     "$(printf '%s\n' "$EXAPUMP_PS1" | grep -c 'Import-ExakitLocalJson -Path')"
 
 # The install announces itself once, in the words the shell uses, with an ASCII

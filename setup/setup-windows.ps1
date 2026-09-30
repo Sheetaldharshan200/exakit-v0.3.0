@@ -108,6 +108,10 @@ try {
             Set-ExakitStepDone "runtime"
         }
     } else {
+        # A deployment recorded by an earlier run can still carry the old
+        # container's keys (status read "personal (docker)"); this is the run
+        # that clears them.
+        Clear-PersonalStaleRecord
         # The resume arms every setup carries: redeploy what is gone, start what
         # is merely stopped - every later step talks SQL to the database.
         # Twin of setup-macos.sh / setup-linux.sh.
