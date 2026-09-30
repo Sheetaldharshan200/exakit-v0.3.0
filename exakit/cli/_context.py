@@ -16,9 +16,6 @@ from exakit.app import Context
 from exakit.domain.catalog import Catalog
 from exakit.ui import make_renderer
 
-DEFAULT_KIT_REPO = "krishna-exasol/update-path"
-
-
 def kit_root_for(paths: Paths) -> Path:
     if (paths.kit / "exakit").is_dir():
         return paths.kit
@@ -35,15 +32,16 @@ def build(*, json: bool, yes: bool, dry_run: bool, readonly: bool, mutating: boo
     ui = make_renderer(json=json, env=env, log=log, home=str(Path.home()))
     for warning in warnings:
         ui.warn(warning)
-    kit_repo = env.get("EXAKIT_KIT_REPO") or env.get("EXAKIT_REPO") or DEFAULT_KIT_REPO
+    kit_repo = env.get("EXAKIT_KIT_REPO") or env.get("EXAKIT_REPO") or catalog.kit.repository
     downloader = UrllibDownloader(user_agent=f"exakit/{_kit_version(root)}")
-    versions = CachedVersionsSource.from_env(env, kit_repo=kit_repo, cache_path=paths.versions_cache,
-                                             baked_path=root / "versions.json", downloader=downloader, log=log)
+    versions = CachedVersionsSource.from_env(env, kit_repo=kit_repo, cache_path=paths.versions_cache, baked_path=root / "versions.json",
+                                             downloader=downloader, log=log, url_template=catalog.kit.versions_url_template,
+                                             ttl_default=catalog.kit.versions_ttl, retry_default=catalog.kit.versions_retry)
     return Context(
         paths=paths, platform=detect(), env=env, catalog=catalog,
         manifest_store=FileManifestStore(paths.manifest, paths.manifest_lock), versions=versions,
         runner=SubprocessRunner(), net=downloader, ui=ui, log=log,
-        json=json, yes=yes, dry_run=dry_run, readonly=readonly, kit_repo=kit_repo,
+        json=json, yes=yes, dry_run=dry_run, readonly=readonly, kit_repo_override=env.get("EXAKIT_KIT_REPO") or env.get("EXAKIT_REPO") or None,
     )
 
 

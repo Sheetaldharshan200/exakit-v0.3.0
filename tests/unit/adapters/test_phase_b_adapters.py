@@ -10,7 +10,11 @@ from exakit.adapters.net.github import asset_digest, download_url, release_asset
 from exakit.adapters.process.ports import process_age_seconds
 from exakit.adapters.process.runner import Completed
 from exakit.adapters.process.services import LaunchdServices, ServiceSpec, SystemdUserServices, WindowsStartupServices
+from tests.support import kit_settings
 from tests.unit.fakes import FakeDownloader, FakeRunner, mode_of
+
+
+ENDPOINTS = kit_settings().endpoints
 
 
 class CredentialsTest(unittest.TestCase):
@@ -78,12 +82,12 @@ class GithubTest(unittest.TestCase):
         page = json.dumps({"assets": [{"name": "exapump-0.13.0-macos-aarch64", "browser_download_url": "https://x/a", "digest": "sha256:" + "a" * 64},
                                       {"name": "other", "browser_download_url": "https://x/b"}]})
         dl = FakeDownloader({"https://api.github.com/repos/o/r/releases/tags/v0.13.0": page})
-        assets = release_assets("o/r", "v0.13.0", dl)
+        assets = release_assets("o/r", "v0.13.0", dl, endpoints=ENDPOINTS)
         self.assertEqual(len(assets), 2)
-        self.assertEqual(asset_digest("o/r", "v0.13.0", "exapump-0.13.0-macos-aarch64", dl), "a" * 64)
-        self.assertIsNone(asset_digest("o/r", "v0.13.0", "other", dl))
-        self.assertIsNone(release_assets("o/r", "v9", dl))
-        self.assertEqual(download_url("o/r", "v1", "f"), "https://github.com/o/r/releases/download/v1/f")
+        self.assertEqual(asset_digest("o/r", "v0.13.0", "exapump-0.13.0-macos-aarch64", dl, endpoints=ENDPOINTS), "a" * 64)
+        self.assertIsNone(asset_digest("o/r", "v0.13.0", "other", dl, endpoints=ENDPOINTS))
+        self.assertIsNone(release_assets("o/r", "v9", dl, endpoints=ENDPOINTS))
+        self.assertEqual(download_url("o/r", "v1", "f", endpoints=ENDPOINTS), "https://github.com/o/r/releases/download/v1/f")
 
 
 class ClientsFacadeTest(unittest.TestCase):

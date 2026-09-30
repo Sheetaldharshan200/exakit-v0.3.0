@@ -36,7 +36,7 @@ class Lifecycle(ComponentBase):
         stage.mkdir(parents=True, exist_ok=True)
         archive = stage / "kit.tar.gz"
         try:
-            self.ctx.net.fetch(f"https://github.com/{self.ctx.kit_repo}/archive/refs/heads/main.tar.gz", archive, what="skill set")
+            self.ctx.net.fetch(self.ctx.catalog.kit.endpoints.url("archive_branch", repo=self.ctx.kit_repo, ref="main"), archive, what="skill set")
             with tarfile.open(archive) as tar:
                 members = [m for m in tar.getmembers() if "/" in m.name]
                 for member in members:

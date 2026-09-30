@@ -149,6 +149,10 @@ jobs:
       EXAKIT_PERSONA: analyst
       EXAKIT_NO_UPDATE_NOTICE: "1"
       NO_COLOR: "1"
+      # The hosted Windows runner has 7 GB; the requirement (8) guards the
+      # database, which cannot deploy here anyway. The documented hatch lets
+      # the rest of the install be proven.
+      EXAKIT_FORCE: "1"
     steps:
       - uses: actions/checkout@v4
 

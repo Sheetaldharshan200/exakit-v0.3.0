@@ -371,6 +371,46 @@ modules: `exakit/addons/<id_>.py` may define a `Lifecycle` subclass (D16) overri
 
 User personas: `$EXAKIT_HOME/personas/<id>.json`, same schema, shadow by id.
 
+### 3.3a `catalog/kit.json` (schema 1): the kit's own settings
+
+The one place a default lives. Nothing in `exakit/` carries a repository
+name, a URL, a port, a threshold, a budget or a package name as a literal;
+the code reads `ctx.catalog.kit` (a frozen `KitSettings`, `domain/settings.py`)
+and an environment variable may override a value where the reading code
+says so. `tests/unit/domain/test_settings.py` holds the file valid and holds
+the literals out of the package.
+
+```jsonc
+{
+  "schema_version": 1, "id": "kit", "title": "...",
+  "repository": "owner/name",                       // the kit updates from here; EXAKIT_KIT_REPO overrides
+  "install":  { "sh_url": "https://...", "ps1_url": "https://..." },        // the remedies quote these; EXAKIT_INSTALL_URL overrides
+  "versions": { "url_template": "https://.../{repo}/main/versions.json", "ttl_seconds": 86400, "retry_seconds": 3600 },
+  "about":    { "url": "https://api.github.com/repos", "ttl_seconds": 86400, "retry_seconds": 3600, "max_len": 200 },
+  "endpoints": { "github_api": "...", "github_web": "...", "release_asset": "{github_web}/{repo}/releases/download/{tag}/{name}",
+                 "release_by_tag": "...", "latest_release": "...", "archive_tag": "...", "archive_branch": "...", "archive_ref": "...",
+                 "pypi_json": "https://pypi.org/pypi/{package}/json" },
+  "python":   { "managed_version": "3.12" },        // what the bootstrap installs; release_check holds bootstrap/ to it
+  "requirements": { "min_ram_gb": 8, "min_disk_gb": 20, "comfort_ram_gb": 12, "comfort_disk_gb": 40 },
+  "runtime":  { "db_port": 8563, "probe_timeout_seconds": 10, "ready_timeout_seconds": 150, "rebuild_timeout_seconds": 900,
+                "reap_min_age_seconds": 180, "container_probe_timeout_seconds": 20, "container_action_timeout_seconds": 120 },
+  "mcp":      { "readonly_user": "mcp_readonly", "readonly_schemas": "STARTER_KIT" },
+  "data":     { "schema": "STARTER_KIT" },
+  "notice":   { "interval_seconds": 86400 }
+}
+```
+
+The component and add-on `source` blocks (3.1, 3.2) carry what each
+download needs: `tag` (a template over `{version}`), `asset` (a template
+over `{version}`, `{platform}`, `{exe}`) or `assets` (one name per platform
+key), `digest_keys` (the platform's key in `versions.json`), `sha256` (pins
+for versions the manifest no longer lists), `checksums` (the release's
+checksum file), `mirror: kit` (the binaries are published by the kit
+repository, not upstream), `sources` (the archive ref of the upstream
+sources), `engine_assets` (JSON Tables' engine per platform). An add-on's
+`config` block holds its own knobs (dbt's profile and schema, the
+scheduler's service user and schema); the service port is `service.port`.
+
 ### 3.4 `manifest.json` schema 2 (additive)
 
 ```
@@ -665,6 +705,7 @@ deletes `setup/`.
 | D31 | The sandbox every CLI-level suite runs in is hermetic: a throwaway user home, a bare PATH, every `EXAKIT_*` of the caller dropped. The scenario matrix runs only read-only commands and the refusal paths of the mutating ones. | A probe that ran `start`, `data-load --force` and `skills-install` in a kit-home-only sandbox reached the launcher, the database and the skills of the machine it ran on. |
 | D32 | `--json` is answered by every path, including `<command> --help` and a corrupt install record (one refusal object, exit 1, never a traceback; `EXAKIT_DEBUG=1` re-raises). | The contract is "one object on stdout"; two paths broke it. |
 | D33 | The Log protocol lives in `domain/log.py`; the UI imports nothing from `adapters/`. Daemons start through `Runner.spawn`, HTTP probes through `adapters.net.http.http_status`. | The layer rule of section 9, held by the checker. The one exception, the terminal device in `ui/__init__.py`, is named in the checker. |
+| D34 | Every default is data: `catalog/kit.json` for the kit (repository, installer URLs, fetch URLs and cache budgets, endpoint templates, the managed Python, the machine requirements, the runtime's port and budgets, the MCP and data defaults), the `source` and `config` blocks of the catalog for each component and add-on (tags, asset names per platform, pins, mirrors, service users). The code reads them through `ctx.catalog`; an environment variable overrides where documented. A test holds the literals out of `exakit/`. | The fallback order (GitHub, cache, ours) is only as good as the "ours" it ends in; a value that lives in a module cannot be changed by a kit update without a code change, and the same value lived in three places. |
 
 ## 15. Variables the code reads that the user guide does not list
 

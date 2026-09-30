@@ -7,6 +7,7 @@
 Checks (each a function; a failure names what is wrong):
   versions       exakit.__version__, versions.json kit.version, help/whats-new.json, sonar-project.properties agree
   changelog      CHANGELOG.md has a section for the version (Unreleased is a warning, --strict makes it a failure)
+  settings-agree the shell layer's defaults (repository, thresholds, Python, installer URLs) equal catalog/kit.json
   launchers      setup/exakit* are byte-identical copies of bootstrap/exakit*
   commands       every command in help/exakit.json has a handler and every handler a help entry
   catalog        every catalog file validates, every persona names known datasets and add-ons
@@ -80,6 +81,31 @@ def check_changelog(strict: bool) -> Check:
     if re.search(r"^## Unreleased", text, re.M):
         return "changelog", "fail" if strict else "warn", [f"CHANGELOG.md still says Unreleased; rename the section to {version} when tagging"]
     return "changelog", "fail", [f"CHANGELOG.md has no section for {version}"]
+
+
+def check_settings_agree() -> Check:
+    """The shell layer's own defaults (it runs before Python) equal catalog/kit.json."""
+    doc = json.loads((REPO / "catalog" / "kit.json").read_text(encoding="utf-8"))
+    problems = []
+    sh = (REPO / "install.sh").read_text(encoding="utf-8")
+    ps1 = (REPO / "install.ps1").read_text(encoding="utf-8")
+    if f'EXAKIT_REPO="${{EXAKIT_REPO:-{doc["repository"]}}}"' not in sh:
+        problems.append(f"install.sh's EXAKIT_REPO default is not {doc['repository']}")
+    for name, needle in (("install.sh", f"-ge {doc['requirements']['min_ram_gb']} ]"), ("install.sh", f"-ge {doc['requirements']['min_disk_gb']} ]")):
+        if needle not in sh:
+            problems.append(f"{name}: the preflight threshold {needle.strip('-ge ]')} GB differs from kit.json")
+    if f"else {{ {doc['requirements']['min_ram_gb']} }}" not in ps1:
+        problems.append("install.ps1: the minimum RAM differs from kit.json")
+    python = doc["python"]["managed_version"]
+    for name, needle in (("bootstrap/ensure-python.sh", f":-{python}}}"), ("bootstrap/ensure-python.ps1", f'"{python}"')):
+        if needle not in (REPO / name).read_text(encoding="utf-8"):
+            problems.append(f"{name}: the managed Python is not {python}")
+    for name in ("bootstrap/exakit", "bootstrap/exakit.ps1"):
+        text = (REPO / name).read_text(encoding="utf-8")
+        wanted = doc["install"]["sh_url"] if name.endswith("exakit") else doc["install"]["ps1_url"]
+        if wanted not in text:
+            problems.append(f"{name}: the installer URL is not {wanted}")
+    return "settings-agree", "fail" if problems else "pass", problems
 
 
 def check_launchers() -> Check:
@@ -199,7 +225,7 @@ def main(argv: list[str]) -> int:
     strict = "--strict" in argv
     out_dir = REPO / "reports"
     out_dir.mkdir(parents=True, exist_ok=True)
-    checks = [check_versions(), check_changelog(strict), check_launchers(), check_commands(), check_catalog(), check_fallbacks(),
+    checks = [check_versions(), check_changelog(strict), check_settings_agree(), check_launchers(), check_commands(), check_catalog(), check_fallbacks(),
               check_attribution(), check_secrets(), check_shell(), check_env_vars(), check_docs(), check_tests()]
     failed = any(status == "fail" for _, status, _ in checks)
     version = version_of_kit()

@@ -21,9 +21,6 @@ from ..fs.atomic import atomic_write_text
 from ..fs.log import Log
 from .http import Downloader
 
-DEFAULT_TTL_SECONDS = 86400
-DEFAULT_RETRY_SECONDS = 3600
-DEFAULT_URL_TEMPLATE = "https://raw.githubusercontent.com/{repo}/main/versions.json"
 
 
 class VersionsSource(Protocol):
@@ -46,7 +43,7 @@ class CachedVersionsSource:
         downloader: Downloader,
         log: Log,
         clock=time.time,
-        retry_seconds: int = DEFAULT_RETRY_SECONDS,
+        retry_seconds: int,
     ) -> None:
         self.cache_path = cache_path
         self.baked_path = baked_path
@@ -62,12 +59,13 @@ class CachedVersionsSource:
 
     @classmethod
     def from_env(cls, env: Mapping[str, str], *, kit_repo: str, cache_path: Path, baked_path: Path | None,
-                 downloader: Downloader, log: Log) -> CachedVersionsSource:
-        url = env.get("EXAKIT_VERSIONS_URL") or DEFAULT_URL_TEMPLATE.format(repo=kit_repo)
+                 downloader: Downloader, log: Log, url_template: str, ttl_default: int, retry_default: int) -> CachedVersionsSource:
+        """EXAKIT_VERSIONS_URL, EXAKIT_VERSIONS_TTL and EXAKIT_VERSIONS_RETRY win; the kit's settings are the defaults."""
+        url = env.get("EXAKIT_VERSIONS_URL") or url_template.format(repo=kit_repo)
         ttl_text = env.get("EXAKIT_VERSIONS_TTL", "")
-        ttl = int(ttl_text) if ttl_text.isdigit() else DEFAULT_TTL_SECONDS
+        ttl = int(ttl_text) if ttl_text.isdigit() else ttl_default
         retry_text = env.get("EXAKIT_VERSIONS_RETRY", "")
-        retry = int(retry_text) if retry_text.isdigit() else DEFAULT_RETRY_SECONDS
+        retry = int(retry_text) if retry_text.isdigit() else retry_default
         return cls(cache_path=cache_path, baked_path=baked_path, url=url, ttl_seconds=ttl,
                    downloader=downloader, log=log, retry_seconds=retry)
 

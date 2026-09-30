@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from .errors import BadInput
+from .settings import KitSettings, load_settings
 from .ids import is_token, parse_client_selection
 from .platform import ARCH_NAMES, OS_NAMES
 
@@ -152,6 +153,7 @@ class Addon:
     help: str | None
     fallback_version: str | None
     manifest_key: str
+    config: dict[str, Any] = field(default_factory=dict)      # the add-on's own knobs (a profile name, a schema, a service user)
     directory: Path | None = field(default=None, compare=False)
 
     @classmethod
@@ -162,7 +164,8 @@ class Addon:
             provides=tuple(doc.get("provides") or ()), service=doc.get("service"),
             launcher=doc.get("launcher"), skill=doc.get("skill"), help=doc.get("help"),
             fallback_version=doc.get("fallback_version"),
-            manifest_key=doc.get("manifest_key") or doc["id"].replace("-", "_"), directory=directory,
+            manifest_key=doc.get("manifest_key") or doc["id"].replace("-", "_"), config=dict(doc.get("config") or {}),
+            directory=directory,
         )
 
     def supports(self, platform_key: str) -> bool:
@@ -303,14 +306,16 @@ def _read_json(path: Path) -> Any:
 class Catalog:
     """Everything the kit knows about, loaded once per command."""
 
-    def __init__(self, components: dict[str, Component], addons: dict[str, Addon], personas: dict[str, Persona]) -> None:
+    def __init__(self, components: dict[str, Component], addons: dict[str, Addon], personas: dict[str, Persona], kit: KitSettings) -> None:
         self._components = components
         self._addons = addons
         self._personas = personas
+        self.kit = kit
 
     @classmethod
     def load(cls, kit_root: Path, user_root: Path | None, *, warn: Callable[[str], None]) -> Catalog:
-        """Read the kit's catalog and the user's personas. A bad file is skipped with one warning."""
+        """Read the kit's settings, catalog and the user's personas. A bad catalog file is skipped with one warning."""
+        kit = load_settings(kit_root / "catalog" / "kit.json")
         components = _load_components(kit_root / "catalog" / "components", warn)
         addons = _load_addons(kit_root / "catalog" / "addons", warn)
         personas: dict[str, Persona] = {}
@@ -319,7 +324,7 @@ class Catalog:
         for directory, source in dirs:
             for persona in _load_personas(directory, source, set(addons), warn):
                 personas.setdefault(persona.id, persona)   # user first, so the user's copy wins
-        return cls(components, addons, dict(sorted(personas.items())))
+        return cls(components, addons, dict(sorted(personas.items())), kit)
 
     # --- lookups; unknown ids are BadInput naming the known ones ----------------------
 

@@ -73,7 +73,7 @@ class HostExtensionLifecycle(LifecycleBase):
             self.ctx.ui.info(f"Downloading {self.addon.title} v{version} ({asset})")
             with temp_dir("exakit-vsix-") as tmp:
                 vsix = Path(tmp) / asset
-                self.fetch_verified(download_url(self.addon.source["repo"], f"v{version}", asset), vsix,
+                self.fetch_verified(download_url(self.addon.source["repo"], f"v{version}", asset, endpoints=self.ctx.catalog.kit.endpoints), vsix,
                                     digest=self.published_digest(version, "vsix"), what=asset,
                                     repo=self.addon.source["repo"], tag=f"v{version}", asset=asset)
                 done = self.ctx.runner.run([cli, "--install-extension", str(vsix), "--force"], timeout=600)

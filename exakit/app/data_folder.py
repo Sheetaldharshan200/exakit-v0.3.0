@@ -116,7 +116,7 @@ def _refuse_empty_folder(folder: Path, entries: list[ScanEntry]) -> None:
 
 def _choose_schema(ctx: Context) -> str | None:
     """EXAKIT_SCHEMA, else STARTER_KIT; a terminal may change it. None when the user went back."""
-    schema = (ctx.env.get("EXAKIT_SCHEMA") or "STARTER_KIT").upper()
+    schema = (ctx.env.get("EXAKIT_SCHEMA") or ctx.catalog.kit.data_schema).upper()
     if not ctx.ui.interactive:
         return schema
     answer = ctx.ui.prompt("Target schema (back to return)", schema)

@@ -41,7 +41,7 @@ class Lifecycle(ComponentBase):
 
     @property
     def package(self) -> str:
-        return self.ctx.env.get("EXAKIT_PYEXASOL_PACKAGE") or "pyexasol"
+        return self.ctx.env.get("EXAKIT_PYEXASOL_PACKAGE") or str(self.ctx.catalog.component("pyexasol").source["package"])
 
     def installed_version(self) -> str | None:
         if not self.python.exists():
@@ -57,7 +57,7 @@ class Lifecycle(ComponentBase):
         if not bin_path:
             raise Failed("uv (the Python tool runner) is not available - install it from https://docs.astral.sh/uv/ and re-run",
                          remedy="exakit update pyexasol")
-        self.ctx.uv = UvTool(bin_path, self.ctx.runner, windows=self.ctx.platform.os == "windows")
+        self.ctx.uv = UvTool(bin_path, self.ctx.runner, python_version=self.ctx.catalog.kit.managed_python, windows=self.ctx.platform.os == "windows")
         return self.ctx.uv
 
     def install(self, version: str) -> None:

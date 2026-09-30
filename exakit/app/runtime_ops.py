@@ -21,7 +21,10 @@ def credentials(ctx: Context) -> CredentialStore:
 def runtime(ctx: Context) -> PersonalRuntime:
     if ctx.runtime is None:
         deploy_dir = Path(ctx.env.get("EXAKIT_PERSONAL_DEPLOY_DIR") or Path(ctx.env.get("HOME") or Path.home()) / ".exasol" / "personal" / "deployments" / "default")
-        ctx.runtime = PersonalLauncher(bin_dir=ctx.paths.bin_dir, deploy_dir=deploy_dir, runner=ctx.runner, log=ctx.log, env=dict(ctx.env))
+        kit = ctx.catalog.kit
+        ctx.runtime = PersonalLauncher(bin_dir=ctx.paths.bin_dir, deploy_dir=deploy_dir, runner=ctx.runner, log=ctx.log, env=dict(ctx.env),
+                                       db_port=kit.db_port, probe_timeout=kit.probe_timeout, ready_timeout=kit.ready_timeout,
+                                       rebuild_timeout=kit.rebuild_timeout, reap_min_age=kit.reap_min_age)
     return ctx.runtime
 
 

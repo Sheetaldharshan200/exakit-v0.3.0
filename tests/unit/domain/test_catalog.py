@@ -120,6 +120,7 @@ class CatalogLoadTest(unittest.TestCase):
             "schema_version": 1, "id": "dash-server", "title": "D", "kind": "python-venv",
             "source": {"type": "pypi", "package": "dash-server"}}))
         self._write_persona(self.kit / "catalog" / "personas", "analyst", title="Analyst")
+        (self.kit / "catalog" / "kit.json").write_bytes((REPO / "catalog" / "kit.json").read_bytes())
 
     def tearDown(self):
         self.tmp.cleanup()

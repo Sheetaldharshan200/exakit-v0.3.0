@@ -132,13 +132,13 @@ class MigrateArgsTest(unittest.TestCase):
     def test_no_container_and_no_password_are_exit_3_with_the_state_keys(self):
         box = Sandbox(manifest=MANIFEST, json_mode=True)
         try:
-            with mock.patch("exakit.app.legacy_db.containers.find_engine", lambda runner, container, prefer=None: None), \
+            with mock.patch("exakit.app.legacy_db.containers.find_engine", lambda runner, container, timeout=0, prefer=None: None), \
                  self.assertRaises(NotRunning) as caught:
                 migrate.migrate(box.ctx, ["docker-nano"])
             self.assertEqual(caught.exception.refusal()["status"], "no container")
             engine = Engine("docker", "/usr/bin/docker")
-            with mock.patch("exakit.app.legacy_db.containers.find_engine", lambda runner, container, prefer=None: engine), \
-                 mock.patch("exakit.app.legacy_db.containers.published_port", lambda runner, e, c: 8563), \
+            with mock.patch("exakit.app.legacy_db.containers.find_engine", lambda runner, container, timeout=0, prefer=None: engine), \
+                 mock.patch("exakit.app.legacy_db.containers.published_port", lambda runner, e, c, timeout=0: 8563), \
                  self.assertRaises(NotRunning) as caught:
                 migrate.migrate(box.ctx, ["docker-nano"])
             self.assertEqual(caught.exception.refusal()["status"], "no password")

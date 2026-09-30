@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..fs.atomic import atomic_write_text
+from exakit.domain.settings import Endpoints
 from .http import Downloader
 import contextlib
 
@@ -38,12 +39,12 @@ def _parse(doc: dict) -> list[ReleaseAsset]:
     return assets
 
 
-def release_assets(repo: str, tag: str, downloader: Downloader, *, token: str | None = None,
+def release_assets(repo: str, tag: str, downloader: Downloader, *, endpoints: Endpoints, token: str | None = None,
                    cache_dir: Path | None = None) -> list[ReleaseAsset] | None:
     """The assets of a release: from the API, else from the cached answer, else None."""
     cache = _cache_file(cache_dir, repo, tag)
     try:
-        text = downloader.text(f"https://api.github.com/repos/{repo}/releases/tags/{tag}", token=token)
+        text = downloader.text(endpoints.url("release_by_tag", repo=repo, tag=tag), token=token)
         doc = json.loads(text)
         assets = _parse(doc)
     except Exception:
@@ -57,13 +58,13 @@ def release_assets(repo: str, tag: str, downloader: Downloader, *, token: str | 
     return assets
 
 
-def asset_digest(repo: str, tag: str, name: str, downloader: Downloader, *, token: str | None = None,
+def asset_digest(repo: str, tag: str, name: str, downloader: Downloader, *, endpoints: Endpoints, token: str | None = None,
                  cache_dir: Path | None = None) -> str | None:
-    for asset in release_assets(repo, tag, downloader, token=token, cache_dir=cache_dir) or []:
+    for asset in release_assets(repo, tag, downloader, endpoints=endpoints, token=token, cache_dir=cache_dir) or []:
         if asset.name == name:
             return asset.digest
     return None
 
 
-def download_url(repo: str, tag: str, name: str) -> str:
-    return f"https://github.com/{repo}/releases/download/{tag}/{name}"
+def download_url(repo: str, tag: str, name: str, *, endpoints: Endpoints) -> str:
+    return endpoints.url("release_asset", repo=repo, tag=tag, name=name)

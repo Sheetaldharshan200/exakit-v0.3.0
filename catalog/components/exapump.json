@@ -5,7 +5,15 @@
   "kind": "binary",
   "source": {
     "type": "github_release",
-    "repo": "exasol-labs/exapump"
+    "repo": "exasol-labs/exapump",
+    "tag": "v{version}",
+    "asset": "exapump-{version}-{platform}{exe}",
+    "sha256": {
+      "exapump-0.11.2-linux-aarch64": "106c3c5ea168a1381549807b82639137c8b3f94bd64c1b6d02fa380a025d5085",
+      "exapump-0.11.2-linux-x86_64": "669af4d488e5b1ae2e9c9e030c1be4b1cdb7442dedf3175a361928613f4b3e80",
+      "exapump-0.11.2-macos-aarch64": "e1438c69f26cdcca69ad1b7211aa9495524c53ff1badebee91d5a631c503616b",
+      "exapump-0.11.2-macos-x86_64": "1dd68d2dbc2d556e1613975eeffb25813f1ec60e06e93d514d5dd86df8144648"
+    }
   },
   "install_order": 30,
   "step_id": "exapump",

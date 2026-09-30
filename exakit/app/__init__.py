@@ -33,9 +33,6 @@ from exakit.domain.result import Result
 from exakit.domain.versions import VersionPolicy
 from exakit.ui import Renderer
 
-INSTALL_URL = "https://www.exasol.com/install/starter-kit.sh"
-
-
 @dataclass
 class Context:
     paths: Paths
@@ -52,7 +49,7 @@ class Context:
     yes: bool = False
     dry_run: bool = False
     readonly: bool = False
-    kit_repo: str = "krishna-exasol/update-path"
+    kit_repo_override: str | None = None      # EXAKIT_KIT_REPO; the settings name the repository otherwise
     # Machine-facing adapters the CLI wires; tests pass fakes. None means "not wired yet".
     credentials: CredentialStore | None = None
     clients: ClientOps | None = None
@@ -65,9 +62,17 @@ class Context:
     def policy(self) -> VersionPolicy:
         return VersionPolicy.from_env(self.env.get("EXAKIT_VERSION_POLICY"))
 
+    @property
+    def kit_repo(self) -> str:
+        """The repository the kit updates from: EXAKIT_KIT_REPO, else catalog/kit.json."""
+        return self.kit_repo_override or self.catalog.kit.repository
+
     def install_command(self) -> str:
-        """The one command that (re)runs the installer, runnable as written."""
-        return f"curl -fsSL {self.env.get('EXAKIT_INSTALL_URL') or INSTALL_URL} | sh"
+        """The one command that (re)runs the installer on this platform, runnable as written."""
+        override = self.env.get("EXAKIT_INSTALL_URL")
+        if self.platform.os == "windows":
+            return f"irm {override or self.catalog.kit.install_ps1_url} | iex"
+        return f"curl -fsSL {override or self.catalog.kit.install_sh_url} | sh"
 
     def manifest(self) -> Manifest:
         """The install record. Raises NotInstalled, with the installer as the remedy, when there is none."""

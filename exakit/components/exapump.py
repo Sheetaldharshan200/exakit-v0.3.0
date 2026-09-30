@@ -14,13 +14,6 @@ from exakit.lifecycles.base import temp_dir
 
 from .base import ComponentBase
 
-REPO = "exasol-labs/exapump"
-PINNED = {
-    "exapump-0.11.2-linux-aarch64": "106c3c5ea168a1381549807b82639137c8b3f94bd64c1b6d02fa380a025d5085",
-    "exapump-0.11.2-linux-x86_64": "669af4d488e5b1ae2e9c9e030c1be4b1cdb7442dedf3175a361928613f4b3e80",
-    "exapump-0.11.2-macos-aarch64": "e1438c69f26cdcca69ad1b7211aa9495524c53ff1badebee91d5a631c503616b",
-    "exapump-0.11.2-macos-x86_64": "1dd68d2dbc2d556e1613975eeffb25813f1ec60e06e93d514d5dd86df8144648",
-}
 VERSION_IN_TEXT = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
 
 
@@ -59,11 +52,11 @@ class Lifecycle(ComponentBase):
 
     def asset_name(self, version: str) -> str:
         suffix = ".exe" if self.ctx.platform.os == "windows" else ""
-        return f"exapump-{version}-{self.ctx.platform.platform_key}{suffix}"
+        return str(self.source["asset"]).format(version=version, platform=self.ctx.platform.platform_key, exe=suffix)
 
     def digest_for(self, version: str, asset: str) -> str | None:
         published = self.published_digest(version, self.ctx.platform.platform_key)
-        return published or PINNED.get(asset)
+        return published or (self.source.get("sha256") or {}).get(asset)
 
     def _keep_existing(self, version: str) -> bool:
         """True when a working exapump of the right version is already in place (and recorded)."""
@@ -93,8 +86,9 @@ class Lifecycle(ComponentBase):
         self.ctx.ui.info(f"Downloading exapump v{version} ({asset})")
         with temp_dir("exakit-exapump-") as tmp:
             staged = Path(tmp) / asset
-            self.fetch_verified(download_url(REPO, f"v{version}", asset), staged, digest=self.digest_for(version, asset), what=asset,
-                                repo=REPO, tag=f"v{version}", asset=asset)
+            repo, tag = self.repo(), self.tag(version)
+            self.fetch_verified(download_url(repo, tag, asset, endpoints=self.ctx.catalog.kit.endpoints), staged,
+                                digest=self.digest_for(version, asset), what=asset, repo=repo, tag=tag, asset=asset)
             self.install_binary(staged, self.bin)
         self.verify_runs()
         self.ctx.ui.ok(f"exapump v{version} installed to {self.bin} ({self.elapsed(started)})")
@@ -124,7 +118,7 @@ class Lifecycle(ComponentBase):
         if "GLIBC_" in text:
             raise Failed("exapump's release binary needs a newer glibc than this system has. The container shim the legacy installer "
                          "builds for this case is not part of the Python kit yet - re-run the installer to get it.", remedy=self.ctx.install_command())
-        raise Failed(f"exapump was installed but does not run: {text.strip() or 'unknown error'}. See the log and https://github.com/{REPO}/issues")
+        raise Failed(f"exapump was installed but does not run: {text.strip() or 'unknown error'}. See the log and {self.ctx.catalog.kit.endpoints.github_web}/{self.repo()}/issues")
 
     # --- the profile and the check --------------------------------------------------------------
 

@@ -10,7 +10,6 @@ from exakit.domain.errors import Failed
 
 from .process.runner import Runner
 
-MANAGED_PYTHON = "3.12"
 
 
 class Uv(Protocol):
@@ -31,7 +30,7 @@ def find_uv(env: Mapping[str, str], home: Path, runner: Runner, windows: bool = 
 
 
 class UvTool:
-    def __init__(self, binary: str, runner: Runner, *, windows: bool = False, python_version: str = MANAGED_PYTHON) -> None:
+    def __init__(self, binary: str, runner: Runner, *, python_version: str, windows: bool = False) -> None:
         self.bin = binary
         self.runner = runner
         self.windows = windows

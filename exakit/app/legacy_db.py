@@ -29,7 +29,7 @@ class LegacyDb:
     password: str | None = None
 
     def state(self, ctx: Context) -> str:
-        return containers.container_state(ctx.runner, self.engine, self.container)
+        return containers.container_state(ctx.runner, self.engine, self.container, timeout=ctx.catalog.kit.container_probe_timeout)
 
     def remove_command(self) -> str | None:
         if not self.container:
@@ -77,12 +77,12 @@ def from_record(ctx: Context, **overrides: str) -> LegacyDb:
     """The old database as recorded (legacy.*, then the old install's runtime.*), with command-line overrides on top."""
     container = overrides.get("container") or value(ctx, "container") or "exasol-nano"
     engine_name = overrides.get("engine") or value(ctx, "engine")
-    engine = containers.find_engine(ctx.runner, container, prefer=engine_name or None)
+    engine = containers.find_engine(ctx.runner, container, timeout=ctx.catalog.kit.container_probe_timeout, prefer=engine_name or None)
     if engine and not engine_name:
         engine_name = engine.name
     dsn = overrides.get("dsn") or value(ctx, "dsn")
     if not dsn and engine:
-        port = containers.published_port(ctx.runner, engine, container) or 8563
+        port = containers.published_port(ctx.runner, engine, container, timeout=ctx.catalog.kit.container_probe_timeout) or ctx.catalog.kit.db_port
         dsn = f"127.0.0.1:{port}"
     return LegacyDb(container=container, engine=engine, engine_name=engine_name, volume=value(ctx, "volume"), dsn=dsn,
                     user=overrides.get("user") or value(ctx, "user") or "sys",
@@ -100,14 +100,14 @@ def remember(ctx: Context, db: LegacyDb) -> None:
 
 
 def start_container(ctx: Context, db: LegacyDb) -> bool:
-    return bool(db.engine) and containers.start_container(ctx.runner, db.engine, db.container)
+    return bool(db.engine) and containers.start_container(ctx.runner, db.engine, db.container, timeout=ctx.catalog.kit.container_action_timeout)
 
 
 def stop_container(ctx: Context, db: LegacyDb) -> bool:
     if not db.container or db.state(ctx) != "running" or not db.engine:
         return True
     ctx.ui.info(f"Stopping the old database container ({db.container}) so the new deployment can take the port")
-    if not containers.stop_container(ctx.runner, db.engine, db.container):
+    if not containers.stop_container(ctx.runner, db.engine, db.container, timeout=ctx.catalog.kit.container_action_timeout):
         ctx.ui.warn(f"Could not stop the container {db.container} - the new deployment may find its port busy")
         return False
     ctx.manifest_store.update(lambda m: m.set("legacy.container_stopped", True))

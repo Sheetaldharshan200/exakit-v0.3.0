@@ -22,7 +22,7 @@ class Lifecycle(ComponentBase):
 
     @property
     def package(self) -> str:
-        return self.ctx.env.get("EXAKIT_MCP_PACKAGE") or self.ctx.catalog.component("mcp").source.get("package") or "exasol-mcp-server"
+        return self.ctx.env.get("EXAKIT_MCP_PACKAGE") or str(self.ctx.catalog.component("mcp").source["package"])
 
     def installed_version(self) -> str | None:
         return self.recorded("version") or None

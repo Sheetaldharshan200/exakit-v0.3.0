@@ -27,6 +27,12 @@ MANIFEST = {
 }
 
 
+def kit_settings():
+    """The kit's own settings, as the catalog loads them."""
+    from exakit.domain.settings import KitSettings
+    return KitSettings.from_doc(json.loads((REPO / "catalog" / "kit.json").read_text(encoding="utf-8")))
+
+
 def bare_path() -> str:
     """The interpreter's own directory plus the system directories: nothing the kit installed."""
     if os.name == "nt":

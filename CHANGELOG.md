@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+**Every default is data.** `catalog/kit.json` now carries the kit's own
+settings (the repository it updates from, the installer URLs, where the
+versions manifest and an add-on's About are fetched and how long they are
+cached, the endpoint templates, the managed Python, the machine requirements,
+the database port and the runtime budgets, the MCP read-only user), and each
+component's and add-on's catalog entry carries its release tag, asset names
+per platform, pins and mirror. The code reads them; an environment variable
+overrides where the guide says so; nothing in `exakit/` names a URL, a
+repository, a port or a threshold any more, and a test keeps it that way.
+
 **Quality gates, and the bugs they found.** The repository now carries its
 own QA: `tools/check_standard.py` holds the coding standard mechanically,
 `ruff.toml` the SonarQube-aligned lint, `tools/run_tests.py` runs every suite

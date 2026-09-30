@@ -26,11 +26,6 @@ from exakit.adapters.process.runner import Runner
 from exakit.domain.errors import Failed
 from exakit.domain.manifest import Manifest
 
-DEFAULT_PORT = 8563
-PROBE_TIMEOUT = 10
-REAP_MIN_AGE = 180
-READY_TIMEOUT = 150
-REBUILD_TIMEOUT = 900
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,9 +62,12 @@ class PersonalLauncher:
     """The real runtime, over the ``exasol`` binary."""
 
     def __init__(self, *, bin_dir: Path, deploy_dir: Path, runner: Runner, log: Log | None = None,
+                 db_port: int, probe_timeout: int, ready_timeout: int, rebuild_timeout: int, reap_min_age: int,
                  env: dict[str, str] | None = None) -> None:
         self.bin_dir, self.deploy_dir, self.runner, self.log = bin_dir, deploy_dir, runner, log or NullLog()
         self.env = env or {}
+        self.default_port, self.probe_timeout, self.ready_timeout = db_port, probe_timeout, ready_timeout
+        self.rebuild_timeout, self.reap_min_age = rebuild_timeout, reap_min_age
 
     # --- the launcher --------------------------------------------------------------
 
@@ -82,8 +80,8 @@ class PersonalLauncher:
     def installed(self) -> bool:
         return (self.bin_dir / "exasol").exists() or bool(self.runner.which("exasol"))
 
-    def _run(self, *args: str, timeout: float = PROBE_TIMEOUT):
-        return self.runner.run([self.cli(), *args], timeout=timeout)
+    def _run(self, *args: str, timeout: float | None = None):
+        return self.runner.run([self.cli(), *args], timeout=self.probe_timeout if timeout is None else timeout)
 
     def supports(self, subcommand: str) -> bool:
         done = self._run("--help")
@@ -113,9 +111,9 @@ class PersonalLauncher:
         try:
             text = (self.deploy_dir / "deployment.json").read_text(encoding="utf-8")
             match = re.search(r'"dbPort"\s*:\s*(\d+)', text)
-            return int(match.group(1)) if match else DEFAULT_PORT
+            return int(match.group(1)) if match else self.default_port
         except OSError:
-            return DEFAULT_PORT
+            return self.default_port
 
     def deployment_exists(self) -> bool:
         return self.deploy_dir.is_dir() and self._run("info").ok
@@ -166,7 +164,7 @@ class PersonalLauncher:
     def starting(self, port: int) -> bool:
         for pid, command in self._runner_pids(port):
             age = process_age_seconds(pid, self.runner)
-            if self._looks_like_our_runner(command) and age is not None and age < REAP_MIN_AGE:
+            if self._looks_like_our_runner(command) and age is not None and age < self.reap_min_age:
                 return True
         return False
 
@@ -207,7 +205,7 @@ class PersonalLauncher:
         state = self.launcher_state()
         for pid, command in self._runner_pids(port):
             age = process_age_seconds(pid, self.runner) or 0
-            if self._looks_like_our_runner(command) and age >= REAP_MIN_AGE and state in ("", "stopped", "deployment_failed", "interrupted"):
+            if self._looks_like_our_runner(command) and age >= self.reap_min_age and state in ("", "stopped", "deployment_failed", "interrupted"):
                 say(f"Reaping orphaned Exasol runner daemon (pid {pid}) still holding port {port}")
                 self.runner.run(["pkill", "-P", str(pid)], timeout=5)
                 self.runner.run(["kill", str(pid)], timeout=5)
@@ -267,8 +265,8 @@ class PersonalLauncher:
 
     def wait_ready(self, say: Callable[[str], None], *, budget: int | None = None) -> bool:
         """Poll the TLS probe every 5 s until the database answers or the budget runs out."""
-        env_budget = self.env.get("EXAKIT_PERSONAL_READY_TIMEOUT", "")
-        budget = budget or (int(env_budget) if env_budget.isdigit() else READY_TIMEOUT)
+        env_budget = self.env.get("EXAKIT_PERSONAL_self.ready_timeout", "")
+        budget = budget or (int(env_budget) if env_budget.isdigit() else self.ready_timeout)
         started = time.monotonic()
         last_note = started
         port = self.db_port()
@@ -277,7 +275,7 @@ class PersonalLauncher:
                 return True
             time.sleep(5)
             if time.monotonic() - last_note >= 30:
-                say(f"... waiting for the database to answer ({int(time.monotonic() - started)}s elapsed, ceiling {budget}s; raise it with EXAKIT_PERSONAL_READY_TIMEOUT)")
+                say(f"... waiting for the database to answer ({int(time.monotonic() - started)}s elapsed, ceiling {budget}s; raise it with EXAKIT_PERSONAL_self.ready_timeout)")
                 last_note = time.monotonic()
         return False
 
@@ -318,8 +316,8 @@ class PersonalLauncher:
 
     def recover_slow_first_boot(self, say: Callable[[str], None]) -> bool:
         """The launcher gave up early but the deployment exists: wait for the database, then reconcile the launcher's record."""
-        env_budget = self.env.get("EXAKIT_PERSONAL_READY_TIMEOUT", "")
-        budget = int(env_budget) if env_budget.isdigit() else READY_TIMEOUT
+        env_budget = self.env.get("EXAKIT_PERSONAL_self.ready_timeout", "")
+        budget = int(env_budget) if env_budget.isdigit() else self.ready_timeout
         say(f"The launcher stopped waiting after its own short budget, but the deployment exists - waiting up to {budget}s for the database")
         started = time.monotonic()
         while not self.tls_answers():
@@ -368,10 +366,10 @@ class PersonalLauncher:
             manifest.set("runtime.deployment_version", deployed)
         manifest.set("runtime.launcher", self.cli())
         manifest.set("runtime.deployment_dir", str(self.deploy_dir))
-        dsn, user = f"127.0.0.1:{DEFAULT_PORT}", "sys"
+        dsn, user = f"127.0.0.1:{self.default_port}", "sys"
         try:
             conn = json.loads((self.deploy_dir / "deployment.json").read_text(encoding="utf-8")).get("connection", {})
-            dsn = f"{conn.get('host', '127.0.0.1')}:{conn.get('dbPort', DEFAULT_PORT)}"
+            dsn = f"{conn.get('host', '127.0.0.1')}:{conn.get('dbPort', self.default_port)}"
             user = conn.get("username") or "sys"
         except (OSError, ValueError, AttributeError):
             pass

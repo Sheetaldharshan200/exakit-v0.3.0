@@ -14,7 +14,6 @@ from exakit.domain.result import Result
 from . import Context
 from .runtime_ops import runtime
 
-MIN_RAM_GB, MIN_DISK_GB, COMFORT_RAM_GB, COMFORT_DISK_GB = 8, 20, 12, 40
 
 
 def user_home(ctx: Context) -> Path:
@@ -54,20 +53,20 @@ def _check_resources(ctx: Context, ram: int, disk: int) -> None:
         return
     if ram == 0:
         raise Failed("Could not determine this machine's memory. Fix the environment or set EXAKIT_FORCE=1 to install anyway.")
-    if ram < MIN_RAM_GB:
-        ctx.ui.error(f"This machine is not compatible: Exasol Personal needs at least {MIN_RAM_GB} GB RAM and this machine has {ram} GB.")
+    if ram < ctx.catalog.kit.min_ram_gb:
+        ctx.ui.error(f"This machine is not compatible: Exasol Personal needs at least {ctx.catalog.kit.min_ram_gb} GB RAM and this machine has {ram} GB.")
         if ctx.platform.is_wsl:
             for line in ("That is what WSL was given, not what this PC has. Raise it in %USERPROFILE%\\.wslconfig on the WINDOWS side:",
                          "  [wsl2]", "  memory=8GB", "Then apply it from PowerShell: wsl --shutdown  (reopen this distro afterwards)",
                          "Already sized correctly? Force past this check with EXAKIT_FORCE=1."):
                 ctx.ui.info(line)
         else:
-            ctx.ui.info(f"Nothing was installed. Re-run on a machine with {MIN_RAM_GB}+ GB RAM (or force at your own risk with EXAKIT_FORCE=1).")
+            ctx.ui.info(f"Nothing was installed. Re-run on a machine with {ctx.catalog.kit.min_ram_gb}+ GB RAM (or force at your own risk with EXAKIT_FORCE=1).")
         raise Failed(f"Insufficient memory: {ram} GB.")
     if disk == 0:
         raise Failed(f"Could not determine free disk space at {user_home(ctx)}. Free up space or set EXAKIT_FORCE=1 to install anyway.")
-    if disk < MIN_DISK_GB:
-        ctx.ui.error(f"This machine is not compatible right now: the database needs at least {MIN_DISK_GB} GB free disk and {user_home(ctx)} has {disk} GB.")
+    if disk < ctx.catalog.kit.min_disk_gb:
+        ctx.ui.error(f"This machine is not compatible right now: the database needs at least {ctx.catalog.kit.min_disk_gb} GB free disk and {user_home(ctx)} has {disk} GB.")
         note = machine.free_disk_note(ctx.platform, ctx.runner, user_home(ctx))
         if note:
             ctx.ui.info(f"Why: {note}")
@@ -95,10 +94,10 @@ def check(ctx: Context) -> None:
     wanted_port = ctx.env.get("EXAKIT_DB_PORT")
     if wanted_port and wanted_port != str(runtime(ctx).db_port()):
         ctx.ui.warn(f"EXAKIT_DB_PORT does not choose the port of an Exasol Personal deployment: the launcher selects it and the kit uses whatever it selected (currently {runtime(ctx).db_port()}).")
-    if ram < COMFORT_RAM_GB:
-        ctx.ui.warn(f"Memory is at the bare minimum ({ram} GB; comfortable: {COMFORT_RAM_GB}+ GB) - the database will run, but expect slower queries and keep other heavy apps closed.")
-    if disk < COMFORT_DISK_GB:
-        ctx.ui.warn(f"Free disk is tight ({disk} GB; comfortable: {COMFORT_DISK_GB}+ GB) - fine for the bundled datasets, but watch space before loading large files.")
+    if ram < ctx.catalog.kit.comfort_ram_gb:
+        ctx.ui.warn(f"Memory is at the bare minimum ({ram} GB; comfortable: {ctx.catalog.kit.comfort_ram_gb}+ GB) - the database will run, but expect slower queries and keep other heavy apps closed.")
+    if disk < ctx.catalog.kit.comfort_disk_gb:
+        ctx.ui.warn(f"Free disk is tight ({disk} GB; comfortable: {ctx.catalog.kit.comfort_disk_gb}+ GB) - fine for the bundled datasets, but watch space before loading large files.")
     word = "wsl" if ctx.platform.is_wsl else ctx.platform.os
     ctx.ui.ok(f"Compatibility check passed ({word} {ctx.platform.arch}, {ram} GB RAM, {disk} GB free)")
 
@@ -246,9 +245,9 @@ def preflight(ctx: Context) -> Result:
     ctx.ui.text("Preflight check")
     _preflight_platform(ctx, ok, bad, note)
     ram, disk = machine.ram_gb(p, ctx.runner), machine.free_disk_gb(p, ctx.runner, user_home(ctx))
-    ok(f"Memory: {ram} GB (Exasol Personal needs {MIN_RAM_GB}+)") if ram >= MIN_RAM_GB else bad(f"Memory: {ram} GB - Exasol Personal needs at least {MIN_RAM_GB} GB")
-    ok(f"Free disk at {user_home(ctx)}: {disk} GB ({MIN_DISK_GB}+ recommended)") if disk >= MIN_DISK_GB else \
-        bad(f"Free disk at {user_home(ctx)}: {disk} GB - free up space ({MIN_DISK_GB} GB recommended for the local database)")
+    ok(f"Memory: {ram} GB (Exasol Personal needs {ctx.catalog.kit.min_ram_gb}+)") if ram >= ctx.catalog.kit.min_ram_gb else bad(f"Memory: {ram} GB - Exasol Personal needs at least {ctx.catalog.kit.min_ram_gb} GB")
+    ok(f"Free disk at {user_home(ctx)}: {disk} GB ({ctx.catalog.kit.min_disk_gb}+ recommended)") if disk >= ctx.catalog.kit.min_disk_gb else \
+        bad(f"Free disk at {user_home(ctx)}: {disk} GB - free up space ({ctx.catalog.kit.min_disk_gb} GB recommended for the local database)")
     disk_note = machine.free_disk_note(p, ctx.runner, user_home(ctx))
     if disk_note:
         note(f"Free disk: {disk_note}")

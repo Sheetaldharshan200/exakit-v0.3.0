@@ -23,5 +23,9 @@
   "launcher": "dbt-exasol",
   "skill": "dbt-exasol",
   "help": "dbt-exasol",
-  "fallback_version": "1.12.1"
+  "fallback_version": "1.12.1",
+  "config": {
+    "profile": "exasol_starter_kit",
+    "schema": "DBT"
+  }
 }

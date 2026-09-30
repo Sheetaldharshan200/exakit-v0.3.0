@@ -23,10 +23,6 @@ from exakit.domain.errors import ExakitError
 from . import Context, help as help_app
 from .machine import kit_root
 
-DEFAULT_URL = "https://api.github.com/repos"
-DEFAULT_TTL = 86400
-DEFAULT_RETRY = 3600
-DEFAULT_MAX_LEN = 200
 ESCAPES = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\]8;;[^\x07\x1b]*(?:\x07|\x1b\\)")
 CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
@@ -65,17 +61,17 @@ def fetch(ctx: Context, addon: Addon) -> str | None:
     """GitHub first, once per TTL; a failed fetch (network, rate limit) is retried after EXAKIT_ABOUT_RETRY. Returns what is on disk."""
     cache_dir = ctx.paths.about_cache
     cache, attempt = cache_dir / f"{addon.id}.txt", cache_dir / f".attempt-{addon.id}"
-    ttl = _int(ctx, "EXAKIT_ABOUT_TTL", DEFAULT_TTL)
-    url = ctx.env.get("EXAKIT_ABOUT_URL") or DEFAULT_URL
+    ttl = _int(ctx, "EXAKIT_ABOUT_TTL", ctx.catalog.kit.about_ttl)
+    url = ctx.env.get("EXAKIT_ABOUT_URL") or ctx.catalog.kit.about_url
     repo = repo_of(ctx, addon)
     if ctx.env.get("EXAKIT_ABOUT_OFFLINE") == "1" or not repo or not url.startswith("https://") or _fresh(cache, ttl) \
-            or _fresh(attempt, _int(ctx, "EXAKIT_ABOUT_RETRY", DEFAULT_RETRY)):
+            or _fresh(attempt, _int(ctx, "EXAKIT_ABOUT_RETRY", ctx.catalog.kit.about_retry)):
         return _read(cache)
     cache_dir.mkdir(parents=True, exist_ok=True)
     attempt.write_text("", encoding="utf-8")
     try:
         body = ctx.net.text(f"{url}/{repo}", token=ctx.env.get("GITHUB_TOKEN"))
-        text = cap(sanitise(str(json.loads(body).get("description") or "")), _int(ctx, "EXAKIT_ABOUT_MAX_LEN", DEFAULT_MAX_LEN))
+        text = cap(sanitise(str(json.loads(body).get("description") or "")), _int(ctx, "EXAKIT_ABOUT_MAX_LEN", ctx.catalog.kit.about_max_len))
     except ExakitError as err:
         why = "GitHub's rate limit (60 requests an hour without GITHUB_TOKEN)" if "403" in (err.hint or "") or "429" in (err.hint or "") else err.hint or "no answer"
         ctx.log.line("INFO", f"About fetch failed for {addon.id}: {why} - using the cached copy, else the kit's own tagline")

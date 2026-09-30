@@ -9,8 +9,6 @@ from exakit.domain.errors import BadInput, Failed
 from . import Context
 from .runtime_ops import credentials, exapump
 
-READONLY_USER_DEFAULT = "mcp_readonly"
-READONLY_SCHEMAS_DEFAULT = "STARTER_KIT"
 
 
 # --- the read-only user ----------------------------------------------------------
@@ -58,10 +56,10 @@ def _admin_login(ctx: Context, manifest) -> tuple[str, int, str, str]:
 
 def _readonly_identity(ctx: Context) -> tuple[str, str, str]:
     """(user, default schema, password): the names from the environment, the password from the credential store."""
-    ro_user = (ctx.env.get("EXAKIT_MCP_READONLY_USER") or READONLY_USER_DEFAULT).upper()
+    ro_user = (ctx.env.get("EXAKIT_MCP_READONLY_USER") or ctx.catalog.kit.mcp_readonly_user).upper()
     if not ro_user.replace("_", "").isalnum():
         raise BadInput(f"Invalid EXAKIT_MCP_READONLY_USER: {ro_user}")
-    schema = (ctx.env.get("EXAKIT_MCP_READONLY_SCHEMAS") or READONLY_SCHEMAS_DEFAULT).split(",")[0].strip().upper()
+    schema = (ctx.env.get("EXAKIT_MCP_READONLY_SCHEMAS") or ctx.catalog.kit.mcp_readonly_schemas).split(",")[0].strip().upper()
     store = credentials(ctx)
     ro_password = store.read("mcp_readonly_password")
     if not CredentialStore.is_token(ro_password):

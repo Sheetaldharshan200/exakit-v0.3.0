@@ -44,7 +44,7 @@ class VersionsManifestOrderTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def _source(self, pages):
-        return CachedVersionsSource(cache_path=self.cache, baked_path=self.baked, url=URL, ttl_seconds=86400,
+        return CachedVersionsSource(cache_path=self.cache, baked_path=self.baked, url=URL, ttl_seconds=86400, retry_seconds=3600,
                                     downloader=FakeDownloader(pages), log=ListLog(), clock=lambda: self.now)
 
     def _advertised(self, source) -> str | None:

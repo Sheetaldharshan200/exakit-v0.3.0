@@ -6,7 +6,15 @@
   "manifest_key": "personal",
   "source": {
     "type": "github_release",
-    "repo": "exasol/exasol-personal"
+    "repo": "exasol/exasol-personal",
+    "tag": "v{version}",
+    "assets": {
+      "macos-aarch64": "exasol-personal_macOS_arm64.tar.gz",
+      "macos-x86_64": "exasol-personal_macOS_x86_64.tar.gz",
+      "linux-aarch64": "exasol-personal_Linux_arm64.tar.gz",
+      "linux-x86_64": "exasol-personal_Linux_x86_64.tar.gz"
+    },
+    "checksums": "exasol-personal_{version}_checksums.txt"
   },
   "install_order": 10,
   "step_id": "runtime",

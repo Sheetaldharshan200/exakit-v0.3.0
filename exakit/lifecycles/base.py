@@ -86,7 +86,8 @@ class LifecycleBase:
                        tag: str | None = None, asset: str | None = None) -> Path:
         """Download and verify. Without a digest: the release API's, else refuse (or the unverified hatch)."""
         if digest is None and repo and tag and asset:
-            digest = asset_digest(repo, tag, asset, self.ctx.net, token=self.ctx.env.get("GITHUB_TOKEN"), cache_dir=self.ctx.paths.releases_cache)
+            digest = asset_digest(repo, tag, asset, self.ctx.net, endpoints=self.ctx.catalog.kit.endpoints, token=self.ctx.env.get("GITHUB_TOKEN"),
+                                  cache_dir=self.ctx.paths.releases_cache)
         hatch = f"EXAKIT_ALLOW_UNVERIFIED_{self.addon.id.upper().replace('-', '_')}"
         if digest is None and self.ctx.env.get(hatch) != "1":
             raise Failed(f"No checksum is available for {what}; refusing an unverified download "
@@ -104,7 +105,7 @@ class LifecycleBase:
         if not bin_path:
             raise Failed("uv (the Python tool runner) is not available - install it from https://docs.astral.sh/uv/ and re-run",
                          remedy=f"exakit update {self.addon.id}")
-        self.ctx.uv = UvTool(bin_path, self.ctx.runner, windows=self.ctx.platform.os == "windows")
+        self.ctx.uv = UvTool(bin_path, self.ctx.runner, python_version=self.ctx.catalog.kit.managed_python, windows=self.ctx.platform.os == "windows")
         return self.ctx.uv
 
     def write_launcher(self, name: str, content: str) -> Path:

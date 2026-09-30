@@ -300,7 +300,7 @@ def load_file(ctx: Context, path: Path) -> Result:
         raise Failed(f"{path.name} looks tabular but exapump reads .csv and .parquet only - rename it to .csv and retry.")
     if kind == "unknown":
         raise Failed(f"{path.name} is not a CSV, Parquet or JSON file the kit can load.")
-    schema = (ctx.env.get("EXAKIT_SCHEMA") or "STARTER_KIT").upper()
+    schema = (ctx.env.get("EXAKIT_SCHEMA") or ctx.catalog.kit.data_schema).upper()
     default_target = ctx.env.get("EXAKIT_DATA_TABLE") or f"{schema}.{table_name_from_path(path)}"
     target = ctx.ui.prompt("Target table (SCHEMA.TABLE, back to return)", default_target) if ctx.ui.interactive else default_target
     if target.lower() in ("b", "back"):

@@ -99,7 +99,7 @@ def describe_protection(path: Path) -> str | None:
     if _is_windows():
         try:
             completed = subprocess.run(
-                ["icacls", str(path)],
+                ["icacls", os.path.realpath(str(path))],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -108,7 +108,9 @@ def describe_protection(path: Path) -> str | None:
         except (OSError, subprocess.SubprocessError):
             return None
         username = (os.environ.get("USERNAME") or getpass.getuser()).strip().lower()
-        target = str(path).lower()
+        # icacls echoes the long form of the path; a temp directory may be
+        # spelled short (RUNNER~1), so compare against the resolved real path.
+        target = os.path.realpath(str(path)).lower()
         principals: list[str] = []
         inherited = False
         for raw in (completed.stdout or "").splitlines():

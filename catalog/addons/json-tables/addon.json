@@ -6,13 +6,20 @@
   "source": {
     "type": "github_release",
     "repo": "exasol-labs/exasol-json-tables",
-    "package": "exasol-json-tables"
+    "package": "exasol-json-tables",
+    "mirror": "kit",
+    "tag": "json-tables-{version}",
+    "sources": "{version}",
+    "engine_assets": {
+      "macos-aarch64": "exasol-json-tables-ingest-macos-aarch64",
+      "linux-aarch64": "exasol-json-tables-ingest-linux-aarch64",
+      "linux-x86_64": "exasol-json-tables-ingest-linux-x86_64"
+    }
   },
   "platforms": [
     "macos-aarch64",
     "linux-aarch64",
-    "linux-x86_64",
-    "windows-x86_64"
+    "linux-x86_64"
   ],
   "requires": [
     "personal",

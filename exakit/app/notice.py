@@ -13,7 +13,6 @@ from . import Context
 from .version import HEAVY, rows
 import contextlib
 
-DEFAULT_INTERVAL = 86400
 NOTICED_AFTER = frozenset({
     "status", "info", "guide", "start", "stop", "data-load", "preflight", "skills", "skills-install",
     "marketplace", "persona", "autostart", "logs", "mcp-setup", "mcp-doctor", "mcp-status",
@@ -23,7 +22,7 @@ NOTICED_AFTER = frozenset({
 def _due(ctx: Context) -> bool:
     state = ctx.paths.cache / "notice-state.json"
     interval_text = ctx.env.get("EXAKIT_NOTICE_INTERVAL", "")
-    interval = int(interval_text) if interval_text.isdigit() else DEFAULT_INTERVAL
+    interval = int(interval_text) if interval_text.isdigit() else ctx.catalog.kit.notice_interval
     try:
         last = int(json.loads(state.read_text(encoding="utf-8")).get("last_shown", 0))
     except (OSError, ValueError, AttributeError, TypeError):

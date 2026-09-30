@@ -7,14 +7,12 @@ import time
 from pathlib import Path
 
 from exakit.adapters.net.digest import digest_from_checksums, verify_sha256
+from exakit.adapters.net.github import download_url
 from exakit.domain.errors import Failed
 from exakit.domain.versions import is_newer, parse_version
 from exakit.lifecycles.base import temp_dir
 
 from .base import ComponentBase
-
-REPO = "exasol/exasol-personal"
-
 
 def major(version: str | None) -> str:
     try:
@@ -41,12 +39,15 @@ class Lifecycle(ComponentBase):
         return (manifest.get("runtime.version") if manifest else None) or None
 
     def asset_name(self, version: str) -> str:
-        os_word = "macOS" if self.ctx.platform.os == "macos" else "Linux"
-        arch = "arm64" if self.ctx.platform.arch == "aarch64" else "x86_64"
-        return f"exasol-personal_{os_word}_{arch}.tar.gz"
+        """The release archive for this platform, named by the catalog; absent means no launcher is published here."""
+        assets = self.source.get("assets") or {}
+        name = assets.get(self.ctx.platform.platform_key) or assets.get(f"linux-{self.ctx.platform.arch}")
+        if not name:
+            raise Failed(f"No Exasol launcher is published for this platform ({self.ctx.platform.platform_key}).")
+        return str(name)
 
-    def release_url(self, version: str) -> str:
-        return f"https://github.com/{REPO}/releases/download/v{version}"
+    def release_url(self, version: str, name: str) -> str:
+        return download_url(self.repo(), self.tag(version), name, endpoints=self.ctx.catalog.kit.endpoints)
 
     # --- install ----------------------------------------------------------------------------
 
@@ -82,9 +83,9 @@ class Lifecycle(ComponentBase):
         self.ctx.ui.info(f"Downloading Exasol launcher v{version} ({asset})")
         with temp_dir("exakit-personal-") as tmp:
             archive = Path(tmp) / asset
-            self.ctx.net.fetch(f"{self.release_url(version)}/{asset}", archive, what=asset)
+            self.ctx.net.fetch(self.release_url(version, asset), archive, what=asset)
             checksums = Path(tmp) / "checksums.txt"
-            self.ctx.net.fetch(f"{self.release_url(version)}/exasol-personal_{version}_checksums.txt", checksums, what="checksums")
+            self.ctx.net.fetch(self.release_url(version, str(self.source["checksums"]).format(version=version)), checksums, what="checksums")
             digest = digest_from_checksums(checksums.read_text(encoding="utf-8", errors="replace"), asset)
             if not digest:
                 raise Failed(f"The release's checksums file does not list {asset}; refusing an unverified launcher.")

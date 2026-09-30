@@ -78,3 +78,10 @@ Update this file in the same commit as the work. Design sections are in
 - [ ] E7 Raise the coverage gate from 65% as `app/legacy_*`, `app/deploy.py` and the runtime adapter gain tests
 - [ ] E8 Five commits in the pushed history carry an attribution trailer (before the rule); the release gate warns until the history is rewritten, which is the owner's call
 - [ ] E9 Docstrings on the 650 public functions the standard notes (not gating)
+
+## Phase F: every default is data (2026-09-30)
+
+- [x] F1 `catalog/kit.json` + `exakit/domain/settings.py`: the repository, installer URLs, versions and About fetch URLs with their cache and retry budgets, endpoint templates, the managed Python, the machine requirements, the runtime port and budgets, the MCP read-only defaults, the data schema, the notice interval; validated on load, read through `ctx.catalog.kit`, environment overrides on top (D34, design 3.3a)
+- [x] F2 The catalog `source` blocks carry every tag template, asset name per platform, digest key, pin, mirror and checksum file (exapump, Exasol Personal, exasol-scheduler, json-tables); `config` blocks carry dbt's profile and schema and the scheduler's service user and schema; dash-server's port is `service.port`
+- [x] F3 The adapters take what they need as parameters (endpoints, timeouts, the managed Python, the runtime budgets): no adapter carries a default of its own
+- [x] F4 `tests/unit/domain/test_settings.py` validates the file, every field's type, the endpoint templates, the installer command per platform, the failure on a missing file, and holds the moved literals out of `exakit/`; `tools/release_check.py` holds the shell layer's own defaults (it runs before Python) equal to the file

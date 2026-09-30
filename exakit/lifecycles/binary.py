@@ -21,17 +21,22 @@ class BinaryLifecycle(LifecycleBase):
         return self.home / "libexec" / f"{self.addon.id.replace('-', '_')}{exe}"
 
     def asset_name(self, version: str) -> str:
-        """Subclasses name the release asset for this platform."""
-        return f"{self.addon.id}-{self.ctx.platform.os}-{self.ctx.platform.arch}"
+        """The release asset for this platform: the catalog's ``assets`` map, else ``<id>-<os>-<arch>``."""
+        assets = self.addon.source.get("assets") or {}
+        return str(assets.get(self.ctx.platform.platform_key) or f"{self.addon.id}-{self.ctx.platform.os}-{self.ctx.platform.arch}")
 
     def release_tag(self, version: str) -> str:
-        return version
+        return str(self.addon.source.get("tag", "{version}")).format(version=version)
 
     def repo(self) -> str:
-        return self.addon.source["repo"]
+        """The repository the release lives in: the kit's own when the catalog says ``mirror: kit``."""
+        if self.addon.source.get("mirror") == "kit":
+            return self.ctx.kit_repo
+        return str(self.addon.source["repo"])
 
     def digest_key(self, version: str) -> str:
-        return self.ctx.platform.platform_key
+        keys = self.addon.source.get("digest_keys") or {}
+        return str(keys.get(self.ctx.platform.platform_key) or self.ctx.platform.platform_key)
 
     def installed_version(self) -> str | None:
         recorded = self.recorded("version")
@@ -40,7 +45,7 @@ class BinaryLifecycle(LifecycleBase):
     def fetch_engine(self, version: str, dest: Path) -> None:
         asset = self.asset_name(version)
         tag = self.release_tag(version)
-        self.fetch_verified(download_url(self.repo(), tag, asset), dest, digest=self.published_digest(version, self.digest_key(version)),
+        self.fetch_verified(download_url(self.repo(), tag, asset, endpoints=self.ctx.catalog.kit.endpoints), dest, digest=self.published_digest(version, self.digest_key(version)),
                             what=f"{self.addon.id} {version}", repo=self.repo(), tag=tag, asset=asset)
 
     def launcher_content(self) -> str | None:

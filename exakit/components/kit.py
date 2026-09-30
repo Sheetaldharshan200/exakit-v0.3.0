@@ -51,8 +51,7 @@ class Lifecycle(ComponentBase):
         """The kit tarball: main first (kit script changes live there), then the release tags. Returns the ref."""
         archive = stage.parent / f".kit-download-{int(time.time())}.tar.gz"
         for ref in ("main", f"v{latest}", latest):
-            url = (f"https://github.com/{self.ctx.kit_repo}/archive/refs/heads/main.tar.gz" if ref == "main"
-                   else f"https://github.com/{self.ctx.kit_repo}/archive/refs/tags/{ref}.tar.gz")
+            url = self.ctx.catalog.kit.endpoints.url("archive_branch" if ref == "main" else "archive_tag", repo=self.ctx.kit_repo, ref=ref)
             try:
                 self.ctx.net.fetch(url, archive, what=f"starter kit ({ref})")
             except Failed:

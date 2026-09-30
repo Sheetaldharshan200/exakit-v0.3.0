@@ -42,7 +42,7 @@ class DashServerTest(unittest.TestCase):
             box.close()
         box = Sandbox(manifest=MANIFEST)
         try:
-            self.assertEqual(for_addon(box.ctx, box.ctx.catalog.addon("dash-server")).port(), dash_server.DEFAULT_PORT)
+            self.assertEqual(for_addon(box.ctx, box.ctx.catalog.addon("dash-server")).port(), box.ctx.catalog.addon("dash-server").service["port"])
         finally:
             box.close()
 

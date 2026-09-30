@@ -52,6 +52,10 @@ as the change they describe.
   a `.sh` + `.ps1` module pair.
 - **Adding a component?** One file, `catalog/components/<id>.json`, plus its
   `versions.json` entry.
+- **A default (a URL, a repository, a port, a budget, a threshold, a package
+  name)?** `catalog/kit.json` for the kit, the `source` or `config` block of
+  the component or add-on otherwise (docs/design.md 3.3a). Never a literal in
+  `exakit/`: `tests/unit/domain/test_settings.py` fails on the ones that moved.
 - **Adding an AI skill?** Unchanged: `skills/<name>/SKILL.md` with `name` and
   `description` frontmatter (ending in a `Triggers —` list), a row in
   `skills/README.md`, and a bump of `components.skills.version`.
