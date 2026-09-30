@@ -139,7 +139,7 @@ function Get-ExapumpAssetName {
 #   1. versions.json, but ONLY when the version being installed is the advertised
 #      one. An env override must never borrow another release's digest - that
 #      would either fail confusingly or, worse, match the wrong artifact.
-#   2. the digest of the release shipped with this kit (below).
+#   2. the pinned digests of the fallback releases (below).
 #   3. the release API for the version in question.
 #
 # $null means "no digest available"; the caller decides what to do with that (it
@@ -163,11 +163,14 @@ function Get-ExapumpExpectedSha256 {
     return (Get-ExapumpDigestFromApi $AssetName)
 }
 
-# Digest of the pinned release (published by the release API). When the
-# version is overridden the digest is fetched from the API instead.
+# Digests of the fallback releases (published by the release API), consulted by
+# Get-ExapumpExpectedSha256 after versions.json and before the release API. The
+# current fallback MUST be listed here: it is what Install-Exapump verifies
+# against when the release API cannot supply a digest for the requested version.
 function Get-ExapumpPinnedSha256 {
     param([Parameter(Mandatory)][string]$AssetName)
     switch ($AssetName) {
+        "exapump-0.13.0-windows-x86_64.exe" { return "b6eccf50732f4f2d3d4f6edb34789e6e24e94d9c6dbd50f5f080104b375aa838" }
         "exapump-0.11.2-windows-x86_64.exe" { return "8a2e8199a94f1b21782e4c68179948bfa43217c82c9b9b2a25eaec4532305237" }
         default { return $null }
     }
@@ -262,16 +265,32 @@ function Install-Exapump {
     Get-ExakitFile -Url $url -Dest $tmp
 
     $expected = Get-ExapumpExpectedSha256 $asset
+    # No digest for the requested version (an un-pinned latest, and the release
+    # API unreachable or rate-limited): install the fallback release instead,
+    # verified against its pinned digest, rather than failing the install.
+    # Ported from the production hotfix (exasol-labs PR #24); twin of the same
+    # block in exapump_install.
+    if (-not $expected -and $env:EXAKIT_ALLOW_UNVERIFIED_EXAPUMP -ne "1" -and $script:ExapumpVersion -ne $script:ExapumpVersionFallback) {
+        Warn2 "No checksum available for $asset - installing the fallback exapump v$($script:ExapumpVersionFallback) instead."
+        $script:ExapumpVersion = $script:ExapumpVersionFallback
+        $asset = Get-ExapumpAssetName
+        $url = "https://github.com/$($script:ExapumpRepo)/releases/download/v$($script:ExapumpVersion)/$asset"
+        Remove-Item -Force $tmp -ErrorAction SilentlyContinue
+        $script:ExakitActiveLabel = "Downloading exapump v$($script:ExapumpVersion)"
+        Info "Downloading exapump v$($script:ExapumpVersion) ($asset)"
+        Get-ExakitFile -Url $url -Dest $tmp
+        $expected = Get-ExapumpExpectedSha256 $asset
+    }
     if ($expected) {
         Test-ExakitSha256 -Path $tmp -Expected $expected
     } elseif ($env:EXAKIT_ALLOW_UNVERIFIED_EXAPUMP -eq "1") {
         Warn2 "No digest available for $asset - proceeding WITHOUT checksum verification (EXAKIT_ALLOW_UNVERIFIED_EXAPUMP=1)."
     } else {
         # Match the launcher's bar (and the bash twin in exapump.sh): never
-        # install a downloaded-and-executed binary we could not verify. For an
-        # advertised version the digest comes from versions.json, and for the
-        # shipped one from the pinned table, so this only fires on a version this
-        # kit knows nothing about plus an unreachable release API.
+        # install a downloaded-and-executed binary we could not verify. An
+        # unknown version with no reachable release API was already swapped for
+        # the fallback above, so this only fires when even the fallback release
+        # has no digest - a pinned table that was not updated with the fallback.
         Remove-Item -Force $tmp -ErrorAction SilentlyContinue
         Fail "No checksum available for $asset; refusing to install an unverified exapump binary. Add its digest to versions.json (components.exapump.sha256) or check network access to the release API. Override at your own risk with EXAKIT_ALLOW_UNVERIFIED_EXAPUMP=1."
     }

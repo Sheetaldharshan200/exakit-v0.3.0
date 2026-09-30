@@ -49,7 +49,7 @@ exapump_asset_name() {
 #   1. versions.json, but ONLY when the version being installed is the advertised
 #      one. An env override must never borrow another release's digest — that
 #      would either fail confusingly or, worse, match the wrong artifact.
-#   2. the digests of the release shipped with this kit (below).
+#   2. the pinned digests of the fallback releases (below).
 #   3. the release API for the version in question.
 #
 # Empty output means "no digest available"; the caller decides what to do with
@@ -79,10 +79,16 @@ exapump_expected_sha256() {
     exapump_release_digest_from_api "$_ex_asset"
 }
 
-# Digests of the bundled fallback release (published by the release API). When the
-# version is overridden the digest is fetched from the API instead.
+# Digests of the fallback releases (published by the release API), consulted by
+# exapump_expected_sha256 after versions.json and before the release API. The
+# current fallback MUST be listed here: it is what exapump_install verifies
+# against when the release API cannot supply a digest for the requested version.
 exapump_pinned_sha256() {
     case "$1" in
+        exapump-0.13.0-linux-aarch64)  echo "f23a955caf131f26833471dcac0e40e524b825e75277cdda68dfb157acb806bf" ;;
+        exapump-0.13.0-linux-x86_64)   echo "69a5a9bc63aa07ff7b95d00b8786ec1c67c3dff6e7f3fbac5f09b110c8d288db" ;;
+        exapump-0.13.0-macos-aarch64)  echo "819a3c0c7e024069c8e1ee76c931cf6ea3701e7335c72d97431b2e06d7234c71" ;;
+        exapump-0.13.0-macos-x86_64)   echo "38507010bb903573029991e56af3ad846830b328f90cd2f04d048ca684e29ec9" ;;
         exapump-0.11.2-linux-aarch64)  echo "106c3c5ea168a1381549807b82639137c8b3f94bd64c1b6d02fa380a025d5085" ;;
         exapump-0.11.2-linux-x86_64)   echo "669af4d488e5b1ae2e9c9e030c1be4b1cdb7442dedf3175a361928613f4b3e80" ;;
         exapump-0.11.2-macos-aarch64)  echo "e1438c69f26cdcca69ad1b7211aa9495524c53ff1badebee91d5a631c503616b" ;;
@@ -194,17 +200,36 @@ exapump_install() {
     fetch "$_url" "$_tmp"
 
     _expected="$(exapump_expected_sha256 "$_asset" 2>/dev/null || true)"
+    # No digest for the requested version (an un-pinned latest, and the release
+    # API unreachable or rate-limited): install the fallback release instead,
+    # verified against its pinned digest, rather than failing the install.
+    # Ported from the production hotfix (exasol-labs PR #24).
+    if [ -z "$_expected" ] && [ "${EXAKIT_ALLOW_UNVERIFIED_EXAPUMP:-0}" != "1" ] \
+        && [ "$EXAKIT_EXAPUMP_VERSION" != "$EXAKIT_EXAPUMP_VERSION_FALLBACK" ]; then
+        warn "No checksum available for $_asset — installing the fallback exapump v${EXAKIT_EXAPUMP_VERSION_FALLBACK} instead."
+        EXAKIT_EXAPUMP_VERSION="$EXAKIT_EXAPUMP_VERSION_FALLBACK"
+        export EXAKIT_EXAPUMP_VERSION
+        _asset="$(exapump_asset_name)"
+        _url="https://github.com/${EXAKIT_EXAPUMP_REPO}/releases/download/v${EXAKIT_EXAPUMP_VERSION}/${_asset}"
+        # fetch resumes with curl -C -, so the first download has to go before
+        # the fallback lands in the same temp file, or the two would be spliced.
+        rm -f "$_tmp"
+        EXAKIT_ACTIVE_LABEL="Downloading exapump v${EXAKIT_EXAPUMP_VERSION}"
+        info "Downloading exapump v${EXAKIT_EXAPUMP_VERSION} ($_asset)"
+        fetch "$_url" "$_tmp"
+        _expected="$(exapump_expected_sha256 "$_asset" 2>/dev/null || true)"
+    fi
     if [ -n "$_expected" ]; then
         verify_sha256 "$_tmp" "$_expected"
     elif [ "${EXAKIT_ALLOW_UNVERIFIED_EXAPUMP:-0}" = "1" ]; then
         warn "No digest available for $_asset — proceeding WITHOUT checksum verification (EXAKIT_ALLOW_UNVERIFIED_EXAPUMP=1)."
     else
         # Match the launcher's bar: never install a downloaded-and-executed
-        # binary we could not verify. For an advertised version the digest comes
-        # from versions.json, and for the shipped one from the pinned table, so
-        # this only fires on a version this kit knows nothing about plus an
-        # unreachable release API — which should fail loudly rather than run
-        # unverified code.
+        # binary we could not verify. An unknown version with no reachable
+        # release API was already swapped for the fallback above, so this only
+        # fires when even the fallback release has no digest — a pinned table
+        # that was not updated with the fallback — which should fail loudly
+        # rather than run unverified code.
         rm -f "$_tmp"
         die "No checksum available for $_asset; refusing to install an unverified exapump binary. Add its digest to versions.json (components.exapump.sha256) or check network access to the release API. Override at your own risk with EXAKIT_ALLOW_UNVERIFIED_EXAPUMP=1."
     fi
