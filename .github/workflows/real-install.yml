@@ -1,0 +1,117 @@
+name: real install
+
+# The manual acceptance rows M-3 and M-5 of docs/test-and-acceptance.md, run on
+# a scratch machine nobody keeps: a fresh runner. The install goes through the
+# public path (install.sh, the kit's own Python, `python -m exakit install`)
+# with a persona, then the commands an agent runs, then a re-run, then the
+# full uninstall. Nothing here is mocked; the runner is thrown away after.
+on:
+  workflow_dispatch:
+
+jobs:
+  install:
+    name: full install (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    continue-on-error: ${{ matrix.os == 'macos-latest' }}
+    env:
+      EXAKIT_LOCAL_KIT: ${{ github.workspace }}
+      EXAKIT_KIT_REPO: ${{ github.repository }}
+      EXAKIT_PERSONA: analyst
+      EXAKIT_NO_UPDATE_NOTICE: "1"
+      NO_COLOR: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: the machine
+        run: |
+          uname -a
+          if command -v free >/dev/null 2>&1; then free -g; else sysctl -n hw.memsize; fi
+          df -h "$HOME" | tail -1
+          command -v podman >/dev/null 2>&1 && podman --version || echo "no podman (macOS: the launcher brings its own VM)"
+          echo "PATH=$HOME/.local/bin:$PATH" >> "$GITHUB_ENV"
+
+      - name: preflight (installs nothing)
+        run: EXAKIT_PREFLIGHT=1 sh install.sh
+
+      - name: dry run (installs nothing)
+        run: |
+          EXAKIT_DRY_RUN=1 sh install.sh
+          test ! -f "$HOME/.exasol-starter-kit/manifest.json"
+
+      - name: install with the analyst persona
+        run: |
+          start=$(date +%s)
+          sh install.sh
+          echo "install took $(( $(date +%s) - start ))s"
+
+      - name: status must be running
+        run: |
+          for i in $(seq 1 60); do
+            if exakit status --json > status.json; then break; fi
+            sleep 10
+          done
+          cat status.json
+          python3 -c 'import json; d=json.load(open("status.json")); assert d["running"] and d["status"]=="running", d["status"]; assert "tpch" in d["datasets_loaded"], d["datasets_loaded"]; print("persona:", d["persona"])'
+
+      - name: the commands an agent runs
+        run: |
+          set -e
+          exakit version --json | tee version.json | python3 -c 'import json,sys; d=json.load(sys.stdin); print({r["component"]: r["status"] for r in d["components"]})'
+          exakit info --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print("info:", d["status"], d["runtime"]["dsn"])'
+          exakit sql --json "SELECT COUNT(*) AS n FROM TPCH.NATION" | tee sql.json
+          python3 -c 'import json; d=json.load(open("sql.json")); assert d["ok"] and int(list(d["rows"][0].values())[0]) == 25, d'
+          exakit sql --json "DELETE FROM TPCH.NATION" > reject.json || true
+          python3 -c 'import json; d=json.load(open("reject.json")); assert d["ok"] is False and d.get("rejected"), d'
+          exakit marketplace --list --json | tee marketplace.json
+          exakit persona plan analyst --json | tee plan.json | python3 -c 'import json,sys; d=json.load(sys.stdin); print("plan:", d["status"], "pending", d["pending"])'
+          exakit skills --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print("skills:", d["status"], len(d["skills"]))'
+          exakit logs --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print("logs:", [t["target"] for t in d["targets"]])'
+          exakit mcp-status --json > mcp.json || true; head -c 400 mcp.json; echo
+          exakit catalog --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print("catalog:", d["count"], "commands")'
+          exakit help mcp >/dev/null && exakit guide >/dev/null
+
+      - name: a second run skips every done step
+        run: |
+          start=$(date +%s)
+          sh install.sh | tee rerun.log
+          echo "re-run took $(( $(date +%s) - start ))s"
+          grep -c "already done, skipping" rerun.log
+
+      - name: stop, start, update, data-load --force
+        run: |
+          set -e
+          exakit stop
+          exakit status --json > stopped.json || true
+          python3 -c 'import json; d=json.load(open("stopped.json")); assert not d["running"], d["status"]; print("stopped:", d["status"], d["remedy"])'
+          exakit start
+          exakit status --json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["running"], d["status"]'
+          exakit update --yes
+          exakit data-load --force
+          exakit status --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print("datasets:", d["datasets_loaded"], d["datasets_source"])'
+
+      - name: keep the logs
+        if: always()
+        run: |
+          mkdir -p kept && cp -R "$HOME/.exasol-starter-kit/logs" kept/ 2>/dev/null || true
+          cp -f "$HOME/.exasol-starter-kit/manifest.json" kept/ 2>/dev/null || true
+          cp -f status.json version.json marketplace.json plan.json rerun.log kept/ 2>/dev/null || true
+
+      - name: uninstall everything
+        if: always()
+        run: |
+          exakit uninstall --dry-run || true
+          exakit uninstall --yes || true
+          test ! -d "$HOME/.exasol-starter-kit" && echo "kit home gone"
+          test ! -e "$HOME/.local/bin/exakit" && echo "exakit command gone"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-install-${{ matrix.os }}
+          path: kept/
+          if-no-files-found: ignore
