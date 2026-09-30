@@ -255,7 +255,7 @@ has "json goes through the JSON path" "json events.json -> STARTER_KIT.EVENTS"  
 lacks "the skipped duplicate never loads" "sales_copy.csv" "$LOG"
 has "the folder is recorded" "manifest data.last_load.type=local_folder" "$LOG"
 has "the file count is recorded" "manifest data.last_load.files=4" "$LOG"
-has "the summary counts them" "Loaded 4 files into STARTER_KIT" "$OUT"
+has "the summary counts them" "STARTER_KIT: 4 files loaded" "$OUT"
 
 # This is also the guard for a bash 3.2 trap: filtering the plan with a `case`
 # inside $( ) returns the script's own text instead of the matches on the shell
@@ -271,8 +271,12 @@ OUT="$(exakit_load_local_folder "$D" 2>&1)"
 RC=$?
 check "a failed file is reported" "1" "$RC"
 check "the other three still loaded" "3" "$(grep -cE '^(upload|json) ' "$LOADED")"
-has "the failure names the file" "orders.parquet not loaded" "$OUT"
-has "and the rest are counted" "Loaded 3 of 4 into STARTER_KIT" "$OUT"
+has "the failure names the file" "orders.parquet" "$OUT"
+# On its OWN ROW, against its own table. The reason used to be a warn printed
+# inside a live progress bar, which a reader who looked away never saw.
+check "...on a row that says it did not load" "1" \
+    "$(printf '%s\n' "$OUT" | grep -c 'orders\.parquet.*not loaded')"
+has "and the rest are counted" "STARTER_KIT: 3 files loaded, 1 not loaded" "$OUT"
 FAIL_ON=""
 
 printf '\n== a file that will not load says why, and the rest still load ==\n'
@@ -318,7 +322,7 @@ OUT="$(EXAKIT_DATA_FORMATS=csv exakit_load_local_folder "$D" 2>&1)"
 check "every non-JSON kind uploads" "3" "$(grep -c '^upload ' "$LOADED")"
 has "parquet is in"  "orders"    "$(cat "$LOADED")"
 has "json is in"     "events"    "$(cat "$LOADED")"
-has "and the old variable no longer narrows anything" "Loaded 4 files" "$OUT"
+has "and the old variable no longer narrows anything" "STARTER_KIT: 4 files loaded" "$OUT"
 
 printf '\n== a folder with nothing to load says so ==\n'
 
@@ -461,6 +465,211 @@ has "...and puts it in the message it dies with" \
     'Fail "Could not load $(Split-Path $Path -Leaf) into $Target - $uploadWhy"' "$FATAL_PS"
 check "the twin asks on both paths, not one" "2" \
     "$(printf '%s\n' "$FATAL_PS" | grep -c 'Get-ExakitUploadFailureReason -Output $result.Output')"
+
+printf '\n== a second run of the same folder must not load it twice ==\n'
+
+# THE BUG THIS SECTION EXISTS FOR. exapump's upload APPENDS. A folder loaded
+# once and loaded again put every row in twice - no error, no warning, and no
+# way to tell afterwards which half was which. A reader whose load stopped
+# partway through and who simply ran it again got a schema of doubled tables.
+#
+# The database is stubbed at the listing, so the whole decision runs here with
+# no engine: what is under test is which files the loop would touch, which is
+# the part that was wrong.
+RCPT="$WORK/rcpt"; mkdir -p "$RCPT/cache"
+EXAKIT_CACHE_DIR="$RCPT/cache"
+printf 'a,b\n1,2\n' > "$RCPT/sales.csv"
+printf 'x,y\n9,8\n' > "$RCPT/customers.csv"
+# The shape the loop actually passes: the plan with its "load|" prefix already
+# cut off, which is three fields, not four.
+DPLAN="csv|SALES|$RCPT/sales.csv
+csv|CUSTOMERS|$RCPT/customers.csv"
+
+# Nothing in the database yet: both files are new.
+exakit_table_rows_listing() { printf 'EXAKIT.LISTING_ANSWERED|1\n'; }
+rm -f "$RCPT/cache/load-receipts.tsv" "$RCPT/cache/load-inflight"
+D1="$(exakit_bulk_decide "$DPLAN" T)"
+check "an empty schema loads everything" "2" "$(printf '%s\n' "$D1" | grep -c '^load|')"
+
+# sales.csv landed: 2 rows, and a receipt saying so.
+exakit_load_receipt_record "T.SALES" "$RCPT/sales.csv" 2
+exakit_table_rows_listing() { printf 'EXAKIT.LISTING_ANSWERED|1\nT.SALES|2\n'; }
+D2="$(exakit_bulk_decide "$DPLAN" T)"
+has "the file already loaded is skipped, not re-sent" "done|$RCPT/sales.csv|2" "$D2"
+has "...and the one that never landed still loads"    "load|$RCPT/customers.csv|" "$D2"
+
+# The receipt is not a licence to skip forever. If the table no longer holds
+# what we put there - dropped and rebuilt, truncated, added to - the rows are
+# not ours to reason about, and the answer is a question, not an assumption.
+exakit_table_rows_listing() { printf 'EXAKIT.LISTING_ANSWERED|1\nT.SALES|7\n'; }
+has "a receipt whose row count no longer matches is not trusted" \
+    "clash|$RCPT/sales.csv|7" "$(exakit_bulk_decide "$DPLAN" T)"
+
+# A table with rows and no receipt at all is the reader's own data.
+rm -f "$RCPT/cache/load-receipts.tsv"
+exakit_table_rows_listing() { printf 'EXAKIT.LISTING_ANSWERED|1\nT.SALES|99\n'; }
+has "rows this kit did not load are a clash" "clash|$RCPT/sales.csv|99" "$(exakit_bulk_decide "$DPLAN" T)"
+
+# ...unless we said, before we started, that we were writing to it. That crumb
+# is the only thing separating "we were interrupted mid-file" from "this is
+# someone else's table", and it decides whether the rows get dropped.
+exakit_load_inflight_set "T.SALES"
+has "a table we were interrupted writing is resumed" "resume|$RCPT/sales.csv|99" "$(exakit_bulk_decide "$DPLAN" T)"
+exakit_load_inflight_clear
+has "...and once the crumb is swept it is a clash again" "clash|$RCPT/sales.csv|99" "$(exakit_bulk_decide "$DPLAN" T)"
+
+# An EMPTY table is neither loaded nor a clash: a failed import leaves one
+# behind, and refusing to load into it would strand the file forever.
+exakit_table_rows_listing() { printf 'EXAKIT.LISTING_ANSWERED|1\nT.SALES|0\n'; }
+has "an empty table is loaded into, not treated as occupied" "load|$RCPT/sales.csv|" "$(exakit_bulk_decide "$DPLAN" T)"
+
+# A database that cannot be ASKED is not an empty one, and must not stop a load.
+exakit_table_rows_listing() { printf ''; }
+check "an unreachable database still loads every file" "2" \
+    "$(exakit_bulk_decide "$DPLAN" T | grep -c '^load|')"
+
+# A JSON document does not become ONE table. json-tables shreds it into
+# SCHEMA.<base>_<array> per array it finds, so the table the plan named never
+# exists - and a target-keyed skip check answers "nothing there" every time,
+# which is how a second run would shred the same document on top of itself.
+printf '{"orders":[{"id":1}],"items":[{"id":2}]}\n' > "$RCPT/feed.json"
+JPLAN="json|FEED|$RCPT/feed.json"
+rm -f "$RCPT/cache/load-receipts.tsv"
+exakit_table_rows_listing() { printf 'EXAKIT.LISTING_ANSWERED|1\n'; }
+has "an unshredded JSON file loads" "load|$RCPT/feed.json|" "$(exakit_bulk_decide "$JPLAN" T)"
+
+# It landed as two tables, neither of them T.FEED.
+exakit_load_receipt_record "T.FEED_ORDERS" "$RCPT/feed.json" 1
+exakit_load_receipt_record "T.FEED_ITEMS"  "$RCPT/feed.json" 1
+exakit_table_rows_listing() { printf 'EXAKIT.LISTING_ANSWERED|1\nT.FEED_ORDERS|1\nT.FEED_ITEMS|1\n'; }
+has "a shredded JSON file is skipped on the second run" "done|$RCPT/feed.json|2" \
+    "$(exakit_bulk_decide "$JPLAN" T)"
+
+# EVERY table it made, not just the first: a document that shredded into two
+# and lost one is a load to redo, not a load to skip.
+exakit_table_rows_listing() { printf 'EXAKIT.LISTING_ANSWERED|1\nT.FEED_ORDERS|1\n'; }
+has "...but only while every table it made is still intact" "load|$RCPT/feed.json|" \
+    "$(exakit_bulk_decide "$JPLAN" T)"
+# ...and the same file loaded into a DIFFERENT schema is a different question.
+exakit_table_rows_listing() { printf 'EXAKIT.LISTING_ANSWERED|1\nT.FEED_ORDERS|1\nT.FEED_ITEMS|1\n'; }
+has "a receipt in one schema does not skip a load into another" "load|$RCPT/feed.json|" \
+    "$(exakit_bulk_decide "json|FEED|$RCPT/feed.json" OTHER)"
+# The file-keyed lookup is for JSON only. A CSV whose named table is empty is a
+# load, whatever receipts exist elsewhere.
+exakit_load_receipt_record "T.ELSEWHERE" "$RCPT/sales.csv" 4
+exakit_table_rows_listing() { printf 'EXAKIT.LISTING_ANSWERED|1\nT.SALES|0\nT.ELSEWHERE|4\n'; }
+has "a CSV is still decided on the table the plan names" "load|$RCPT/sales.csv|" \
+    "$(exakit_bulk_decide "csv|SALES|$RCPT/sales.csv" T)"
+rm -f "$RCPT/cache/load-receipts.tsv"
+
+printf '\n== the clash question is asked once, and skip is the safe default ==\n'
+
+exakit_table_rows_listing() { printf 'EXAKIT.LISTING_ANSWERED|1\nT.SALES|99\nT.CUSTOMERS|5\n'; }
+CPLAN="$(exakit_bulk_decide "$DPLAN" T)"
+check "two occupied tables are two clashes" "2" "$(printf '%s\n' "$CPLAN" | grep -c '^clash|')"
+# Without a terminal the answer is skip. Appending by accident cannot be undone
+# without knowing which rows were new; skipping costs a re-run.
+CANS="$(_exakit_prompt_tty() { printf ''; }; exakit_bulk_ask_clashes "$CPLAN" T 2>/dev/null)"
+check "no terminal means skip, and nothing else" "skip" "$CANS"
+# THE BUG THAT SHIPPED IN THE FIRST DRAFT OF THIS FIX. The function is read
+# through $(...), so a list or a sentence printed on stdout does not reach the
+# screen - it becomes part of the answer, which then matches none of the three
+# cases and falls through to appending. Every line of its UI goes to stderr.
+CNOISE="$(_exakit_prompt_tty() { printf ''; }; exakit_bulk_ask_clashes "$CPLAN" T 2>/dev/null)"
+check "the answer is the whole of stdout, with no UI mixed in" "1" \
+    "$(printf '%s\n' "$CNOISE" | grep -c .)"
+CERR="$(_exakit_prompt_tty() { printf ''; }; exakit_bulk_ask_clashes "$CPLAN" T 2>&1 >/dev/null)"
+has "...and the list the reader needs is on stderr" "sales.csv" "$CERR"
+has "...naming what is already in the table" "99 rows already" "$CERR"
+
+printf '\n== a failed import leaves no empty table behind ==\n'
+
+# exapump CREATES the table from the inferred schema before it imports a row,
+# so a file the engine then refuses leaves an empty table standing. That table
+# is worse than nothing: every "is it loaded?" check the kit has says yes over
+# a table holding nothing. This is what the live database looked like after a
+# CRLF file failed - STUDENTS_PERFORMANCE_DATASET, 0 rows, indistinguishable
+# from a loaded one.
+DROPPED="$WORK/dropped"; : > "$DROPPED"
+exapump_cli() { printf '%s\n' "$WORK/fake-exapump"; }
+cat > "$WORK/fake-exapump" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >> "$DROPPED_LOG"
+exit 0
+STUB
+chmod +x "$WORK/fake-exapump"
+DROPPED_LOG="$DROPPED"; export DROPPED_LOG
+
+exakit_table_rows_listing() { printf 'EXAKIT.LISTING_ANSWERED|1\nT.SALES|0\n'; }
+GONE="$(exakit_drop_phantom_table T.SALES absent)"
+has "a table we created and never filled is dropped" "DROP TABLE IF EXISTS T.SALES" "$(cat "$DROPPED")"
+has "...and the reader is told it was" "no empty table left behind" "$GONE"
+
+# Only ever OUR phantom. A table that was already there is the reader's, failed
+# import or not, and dropping it would destroy data over a file that never
+# loaded.
+: > "$DROPPED"
+check "a table that existed before is never dropped" "" "$(exakit_drop_phantom_table T.SALES 4)"
+check "...and no DROP is issued for it" "0" "$(grep -c . "$DROPPED")"
+# Nor one that DID take rows: a table with data in it is not a phantom.
+: > "$DROPPED"
+exakit_table_rows_listing() { printf 'EXAKIT.LISTING_ANSWERED|1\nT.SALES|12\n'; }
+check "a table that took rows is not dropped" "0" \
+    "$(exakit_drop_phantom_table T.SALES absent >/dev/null; grep -c . "$DROPPED")"
+
+printf '\n== the result names every file, and its remedy is a command that works ==\n'
+
+OUT="$WORK/outcomes.tsv"
+printf 'ok\tsales.csv\tSALES\t2 rows\t\n'                                            >  "$OUT"
+printf 'skip\tcustomers.csv\tCUSTOMERS\t5 rows\talready loaded from this file\n'     >> "$OUT"
+printf 'fail\twindows.csv\tWINDOWS\tnot loaded\tWindows line endings (CRLF)\n'       >> "$OUT"
+REPORT="$(UI_TICK='[ok]' UI_CROSS='[x]' UI_BULLET='-' exakit_bulk_print_outcomes "$OUT" TESTING)"
+has "the schema the files went into is named" "into TESTING"          "$REPORT"
+has "a loaded file names its table and its row count" "sales.csv"     "$REPORT"
+has "...with the rows it landed"                     "2 rows"         "$REPORT"
+has "a skipped file says so"                         "already loaded from this file" "$REPORT"
+has "a failed file is marked as failed"              "[x]"            "$REPORT"
+has "...and its reason sits under it, not in a progress bar" "Windows line endings (CRLF)" "$REPORT"
+has "every file appears, loaded or not"              "windows.csv"    "$REPORT"
+# One column for the targets. The marks are different widths without colour,
+# and padding only the names put every target in a different column.
+check "the target column is aligned across all three rows" "1" \
+    "$(printf '%s\n' "$REPORT" | grep -o '\->' | wc -l | tr -d ' ' >/dev/null; \
+       printf '%s\n' "$REPORT" | grep -n '\->' | sed 's/:.*//' >/dev/null; \
+       printf '%s\n' "$REPORT" | awk '/->/{print index($0,"->")}' | sort -u | wc -l | tr -d ' ')"
+
+# THE MISMATCH THE READER HIT. The summary said "full detail: exakit logs", and
+# `exakit logs` with no argument lists the log TARGETS and shows none of them -
+# so following the remedy landed on a chooser, still not knowing what failed.
+# A remedy has to be a command that shows the thing it promises.
+BULK_SH="$(grep -v '^[[:space:]]*#' "$ROOT/setup/lib/exapump.sh")"
+BULK_PS="$(grep -v '^[[:space:]]*#' "$ROOT/setup/lib/exapump.ps1")"
+lacks "the summary no longer points at a command that lists targets" \
+    "full detail: exakit logs)" "$BULK_SH"
+lacks "...nor does the twin" "full detail: exakit logs)" "$BULK_PS"
+has "it names the log that holds the answer" "exakit logs setup" "$BULK_SH"
+has "...and so does the twin"                "exakit logs setup" "$BULK_PS"
+check "no bare 'exakit logs' remedy survives in the data-load path" "0" \
+    "$(printf '%s\n' "$BULK_SH" "$BULK_PS" | grep -c 'exakit logs)' || true)"
+
+# "Loaded 0 of 3" was what a fully-resumed run said about a schema holding every
+# row it was asked for: a true count of a number nobody wanted, reading as total
+# failure.
+lacks "the count no longer reports a resumed run as a failure" \
+    'Loaded $_blf_done of $_blf_n' "$BULK_SH"
+has "the summary names what was skipped, not just what loaded" \
+    "already there and left alone" "$BULK_SH"
+has "...on the PowerShell side too" "already there and left alone" "$BULK_PS"
+
+# Both sides, same decisions, same names for them.
+for _v in exakit_load_receipt_record exakit_load_receipt_match exakit_bulk_decide \
+          exakit_drop_phantom_table exakit_load_inflight_set; do
+    has "the shell side has $_v" "$_v" "$BULK_SH"
+done
+for _v in Write-ExakitLoadReceipt Get-ExakitLoadReceipt Get-ExakitBulkDecisions \
+          Remove-ExakitPhantomTable Set-ExakitLoadInflight Show-ExakitBulkOutcomes; do
+    has "the twin has $_v" "$_v" "$BULK_PS"
+done
 
 printf '\n%s: %d passed, %d failed\n' "$(basename "$0")" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
