@@ -656,13 +656,12 @@ EXAKIT_SJ_PY
     else
         ui_panel_line "$(_cs_pad 'Runtime' "${_type:-none} · $_cs_db")"
     fi
-    # An older kit's container database that was NOT copied across: the
-    # crossing recorded it and the user answered skip (or was never asked, in an
-    # unattended run). Named here, with the command that copies it, until it is.
+    # An older kit's container database that was copied out but not restored.
+    # One that was
+    # skipped is NOT named: it is the user's answer, not an unfinished job, and
+    # `exakit migrate docker-nano` still copies it when wanted.
     if [ -n "$_cs_legacy_c" ] && [ -z "$_cs_legacy_restored" ]; then
-        if [ "$_cs_legacy_choice" = "skip" ]; then
-            ui_panel_line "$(_cs_pad 'Old database' "container '$_cs_legacy_c' ($_cs_legacy_e) · not copied — bring its tables across: exakit migrate docker-nano")"
-        elif [ "$_cs_legacy_choice" = "migrate" ]; then
+        if [ "$_cs_legacy_choice" = "migrate" ]; then
             # Copied out, not yet restored: the install's second half does that,
             # so a re-run of the installer is what finishes it.
             ui_panel_line "$(_cs_pad 'Old database' "container '$_cs_legacy_c' ($_cs_legacy_e) · copied out, not yet restored — finish with: $(exakit_install_command)")"
