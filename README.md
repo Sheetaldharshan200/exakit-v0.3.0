@@ -54,11 +54,13 @@ The install command sets up four components and connects them:
 | [exapump](https://github.com/exasol-labs/exapump) | Loads CSV and Parquet files and runs SQL from your terminal |
 | [pyexasol](https://github.com/exasol/pyexasol) | The official Exasol Python driver, installed in its own environment |
 
-Five optional add-ons can be installed at any time with `exakit marketplace`:
+### What's new in 0.2.0: `exakit marketplace`
+
+The marketplace has five optional add-ons, and you can install any of them at any time with `exakit marketplace`:
 
 | Add-on | What it does |
 |---|---|
-| [dash-server](https://github.com/exasol-labs/dash-server) | Your AI builds live dashboards from queries on the local database, and you open them in a browser |
+| [dash-server](https://github.com/exasol-labs/dash-server) | Your AI builds live dashboards from queries on the local database, and you view them in the browser |
 | [Exasol&nbsp;for&nbsp;VS&nbsp;Code](https://github.com/exasol-labs/exasol-vscode) | SQL editing and schema browsing against the local database, inside your editor |
 | [JSON&nbsp;Tables](https://github.com/exasol-labs/exasol-json-tables) | Loads JSON files into Exasol as regular tables, including nested documents |
 | [Exasol&nbsp;Scheduler](https://github.com/exasol-labs/exasol-scheduler) | Runs SQL on a timetable inside the local database, with the jobs defined in a table |
