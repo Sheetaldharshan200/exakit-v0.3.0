@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 
-from exakit.app import Context, help as help_app, mcp as mcp_app, persona as persona_app, skills as skills_app, version as version_app, whats_new
+from exakit.app import Context, data as data_app, help as help_app, logs as logs_app, mcp as mcp_app, persona as persona_app, skills as skills_app, sql as sql_app, version as version_app, whats_new
 from exakit.app.machine import kit_root
 from exakit.domain.errors import BadInput
 from exakit.domain.result import Result
@@ -176,3 +176,23 @@ def mcp_doctor_command(args: list[str], ctx: Context) -> Result:
 def mcp_remove_command(args: list[str], ctx: Context) -> Result:
     positional, _ = _split(args, (), "mcp-remove")
     return mcp_app.remove(ctx, positional)
+
+
+# --- sql and logs -----------------------------------------------------------------------
+
+
+def sql_command(args: list[str], ctx: Context) -> Result:
+    if args and args[0] in ("--help", "-h") and len(args) == 1:
+        return topic_help("sql", ctx)
+    return sql_app.run(ctx, args)
+
+
+def logs_command(args: list[str], ctx: Context) -> Result:
+    return logs_app.run(ctx, args)
+
+
+# --- data -------------------------------------------------------------------------------
+
+
+def data_load_command(args: list[str], ctx: Context) -> Result:
+    return data_app.data_load(ctx, args)
