@@ -22,6 +22,12 @@ Every ✗ line tells you what to fix — a missing Podman is named with the exac
 curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | sh
 ```
 
+To install by role (datasets, AI clients and add-ons chosen for you), name a persona:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | EXAKIT_PERSONA=data-scientist sh
+```
+
 What happens, in order:
 
 1. Your machine is checked (Podman, RAM, disk) and the plan is shown — a machine short of RAM or disk is refused before anything is downloaded, with the reason named; a missing Podman is called out here and settled at the database step

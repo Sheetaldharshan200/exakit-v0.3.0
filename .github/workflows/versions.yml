@@ -616,6 +616,11 @@ jobs:
       # The MCP subsystem's own tests were never wired in, so nothing in CI
       # exercised mcp/ at all -- a NameError in that package would have shipped.
       - run: python3 -m unittest discover -s mcp/tests -t .
+      # The Python kit: pure rules with fakes, the frozen --json contracts against
+      # the real CLI in a sandbox, and the installer dry run plus the launcher.
+      - run: python3 -m unittest discover -s tests/unit -t .
+      - run: python3 -m unittest discover -s tests/contract -t .
+      - run: python3 -m unittest discover -s tests/e2e -t .
       # Three more suites existed and were never run by CI either. This one had
       # rotted: it asserted a data-load prompt wording that the JSON support
       # changed on the bash side, and nothing noticed. (Not discoverable via

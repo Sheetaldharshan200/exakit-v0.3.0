@@ -170,6 +170,7 @@ exakit mcp-doctor      # AI connection health check
 exakit version         # what is installed, and what is newer
 exakit update          # apply what is pending (asks before it stops the database)
 exakit marketplace     # optional add-ons (dashboards & more)
+exakit persona         # install by role: datasets, AI clients, add-ons in one go
 exakit help            # the commands it offers
 ```
 
@@ -189,6 +190,21 @@ Space selects, Enter installs. Installed add-ons update through `exakit update`
 like everything else, and a tool you already have, even one installed outside
 the kit, is never offered twice. Flowcharts of every scenario, and how to
 build your own add-on: [MARKETPLACE.md](MARKETPLACE.md).
+
+## Pick a persona
+
+A persona is a named bundle of the optional choices: which sample datasets,
+which AI clients, which add-ons. Four ship with the kit: `analyst`,
+`data-scientist`, `data-engineer` and `minimal`. Name one on the install
+command and every question is answered for you:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | EXAKIT_PERSONA=data-scientist sh
+```
+
+On an installed kit, `exakit persona list` shows them and
+`exakit persona plan data-scientist` shows what is still missing on this
+machine. Your own persona is one JSON file in `~/.exasol-starter-kit/personas/`.
 
 ## Staying up to date
 

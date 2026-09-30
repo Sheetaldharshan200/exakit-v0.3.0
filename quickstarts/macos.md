@@ -24,6 +24,12 @@ No Python on your Mac? That is fine. The installer brings its own.
 curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | sh
 ```
 
+To install by role (datasets, AI clients and add-ons chosen for you), name a persona:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | EXAKIT_PERSONA=data-scientist sh
+```
+
 What happens, in order:
 
 1. Your Mac is checked (chip, memory, disk) and the plan is shown

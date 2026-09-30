@@ -1,5 +1,13 @@
 # The marketplace: optional add-ons, and how to add one
 
+> **Note (0.3.0):** the kit is moving to one Python implementation. An add-on
+> is now described once in `catalog/addons/<id>/addon.json` (schema in
+> [docs/design.md](docs/design.md), section 3.2) and installed by a generic
+> lifecycle; the module pair described below is the legacy mechanism that
+> still runs today's marketplace and is retired in the next phase
+> ([docs/tasks.md](docs/tasks.md), Phase B). Add the JSON file for every new
+> add-on, and the module pair only while Phase B is not merged.
+
 The marketplace is the kit's home for **optional tools** — things worth having
 next to the database but not worth lengthening the install for. dash-server
 (the AI dashboard host) is the first one.

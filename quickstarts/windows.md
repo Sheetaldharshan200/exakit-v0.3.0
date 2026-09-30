@@ -24,6 +24,12 @@ irm https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.ps
 irm https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.ps1 | iex
 ```
 
+To install by role (datasets, AI clients and add-ons chosen for you), name a persona first:
+
+```powershell
+$env:EXAKIT_PERSONA = 'data-scientist'; irm https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.ps1 | iex
+```
+
 What happens, in order:
 
 1. A quick machine check runs first, before anything is downloaded or written

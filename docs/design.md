@@ -613,3 +613,18 @@ deletes `setup/`.
 - Tests: one behaviour per test, named `test_<condition>_<expectation>`; fakes over mocks; no network, no real machine state, no sleeps.
 - Naming: ids are kebab-case in data and CLI (`dash-server`), snake_case in manifest keys (`dash_server`), `PascalCase` classes, `snake_case` functions. The mapping lives in `domain/ids.py` and nowhere else.
 - Nothing platform-specific outside `adapters/platform/`, `adapters/process/services.py`, `bootstrap/`.
+
+---
+
+## 14. Decisions taken while building Phase A
+
+| # | Decision | Why |
+|---|---|---|
+| D8 | `status` and `info` stay on the legacy CLI in Phase A; Python owns `help`, `catalog`, `whats-new`, `version`, `persona`. | Their answers need the database probe (launcher state, port, a SELECT) that belongs to the runtime adapter (C1). Porting half of it would have produced a second, different answer. |
+| D9 | The legacy suites stay at `tests/*.sh` and run against `setup/legacy-exakit*`; new suites live in `tests/unit`, `tests/contract`, `tests/e2e`. | Every legacy suite computes its root as `dirname/..`; moving forty files one level deeper changes nothing about what they prove. |
+| D10 | `setup/exakit` and `setup/exakit.ps1` are byte-identical copies of the launchers in `bootstrap/`; the old CLIs are `setup/legacy-exakit*`. A contract test pins the identity. | The 0.2.0 self-update copies `setup/exakit` to the bin dir; that is how the launcher reaches an installed machine with no change to 0.2.0 code. |
+| D11 | `MachineState` (the persona planner's input) is a domain dataclass; `app/machine.py` builds it. | `plan_for` must stay pure and testable with fakes; the probes are IO. |
+| D12 | Help documents stay under `setup/help/` for now. | Every legacy screen and test reads them there; the move to `help/` is a Phase D rename. |
+| D13 | The installed-version probes in Phase A are the manifest plus a disk check for exapump and pyexasol. | The full per-component probes are the lifecycles' `installed_version` hooks (B1) and the runtime adapter (C1). The table's shape and vocabulary are already final. |
+| D14 | uv is pinned to 0.12.21 with one digest per platform in `versions.json` `tools.uv`. | Verified on this Mac: the archive digest matched and CPython 3.12.14 installed in five seconds. Bumping uv is a `versions.json` change with new digests. |
+

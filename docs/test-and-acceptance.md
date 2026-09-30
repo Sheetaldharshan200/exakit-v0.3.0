@@ -8,16 +8,17 @@ same commit as the change.
 ## 1. How the suites run
 
 ```bash
-bash tests/persona.sh                     # no network, no installs, sandboxed EXAKIT_HOME
-pwsh -NoProfile -File tests/persona.ps1   # same, PowerShell (5.1 in windows-ps51.yml)
+python3 -m unittest discover -s tests/unit -t .        # pure rules and adapters with fakes; no machine state
+python3 -m unittest discover -s tests/contract -t .    # the frozen --json shapes and exit codes, against the real CLI in a sandbox
+python3 -m unittest discover -s tests/e2e -t .         # installer dry run, launcher answers, update-path layout
+EXAKIT_E2E_NETWORK=1 python3 -m unittest tests.e2e.test_bootstrap_network   # the real uv + CPython bootstrap (opt in)
+bash tests/<legacy-suite>.sh                            # the legacy suites, unchanged, against setup/legacy-exakit
 ```
 
-Both follow the repo conventions: `set -u`, `WORK=$(mktemp -d)` with a trap,
-`EXAKIT_HOME` / `EXAKIT_BIN_DIR` / `HOME` redirected before `common.sh` is
-sourced, PATH filtered, `check` / `has` / `lacks` helpers, and a final
-`passed: N, failed: M` line with exit 1 on any failure.
+The acceptance rows below name the suite that proves each one. Rows that
+belong to `persona apply` (A21 to A24) are Phase B and are marked pending.
 
-## 2. Acceptance criteria (M1)
+## 2. Acceptance criteria (personas)
 
 | Id | Given | When | Then | Req | Check |
 |---|---|---|---|---|---|
@@ -83,25 +84,17 @@ Personas x answers x platform x mode. Each cell is covered by the check named.
 
 ## 5. Latest local run
 
-Recorded by the implementer after each full run (`bash tests/<suite>.sh` on
-macOS bash 3.2, pwsh 7 for the `.ps1` suites).
+Recorded on 2026-09-30 on this Mac (macOS, bash 3.2, pwsh 7, Python 3.12.10).
 
-| Suite | Result | Date |
-|---|---|---|
-| tests/persona.sh | pending | |
-| tests/persona.ps1 | pending | |
-| tests/whats-new.sh | pending | |
-| tests/marketplace.sh | pending | |
-| tests/skills.sh | pending | |
-| tests/agent-operability.sh | pending | |
-| tests/agents-rosters.sh | pending | |
-| tests/ps-encoding-guard.sh | pending | |
-| tests/ps-undefined-functions.sh | pending | |
-| tests/ps-table-twin.sh | pending | |
-| tests/bash32-guard.sh | pending | |
-| tests/versions-manifest.sh | pending | |
-| tests/dry-run-matrix.sh | pending | |
-| tests/noninteractive-answers.sh | pending | |
-| tests/agent-audit.sh | pending | |
-| tests/ps-parse.ps1 | pending | |
-| tests/ps51-json-contracts.ps1 | pending | |
+| Suite | Result |
+|---|---|
+| tests/unit (132 tests) | pass |
+| tests/contract (15 tests) | pass |
+| tests/e2e (9 tests) | pass |
+| tests/e2e/test_bootstrap_network (real uv 0.12.21 + CPython 3.12.14) | pass, 5 s |
+| tests/whats-new.sh | pass |
+| tests/skills.sh | pass |
+| tests/ps-encoding-guard.sh | pass |
+| tests/ps-parse.ps1 | pass |
+| tests/ps51-json-contracts.ps1 | pass |
+| remaining legacy suites | see the commit message of the run that recorded them |

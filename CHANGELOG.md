@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+**The kit is one Python implementation, and it has personas.** `exakit` is now
+`python -m exakit`: a launcher on PATH finds the kit's own Python (installed by
+the bootstrap through a pinned, digest-checked uv into `~/.exasol-starter-kit/python`,
+never the system Python) and runs the kit. The commands Python has taken over
+in this release are `help`, `catalog`, `whats-new`, `version` and the new
+`persona`; every other command still runs the previous shell implementation,
+unchanged, behind the same `exakit` word (`exakit/cli/main.py` lists the split,
+and `tests/contract` pins every `--json` shape and exit code). An installed
+0.2.0 kit gets all of this from `exakit update`: the new tree's `setup/exakit`
+is the launcher, so the update that brings the tree installs it, and the first
+run sets up the Python. Personas are data: `catalog/personas/<id>.json` names the
+datasets, AI clients and add-ons a role wants; four ship (`analyst`,
+`data-scientist`, `data-engineer`, `minimal`) and your own go in
+`~/.exasol-starter-kit/personas/`. `EXAKIT_PERSONA=<id>` on the install command
+answers every question from it (an explicit `EXAKIT_*` answer still wins, an
+add-on that cannot run here is skipped with a reason), and `exakit persona
+list | show | plan` read the personas and say what is left on this machine.
+`persona apply` follows with the lifecycles. Add-ons and components are
+described in `catalog/` as JSON too, which is what the next phases build on
+(docs/architecture.md, docs/design.md, docs/tasks.md).
+
 **Sample data loads on Windows again, first time.** A fresh Windows install
 could end with "Dataset(s) tpch did not load": five of TPC-H's eight tables
 empty. The database runs inside the Podman WSL machine and reads each file back
