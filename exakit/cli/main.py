@@ -1,10 +1,10 @@
 """``exakit``: one entry point, one dispatch, one place errors become exit codes.
 
 Global flags (``--json``/``-j``, ``--yes``/``-y``, ``--dry-run``) may appear
-anywhere; the first bare word is the command. A command in
-``MIGRATED_COMMANDS`` runs in Python; anything else is handed to the legacy
-shell CLI unchanged (phases A to C). A bare component id renders its help
-page, and ``<command> --help`` renders that command's page, as before.
+anywhere; the first bare word is the command. Every command runs in Python
+(``MIGRATED_COMMANDS`` is the full set). A bare component id renders its help
+page, ``<command> --help`` renders that command's page, and anything else is
+a refusal with exit 2.
 """
 
 from __future__ import annotations
@@ -16,14 +16,14 @@ from exakit.app import Context, notice
 from exakit.domain.errors import BadInput, ExakitError
 from exakit.domain.result import Result
 
-from . import _context, commands, legacy
+from . import _context, commands
 
 MIGRATED_COMMANDS: frozenset[str] = frozenset({"help", "catalog", "whats-new", "version", "persona", "skills", "skills-install",
                                                "mcp-setup", "mcp-status", "mcp-doctor", "mcp-remove", "sql", "logs", "data-load",
                                                "marketplace", "uninstall", "status", "info", "start", "stop", "autostart", "update",
-                                               "install", "preflight", "repair-runtime", "migrate"})
+                                               "install", "preflight", "repair-runtime", "migrate", "guide", "upgrade-kit2", "rollback-kit2"})
 READONLY_COMMANDS: frozenset[str] = frozenset({"help", "catalog", "whats-new", "version", "status", "info",
-                                               "skills", "logs", "mcp-status", "persona", "preflight"})
+                                               "skills", "logs", "mcp-status", "persona", "preflight", "guide"})
 HANDLERS: dict[str, Callable[[list[str], Context], Result]] = {
     "help": commands.help_command, "-h": commands.help_command, "--help": commands.help_command,
     "catalog": commands.catalog_command, "whats-new": commands.whats_new_command,
@@ -38,6 +38,7 @@ HANDLERS: dict[str, Callable[[list[str], Context], Result]] = {
     "stop": commands.stop_command, "autostart": commands.autostart_command, "update": commands.update_command,
     "install": commands.install_command, "preflight": commands.preflight_command,
     "repair-runtime": commands.repair_runtime_command, "migrate": commands.migrate_command,
+    "guide": commands.guide_command, "upgrade-kit2": commands.upgrade_kit2_command, "rollback-kit2": commands.rollback_kit2_command,
 }
 ALIASES = {"-h": "help", "--help": "help", "--version": "version", "-v": "version"}
 
@@ -86,23 +87,19 @@ def main(argv: list[str] | None = None) -> int:
     try:
         # `exakit sql --help` is a query, not a help request; every other command answers its page.
         wants_page = command != "sql" and command not in ("help",) and any(a in ("--help", "-h") for a in rest)
-        if command in MIGRATED_COMMANDS or command in HANDLERS or wants_page or command == "install":
-            readonly = command in READONLY_COMMANDS or wants_page
-            ctx = _context.build(json=flags["json"], yes=flags["yes"], dry_run=flags["dry_run"],
-                                 readonly=readonly, mutating=not readonly)
-            if wants_page:
-                return commands.topic_help(command, ctx).exit_code
-            if command in HANDLERS:
-                result = HANDLERS[command](rest, ctx)
-                _emit(result, ctx)
-                notice.maybe_show(ctx, command)
-                return result.exit_code
-            return legacy.run(ctx, command, rest + _flag_args(flags))
-        # Not migrated: a bare component id is its help page; everything else is the legacy CLI's.
-        ctx = _context.build(json=flags["json"], yes=flags["yes"], dry_run=flags["dry_run"], readonly=True, mutating=False)
-        if not rest and commands.is_help_topic(command, ctx) and command not in _LEGACY_WORDS:
+        readonly = command in READONLY_COMMANDS or wants_page or command not in HANDLERS
+        ctx = _context.build(json=flags["json"], yes=flags["yes"], dry_run=flags["dry_run"], readonly=readonly, mutating=not readonly)
+        if wants_page:
             return commands.topic_help(command, ctx).exit_code
-        return legacy.run(ctx, command, rest + _flag_args(flags))
+        if command in HANDLERS:
+            result = HANDLERS[command](rest, ctx)
+            _emit(result, ctx)
+            notice.maybe_show(ctx, command)
+            return result.exit_code
+        # A bare component id is its help page; anything else is unknown.
+        if not rest and commands.is_help_topic(command, ctx):
+            return commands.topic_help(command, ctx).exit_code
+        raise unknown_command(command)
     except ExakitError as err:
         _emit_refusal(err, ctx, flags["json"])
         return err.code
@@ -110,16 +107,7 @@ def main(argv: list[str] | None = None) -> int:
         return 130
 
 
-_LEGACY_WORDS = frozenset({"guide", "upgrade-kit2", "rollback-kit2"})
-
-
-def _flag_args(flags: dict[str, bool]) -> list[str]:
-    out = []
-    if flags["json"]:
-        out.append("--json")
-    if flags["yes"]:
-        out.append("--yes")
-    return out
+_LEGACY_WORDS: frozenset[str] = frozenset()   # every command is Python now; kept so the contract test's split check reads as before
 
 
 def unknown_command(command: str) -> BadInput:

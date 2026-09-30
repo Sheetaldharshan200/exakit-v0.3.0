@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 
-from exakit.app import Context, data as data_app, help as help_app, info as info_app, install as install_app, migrate as migrate_app, repair as repair_app, requirements as requirements_app, uninstall as uninstall_app, runtime as runtime_app, status as status_app, update as update_app, logs as logs_app, marketplace as marketplace_app, mcp as mcp_app, persona as persona_app, skills as skills_app, sql as sql_app, version as version_app, whats_new
+from exakit.app import Context, data as data_app, guide as guide_app, help as help_app, info as info_app, install as install_app, migrate as migrate_app, repair as repair_app, requirements as requirements_app, uninstall as uninstall_app, runtime as runtime_app, status as status_app, update as update_app, logs as logs_app, marketplace as marketplace_app, mcp as mcp_app, persona as persona_app, skills as skills_app, sql as sql_app, version as version_app, whats_new
 from exakit.app.machine import kit_root
 from exakit.domain.errors import BadInput
 from exakit.domain.result import Result
@@ -178,6 +178,21 @@ def install_command(args: list[str], ctx: Context) -> Result:
             raise BadInput(f"Unknown option '{arg}' for install (supported: --dry-run; answers come from EXAKIT_* variables or EXAKIT_PERSONA).")
         raise BadInput("install takes no arguments; answer its questions with EXAKIT_* variables or name a persona with EXAKIT_PERSONA=<id>.")
     return install_app.run(ctx)
+
+
+def guide_command(args: list[str], ctx: Context) -> Result:
+    _split(args, (), "guide")
+    return guide_app.run(ctx)
+
+
+def upgrade_kit2_command(args: list[str], ctx: Context) -> Result:
+    _split(args, (), "upgrade-kit2")
+    return guide_app.kit2_script(ctx, "upgrade-kit2.sh")
+
+
+def rollback_kit2_command(args: list[str], ctx: Context) -> Result:
+    _split(args, (), "rollback-kit2")
+    return guide_app.kit2_script(ctx, "rollback-kit2.sh")
 
 
 def preflight_command(args: list[str], ctx: Context) -> Result:

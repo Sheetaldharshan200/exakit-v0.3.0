@@ -113,7 +113,6 @@ exakit/
     status.py info.py version.py help.py catalog.py whats_new.py
     persona.py marketplace.py skills.py mcp.py data.py sql.py logs.py
     install.py update.py runtime.py (start/stop/repair/autostart/migrate) uninstall.py
-    legacy.py            passthrough to setup/legacy-exakit(.ps1) for not-yet-migrated commands
   ui/
     __init__.py          Renderer Protocol; make_renderer(mode) -> Renderer
     plain.py             no colour, one line per event (no tty, NO_COLOR, EXAKIT_NO_FANCY)
@@ -652,4 +651,5 @@ deletes `setup/`.
 | D23 | The installer keeps no rollback stack. A failed step says so, keeps partial progress and names the re-run; every lifecycle's `install` is idempotent, and `begin()` re-runs a step whose artifact is gone or whose version drifted. | The legacy `push_rollback` commands undid one step's files on request; in practice the answer was always "keep partial progress, re-run", which is the only path the new installer offers. Less code, one recovery story. |
 | D24 | The old-kit crossing (an Exasol container from a 0.1.x kit) is ported in full (`legacy_db`, `legacy_crossing`, `migrate`) instead of being dropped with the container runtime. | Machines that installed the first kits still exist; `status --json` documents `legacy_database`, and AGENTS.md documents `EXAKIT_LEGACY_DATA` and `exakit migrate docker-nano`. The port talks to docker/podman through one small adapter and never deletes the container. |
 | D25 | `exakit install --dry-run` prints the six-step plan; `EXAKIT_DRY_RUN=1` on `install.sh` still stops before the Python hand-over (nothing is installed, not even the kit's Python). | The shell dry run is the promise agents rely on ("nothing under EXAKIT_HOME changes"); the Python dry run is for an installed kit asking what a re-run would do. |
+| D26 | After Phase C the `exakit` command never runs the legacy shell CLI: `cli/legacy.py` is gone and an unknown command is a refusal. `setup/` stays on disk for one more step so the legacy suites keep proving the shell twins until the Python path has been run end to end on a real machine (M-3, M-5); D1 deletes it. | The user's rule is "existing behaviour intact through `exakit update`": the safest order is Python first, the shell tree deleted only after a real install has gone through the Python path, not before. |
 

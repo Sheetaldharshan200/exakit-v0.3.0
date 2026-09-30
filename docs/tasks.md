@@ -56,7 +56,7 @@ Update this file in the same commit as the work. Design sections are in
 - [x] C4a `app/status.py`, `app/info.py` (the tri-state queries, every AGENTS.md key, `datasets_source`), `app/runtime.py` (`start` with orphan reaping, `stop`, `autostart`); `tests/unit/app/test_status_info_runtime.py` + contract StateQueryPhaseCTest (D21)
 - [x] C4b `app/repair.py` (consent, exit 5 when declined, the installer re-run in process with a forced fresh deployment) and `app/legacy_db.py` + `app/legacy_crossing.py` + `app/migrate.py` (the docker-nano crossing: asked once during the install, `exakit migrate docker-nano` afterwards) over `adapters/process/containers.py`
 - [x] C5 `app/uninstall.py` (the safe-target rule, the legacy removal order, the menu with the typed UNINSTALL gate, `--yes`, `--dry-run`, snapshots kept); `tests/unit/app/test_uninstall_repair.py`
-- [ ] C6 `install.sh` / `install.ps1` already hand over to `python -m exakit install`; delete `setup/setup-*.{sh,ps1}` and the `cli/legacy.py` install path once a real install has been run on macOS, Linux and Windows through the Python path (manual acceptance M-3, M-5). `exakit guide` and the kit2 scripts are the last legacy passthroughs
+- [x] C6 `install.sh` / `install.ps1` hand over to `python -m exakit install`; `cli/legacy.py` deleted, the dispatcher refuses an unknown command with exit 2 and no shell CLI is ever run by `exakit` (`app/guide.py` carries `guide` and the two Kit 2 scripts). `setup/` itself stays on disk until D1, because the legacy suites under `tests/*.sh` still exercise it and a real install through the Python path (manual M-3, M-5) is the last gate before deleting it (D26)
 
 ## Phase D: delete the legacy tree
 
