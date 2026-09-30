@@ -12,6 +12,11 @@ name: real install
 # database there; that job proves everything around it (the bootstrap, the
 # launcher download, the persona's add-ons and skills, status with no
 # database, the uninstall) and is allowed to fail at "status must be running".
+# windows-latest is the same story under Windows PowerShell 5.1: the hosted
+# runner has no WSL2 and no nested virtualisation, so install.ps1, the
+# bootstrap, the kit's Python, the persona, the skills, status and the
+# uninstall are proven there and the database is not (that is M-5, a real
+# Windows 11 machine or a self-hosted runner).
 on:
   workflow_dispatch:
 
@@ -127,5 +132,96 @@ jobs:
         if: always()
         with:
           name: real-install-${{ matrix.os }}
+          path: kept/
+          if-no-files-found: ignore
+
+  install-windows:
+    name: full install (windows-latest, PowerShell 5.1)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    defaults:
+      run:
+        shell: powershell
+    env:
+      EXAKIT_LOCAL_KIT: ${{ github.workspace }}
+      EXAKIT_KIT_REPO: ${{ github.repository }}
+      EXAKIT_PERSONA: analyst
+      EXAKIT_NO_UPDATE_NOTICE: "1"
+      NO_COLOR: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: the machine
+        run: |
+          $PSVersionTable.PSVersion
+          (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB
+          Get-PSDrive C | Select-Object Used, Free
+          try { wsl --status } catch { Write-Host "no WSL on this runner: the database cannot deploy here" }
+          "$env:USERPROFILE\.local\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: preflight (installs nothing; expected to name the missing WSL)
+        run: |
+          $env:EXAKIT_PREFLIGHT = "1"
+          Get-Content install.ps1 -Raw | Invoke-Expression
+          Write-Host "preflight exit $LASTEXITCODE"
+          exit 0
+
+      - name: dry run (installs nothing)
+        run: |
+          $env:EXAKIT_DRY_RUN = "1"
+          Get-Content install.ps1 -Raw | Invoke-Expression
+          if (Test-Path "$env:USERPROFILE\.exasol-starter-kit\manifest.json") { throw "a dry run wrote the install record" }
+          exit 0
+
+      - name: install with the analyst persona
+        run: |
+          $start = Get-Date
+          Get-Content install.ps1 -Raw | Invoke-Expression
+          Write-Host "install exit $LASTEXITCODE after $([int]((Get-Date) - $start).TotalSeconds)s"
+          exit 0
+
+      - name: status, and the commands an agent runs
+        run: |
+          exakit status --json | Out-File status.json -Encoding utf8
+          $status = Get-Content status.json -Raw | ConvertFrom-Json
+          Write-Host "status: $($status.status)  persona: $($status.persona)  installed: $($status.installed)"
+          if (-not $status.installed) { throw "not installed" }
+          if ($status.persona -ne "analyst") { throw "the persona was not recorded" }
+          exakit version --json | Out-File version.json -Encoding utf8
+          exakit persona plan analyst --json | Out-File plan.json -Encoding utf8
+          exakit skills --json | Out-Null
+          exakit catalog --json | Out-Null
+          exakit help mcp | Out-Null
+          exakit info --json | Out-Null
+          Write-Host "agent commands answered"
+
+      - name: a second run skips every done step
+        run: |
+          Get-Content install.ps1 -Raw | Invoke-Expression 2>&1 | Tee-Object -FilePath rerun.log
+          Write-Host "skipped: $((Select-String -Path rerun.log -Pattern 'already done, skipping').Count)"
+          exit 0
+
+      - name: keep the logs
+        if: always()
+        run: |
+          New-Item -ItemType Directory -Force kept | Out-Null
+          Copy-Item -Recurse -Force "$env:USERPROFILE\.exasol-starter-kit\logs" kept\ -ErrorAction SilentlyContinue
+          Copy-Item -Force "$env:USERPROFILE\.exasol-starter-kit\manifest.json" kept\ -ErrorAction SilentlyContinue
+          Copy-Item -Force status.json, version.json, plan.json, rerun.log kept\ -ErrorAction SilentlyContinue
+          exit 0
+
+      - name: uninstall everything
+        if: always()
+        run: |
+          exakit uninstall --dry-run
+          exakit uninstall --yes
+          if (Test-Path "$env:USERPROFILE\.exasol-starter-kit") { Write-Host "kit home still there (the managed Python folder is the known leftover, tasks.md D5)" } else { Write-Host "kit home gone" }
+          exit 0
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-install-windows-latest
           path: kept/
           if-no-files-found: ignore
