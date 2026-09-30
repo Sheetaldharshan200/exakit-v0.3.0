@@ -15,13 +15,13 @@ To check your machine before installing, run the requirements check. It installs
 
 ```powershell
 $env:EXAKIT_PREFLIGHT = '1'
-irm https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.ps1 | iex
+irm https://www.exasol.com/install/starter-kit.ps1 | iex
 ```
 
 ## Install (regular PowerShell, no admin needed)
 
 ```powershell
-irm https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.ps1 | iex
+irm https://www.exasol.com/install/starter-kit.ps1 | iex
 ```
 
 What happens, in order:

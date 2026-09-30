@@ -13,7 +13,7 @@ The install runs unattended, and the database is usually up in under 2 minutes. 
 To check your Mac before you start (this installs nothing):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | EXAKIT_PREFLIGHT=1 sh
+curl -fsSL https://raw.githubusercontent.com/exasol-labs/exasol-personal-local-starterkit/main/install.sh | EXAKIT_PREFLIGHT=1 sh
 ```
 
 You don't need Python on your Mac. The installer brings its own.
@@ -21,7 +21,7 @@ You don't need Python on your Mac. The installer brings its own.
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | sh
+curl https://www.exasol.com/install/starter-kit.sh | sh
 ```
 
 What happens, in order:

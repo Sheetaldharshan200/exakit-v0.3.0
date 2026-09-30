@@ -10,7 +10,7 @@ Everything below expands on this. If you read nothing else, this is enough to in
 # 1. Install, unattended, in the background; answer choices with env vars (names, never menu numbers).
 #    nohup, not a bare &: your shell tool's timeout would otherwise reap the installer mid-step.
 EXAKIT_DATASETS=tpch,energy,weather EXAKIT_MCP_CLIENTS=all EXAKIT_MARKETPLACE_ADDONS=none \
-  nohup sh -c 'curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | sh' \
+  nohup sh -c 'curl -fsSL https://www.exasol.com/install/starter-kit.sh | sh' \
   </dev/null >~/exakit-install.log 2>&1 &
 # 2. Put the CLI on PATH once — a bare non-interactive shell does not have ~/.local/bin.
 export PATH="$HOME/.local/bin:$PATH"      # Windows/Git Bash: the command is exakit.cmd
@@ -35,13 +35,13 @@ exakit sql --json "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_ROW_COUNT FROM SYS.EXA
 macOS / Linux / WSL:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | sh
+curl https://www.exasol.com/install/starter-kit.sh | sh
 ```
 
 Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.ps1 | iex
+irm https://www.exasol.com/install/starter-kit.ps1 | iex
 ```
 
 The installer is **fully unattended-safe**. With no TTY attached (the normal case for an agent shell) every question takes a safe default: all bundled datasets are loaded, and every AI client that is installed on the machine but not yet connected gets an MCP config. Nothing ever hangs waiting for input.
@@ -201,7 +201,7 @@ The whole flow — fresh machine to a dashboard URL — needs no human and no cl
 1. **Install with both add-ons pre-answered**, in the background (see Timing above), then poll `exakit status` until `running`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | \
+curl -fsSL https://raw.githubusercontent.com/exasol-labs/exasol-personal-local-starterkit/main/install.sh | \
   EXAKIT_MCP_CLIENTS=claude EXAKIT_LOAD_SAMPLE=0 EXAKIT_MARKETPLACE_ADDONS=dash-server,json-tables sh
 ```
 

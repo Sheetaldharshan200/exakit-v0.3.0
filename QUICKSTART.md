@@ -7,14 +7,14 @@ Goal: a local Exasol database on your machine, an AI assistant connected to it, 
 **macOS / Linux / WSL:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | EXAKIT_PREFLIGHT=1 sh
+curl -fsSL https://raw.githubusercontent.com/exasol-labs/exasol-personal-local-starterkit/main/install.sh | EXAKIT_PREFLIGHT=1 sh
 ```
 
 **Windows (PowerShell):** there is no `sh` there, and `curl` is an alias for `Invoke-WebRequest`, so set the variable first and use the PowerShell installer:
 
 ```powershell
 $env:EXAKIT_PREFLIGHT = '1'
-irm https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.ps1 | iex
+irm https://www.exasol.com/install/starter-kit.ps1 | iex
 ```
 
 ## 2. Install everything (one command)
@@ -22,13 +22,13 @@ irm https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.ps
 **macOS / Linux / WSL:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | sh
+curl https://www.exasol.com/install/starter-kit.sh | sh
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-irm https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.ps1 | iex
+irm https://www.exasol.com/install/starter-kit.ps1 | iex
 ```
 
 You will see a short plan, then numbered steps: database, data, AI setup. The database is usually up in under 2 minutes. The install ends with a connection panel, and a first prompt for your AI client is copied to your clipboard.

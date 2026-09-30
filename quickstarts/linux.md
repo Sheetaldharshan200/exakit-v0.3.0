@@ -13,7 +13,7 @@ This is also the WSL path. The launcher treats a WSL2 distro as Linux, so everyt
 To check your machine first (this installs nothing):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | EXAKIT_PREFLIGHT=1 sh
+curl -fsSL https://raw.githubusercontent.com/exasol-labs/exasol-personal-local-starterkit/main/install.sh | EXAKIT_PREFLIGHT=1 sh
 ```
 
 Every ✗ line tells you what to fix. If Podman is missing, the check gives the exact package-manager command.
@@ -21,7 +21,7 @@ Every ✗ line tells you what to fix. If Podman is missing, the check gives the 
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | sh
+curl https://www.exasol.com/install/starter-kit.sh | sh
 ```
 
 What happens, in order:

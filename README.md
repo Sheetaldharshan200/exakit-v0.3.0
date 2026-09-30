@@ -18,13 +18,13 @@
 **macOS / Linux / WSL**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | sh
+curl https://www.exasol.com/install/starter-kit.sh | sh
 ```
 
 **Windows (PowerShell)**
 
 ```powershell
-irm https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.ps1 | iex
+irm https://www.exasol.com/install/starter-kit.ps1 | iex
 ```
 
 To have an AI agent do the install, paste this into Claude Code, Codex or any other coding agent:
@@ -32,7 +32,7 @@ To have an AI agent do the install, paste this into Claude Code, Codex or any ot
 <div align="left">
 
 ```text
-Install the Exasol starter kit from https://github.com/krishna-exasol/update-path
+Install the Exasol starter kit from https://github.com/exasol-labs/exasol-personal-local-starterkit
 ```
 
 </div>
