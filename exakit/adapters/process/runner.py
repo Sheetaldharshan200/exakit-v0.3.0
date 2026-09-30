@@ -1,0 +1,51 @@
+"""Running other programs: the only place ``subprocess`` is imported for tool calls."""
+
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Protocol
+
+
+@dataclass(frozen=True, slots=True)
+class Completed:
+    code: int
+    out: str
+    err: str
+
+    @property
+    def ok(self) -> bool:
+        return self.code == 0
+
+
+class Runner(Protocol):
+    def run(self, cmd: Sequence[str], *, env: Mapping[str, str] | None = None, cwd: Path | None = None,
+            timeout: float | None = None, stdin: str | None = None) -> Completed: ...
+    def which(self, name: str) -> str | None: ...
+
+
+class SubprocessRunner:
+    """Captures both streams, never raises on a non-zero exit, times out with code 124."""
+
+    def run(self, cmd: Sequence[str], *, env: Mapping[str, str] | None = None, cwd: Path | None = None,
+            timeout: float | None = None, stdin: str | None = None) -> Completed:
+        full_env = dict(os.environ)
+        if env:
+            full_env.update(env)
+        try:
+            done = subprocess.run(list(cmd), env=full_env, cwd=str(cwd) if cwd else None, timeout=timeout,
+                                  input=stdin, capture_output=True, text=True, check=False)
+        except FileNotFoundError:
+            return Completed(127, "", f"{cmd[0]}: not found")
+        except subprocess.TimeoutExpired:
+            return Completed(124, "", f"{cmd[0]}: timed out after {timeout}s")
+        except OSError as err:
+            return Completed(126, "", str(err))
+        return Completed(done.returncode, done.stdout, done.stderr)
+
+    def which(self, name: str) -> str | None:
+        return shutil.which(name)

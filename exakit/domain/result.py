@@ -30,9 +30,12 @@ class Result:
     remedy_hint: str | None = None
     data: dict[str, Any] = field(default_factory=dict)
     exit_code: int = EXIT_OK
+    raw: bool = False   # True: the JSON answer is ``data`` alone (a document, not a state query)
 
     def to_dict(self) -> dict[str, Any]:
-        """The JSON object, contract keys first."""
+        """The JSON object, contract keys first (or the document alone when ``raw``)."""
+        if self.raw:
+            return dict(self.data)
         doc: dict[str, Any] = {
             "installed": self.installed,
             "status": self.status,
