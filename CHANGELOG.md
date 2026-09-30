@@ -93,7 +93,7 @@ AI bridge, pyexasol and the `exakit` command that repairs all of them with it,
 none of which the user had declined and none of which need Podman. It is now
 the same shape as every other step that cannot finish: the database step
 records itself, the closing summary names it with the one command that
-completes it (`exakit update`), and the four steps that do need a database say
+completes it (re-running the install command), and the four steps that do need a database say
 so once, together, instead of failing one at a time. The requirements gate no
 longer stops either - it says what is missing and what it will cost, and lets
 one place decide. Both halves: `setup-linux.sh`/`setup-macos.sh` on the first

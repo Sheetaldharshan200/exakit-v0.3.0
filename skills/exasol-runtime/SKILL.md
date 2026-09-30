@@ -20,8 +20,8 @@ exakit info        # the Runtime line, the DSN and the port actually in use
 
 | | **Exasol Personal** |
 |---|---|
-| Where | macOS, native Linux (Podman), Windows x86_64 (host Podman) |
-| Not supported | WSL, Windows arm64 — the installer says so and exits, changing nothing |
+| Where | macOS, native Linux (Podman), WSL 2 (Podman inside the distro), Windows x86_64 (host Podman) |
+| Not supported | WSL 1 and Windows arm64 — the installer says so and exits, changing nothing (WSL 2 is supported: it takes the Linux path, with Podman inside the distro) |
 | Deployed by | the `exasol` launcher (`exasol install local`) |
 | State lives in | `~/.exasol/personal/deployments/default` |
 | Extra detail command | `exasol info` |

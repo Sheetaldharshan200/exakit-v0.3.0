@@ -68,7 +68,10 @@ pyexasol_install() {
         EXAKIT_ACTIVE_LABEL="Installing pyexasol $EXAKIT_PYEXASOL_VERSION"
         info "Installing pyexasol $EXAKIT_PYEXASOL_VERSION (Exasol Python driver)"
         if [ ! -x "$(pyexasol_venv_python)" ]; then
-            if ! run_logged "$_pyx_uv" venv --python "$EXAKIT_MANAGED_PYTHON_VERSION" "$EXAKIT_PYEXASOL_VENV"; then
+            # --seed puts pip in the venv. uv leaves it out by default, and the
+            # pyexasol skill tells agents to `-m pip install pandas` into this
+            # venv for export_to_pandas - which failed with "No module named pip".
+            if ! run_logged "$_pyx_uv" venv --seed --python "$EXAKIT_MANAGED_PYTHON_VERSION" "$EXAKIT_PYEXASOL_VENV"; then
                 _pyexasol_not_installed "the virtual environment at $EXAKIT_PYEXASOL_VENV could not be created (see log)"
                 return 1
             fi

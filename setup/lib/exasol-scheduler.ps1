@@ -457,8 +457,13 @@ function Start-ExasolScheduler {
     New-Item -ItemType Directory -Force -Path (Get-ExasolSchedulerHome), $script:LogDir | Out-Null
     Remove-Item -Force -ErrorAction SilentlyContinue (Get-ExasolSchedulerGiveUpMarker)
     Info "Starting exasol-scheduler"
+    # QUOTED BY HAND. Windows PowerShell 5.1's Start-Process joins -ArgumentList
+    # with spaces and quotes nothing, so a profile path with a space in it
+    # (C:\Users\Tomasz Kowalski\...) reached powershell.exe as two arguments
+    # and -File named a script that does not exist: the scheduler never started.
+    $schedulerLauncherArg = '"' + (Get-ExasolSchedulerLauncherPath) + '"'
     Start-Process -WindowStyle Hidden -FilePath "powershell.exe" `
-        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Get-ExasolSchedulerLauncherPath)) `
+        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $schedulerLauncherArg) `
         -RedirectStandardOutput (Get-ExasolSchedulerLogPath) `
         -RedirectStandardError ((Get-ExasolSchedulerLogPath) + ".err") | Out-Null
     Start-Sleep -Seconds 2
