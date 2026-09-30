@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "id": "personal",
+  "title": "Exasol Personal (local database)",
+  "kind": "runtime",
+  "manifest_key": "personal",
+  "source": {
+    "type": "github_release",
+    "repo": "exasol/exasol-personal"
+  },
+  "install_order": 10,
+  "step_id": "runtime",
+  "fallback_version": "2.3.0",
+  "requires": [],
+  "help": "personal"
+}

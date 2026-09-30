@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "json-tables",
+  "title": "JSON Tables (JSON into Exasol)",
+  "kind": "python-venv",
+  "source": {
+    "type": "github_release",
+    "repo": "exasol-labs/exasol-json-tables",
+    "package": "exasol-json-tables"
+  },
+  "platforms": [
+    "macos-aarch64",
+    "linux-aarch64",
+    "linux-x86_64",
+    "windows-x86_64"
+  ],
+  "requires": [
+    "personal",
+    "exapump"
+  ],
+  "provides": [
+    "json-ingestion"
+  ],
+  "launcher": "exasol-json-tables",
+  "skill": "json-tables",
+  "help": "json-tables",
+  "fallback_version": "v0.3.2"
+}

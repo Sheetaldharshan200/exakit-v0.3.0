@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "id": "exasol-scheduler",
+  "title": "Exasol Scheduler (SQL jobs on a schedule)",
+  "kind": "binary",
+  "source": {
+    "type": "github_release",
+    "repo": "exasol-labs/exasol-scheduler"
+  },
+  "platforms": [
+    "macos-aarch64",
+    "macos-x86_64",
+    "linux-aarch64",
+    "linux-x86_64",
+    "windows-x86_64"
+  ],
+  "requires": [
+    "personal",
+    "exapump"
+  ],
+  "provides": [
+    "scheduling"
+  ],
+  "service": {
+    "port": 0,
+    "autostart": true
+  },
+  "launcher": "exasol-scheduler",
+  "skill": "exasol-scheduler",
+  "help": "exasol-scheduler",
+  "fallback_version": "v0.2"
+}

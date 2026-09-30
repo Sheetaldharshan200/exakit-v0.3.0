@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "exapump",
+  "title": "exapump (SQL and bulk-load CLI)",
+  "kind": "binary",
+  "source": {
+    "type": "github_release",
+    "repo": "exasol-labs/exapump"
+  },
+  "install_order": 30,
+  "step_id": "exapump",
+  "fallback_version": "0.13.0",
+  "requires": [
+    "personal"
+  ],
+  "help": "exapump"
+}
