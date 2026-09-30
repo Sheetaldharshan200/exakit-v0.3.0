@@ -290,7 +290,29 @@ function Protect-ExakitDirectory {
         [System.Security.Principal.WindowsIdentity]::GetCurrent().User,
         "FullControl", "ContainerInherit, ObjectInherit", "None", "Allow")
     $acl.AddAccessRule($rule)
-    Set-Acl -Path $Path -AclObject $acl
+    Set-ExakitAcl -Path $Path -Acl $acl
+}
+
+# Set-ExakitAcl - write ONLY the DACL of $Acl onto $Path.
+#
+# NOT Set-Acl. Set-Acl with a freshly built security object succeeds the first
+# time, but on a path whose DACL is already protected it also tries to write
+# the SACL (audit rules), which needs SeSecurityPrivilege - an ordinary user
+# gets "The process does not possess the 'SeSecurityPrivilege' privilege".
+# Reproduced on Windows PowerShell 5.1 and PowerShell 7. The kit locks the same
+# file twice on purpose (the temp file before the secret goes in, then the
+# destination name), so every second lock failed. SetAccessControl persists
+# only the sections that changed - the access rules - and is safe to repeat.
+# .NET Framework has it on FileInfo/DirectoryInfo; .NET Core moved it to
+# FileSystemAclExtensions.
+function Set-ExakitAcl {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)]$Acl)
+    $item = Get-Item -LiteralPath $Path -Force
+    if ($item.PSObject.Methods['SetAccessControl']) {
+        $item.SetAccessControl($Acl)
+    } else {
+        [System.IO.FileSystemAclExtensions]::SetAccessControl($item, $Acl)
+    }
 }
 
 New-Item -ItemType Directory -Force -Path $script:ExakitHome, $script:LogDir, $script:CredsDir, $script:BinDir | Out-Null
@@ -3749,7 +3771,7 @@ function Protect-ExakitFile {
         [System.Security.Principal.WindowsIdentity]::GetCurrent().User,
         "FullControl", "Allow")
     $acl.AddAccessRule($rule)
-    Set-Acl -Path $Path -AclObject $acl
+    Set-ExakitAcl -Path $Path -Acl $acl
 }
 
 function New-ExakitPassword {
