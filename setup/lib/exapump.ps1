@@ -783,7 +783,7 @@ function Get-ExakitUploadFailureReason {
 
 function Invoke-ExapumpUpload {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Target, [switch]$Soft)
-    if (-not (Test-Path $Path) -or (Get-Item $Path).Length -eq 0) {
+    if (-not (Test-Path -LiteralPath $Path) -or (Get-Item -LiteralPath $Path).Length -eq 0) {
         Warn2 "Data file missing or empty: $Path"
         return $false
     }
@@ -1162,7 +1162,7 @@ function Invoke-ExapumpUploadMany {
     while ($queue.Count -gt 0 -or $running.Count -gt 0) {
         while ($queue.Count -gt 0 -and $running.Count -lt $cap) {
             $f = $queue.Dequeue()
-            if (-not (Test-Path $f.Path) -or (Get-Item $f.Path).Length -eq 0) {
+            if (-not (Test-Path -LiteralPath $f.Path) -or (Get-Item -LiteralPath $f.Path).Length -eq 0) {
                 Warn2 "Data file missing or empty: $($f.Path)"
                 $script:ExakitUploadFailures += "$($f.Path) (missing or empty)"
                 $done++
@@ -1777,8 +1777,8 @@ function Import-ExakitLocalFile {
         # A FOLDER is a bulk load: every data file in it, one table each. It is
         # answered by the same prompt (and the same EXAKIT_DATA_FILE) as a single
         # file, because "here is my data" is the same request either way.
-        if (Test-Path $path -PathType Container) { return (Import-ExakitLocalFolder -Path $path) }
-        if ((Test-Path $path) -and (Get-Item $path).Length -gt 0) {
+        if (Test-Path -LiteralPath $path -PathType Container) { return (Import-ExakitLocalFolder -Path $path) }
+        if ((Test-Path -LiteralPath $path) -and (Get-Item -LiteralPath $path).Length -gt 0) {
             # Refuse what the loader cannot take BEFORE it runs. Twin of the same
             # check in exakit_load_local_file: an unsupported file used to die
             # inside the loader and be recorded as a failed step.
@@ -1922,9 +1922,10 @@ function Get-ExakitBulkFileKind {
 # would load the same rows into two tables, and two names that resolve to the
 # SAME table would have the second overwrite the first.
 #
-# JSON is reported as json-unsupported here rather than loaded: this kit has no
-# prebuilt ingest engine for Windows (see Get-JsonTablesApplicableReason), which
-# is the same answer Import-ExakitLocalFile gives for a single JSON file.
+# JSON is planned as load|json on a machine that can have the JSON Tables engine
+# (Windows x86_64) and loaded through Import-ExakitLocalJson, as a single JSON
+# file is. Elsewhere (ARM64) it is reported as json-unsupported with
+# Get-JsonTablesApplicableReason - the same answer a single JSON file gets.
 #
 # Files are ordered by ORDINAL bytes, not by the machine's culture, so which of
 # two duplicates wins is the same answer on every machine - the twin sorts with
@@ -1940,13 +1941,15 @@ function Get-ExakitBulkFolderPlan {
     $keptTables = New-Object 'System.Collections.Generic.List[string]'
     $keptSizes  = New-Object 'System.Collections.Generic.List[long]'
     $keptHashes = New-Object 'System.Collections.Generic.List[string]'
+    # Asked once per folder: the answer is the machine's, not the file's.
+    $jsonOk = Test-ExakitJsonTablesApplicable
 
     foreach ($name in $names) {
         $full = Join-Path $Path $name
         $table = Get-ExakitTableName $full
         $kind = Get-ExakitBulkFileKind $full
         if ($kind -eq "unknown") { [void]$plan.Add("skip|unsupported||$full"); continue }
-        if ($kind -eq "json")    { [void]$plan.Add("skip|json-unsupported||$full"); continue }
+        if ($kind -eq "json" -and -not $jsonOk) { [void]$plan.Add("skip|json-unsupported||$full"); continue }
         $size = (Get-Item $full).Length
         if ($size -le 0) { [void]$plan.Add("skip|empty||$full"); continue }
         # A CSV whose only line is its header has no table in it (GTFS ships
@@ -2166,7 +2169,14 @@ function Import-ExakitLocalFolder {
             # underneath it ever starts writing to the pipeline.
             $uploaded = $false
             try {
-                $uploaded = [bool](@(Invoke-ExapumpUpload $file $target -Soft)[-1])
+                if ($parts[0] -eq "json") {
+                    # Through the JSON Tables engine, installed on first use -
+                    # exapump cannot read JSON. Twin of the json branch in
+                    # exakit_load_local_folder.
+                    $uploaded = [bool](@(Import-ExakitLocalJson -Path $file -Target $target)[-1])
+                } else {
+                    $uploaded = [bool](@(Invoke-ExapumpUpload $file $target -Soft)[-1])
+                }
             } catch {
                 $uploaded = $false
             }
@@ -2549,8 +2559,8 @@ $script:ExakitLoadBytesPerSec = 1048576
 
 function Get-ExakitLoadWeight {
     param([string]$Path)
-    if (-not $Path -or -not (Test-Path $Path)) { return 0 }
-    try { return [long](Get-Item $Path).Length } catch { return 0 }
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return 0 }
+    try { return [long](Get-Item -LiteralPath $Path).Length } catch { return 0 }
 }
 
 # How long that much weight usually takes, for the creep to fill in with. Only
