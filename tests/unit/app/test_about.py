@@ -68,3 +68,17 @@ class AboutTest(unittest.TestCase):
         self.assertEqual(about.cap("one two three", 8), "one two")
         self.assertEqual(about.cap("onetwothree", 5), "onetw")
         self.assertEqual(about.cap("short", 0), "short")
+
+    def test_a_failed_fetch_is_retried_after_the_rate_limit_window_not_the_ttl(self):
+        box = Sandbox(manifest=MANIFEST, env={"EXAKIT_ABOUT_RETRY": "10"})
+        try:
+            addon = self._addon(box)
+            about.description(box.ctx, addon)                       # fails: no page -> tagline, attempt marker written
+            attempt = box.ctx.paths.about_cache / ".attempt-dash-server"
+            old = time.time() - 100
+            os.utime(attempt, (old, old))                           # the retry window has passed
+            repo = about.repo_of(box.ctx, addon)
+            box.downloader.pages[f"https://api.github.com/repos/{repo}"] = json.dumps({"description": "fresh words"})
+            self.assertEqual(about.description(box.ctx, addon), "fresh words")
+        finally:
+            box.close()

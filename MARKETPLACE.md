@@ -425,8 +425,12 @@ supply chain checkable.
 
 ### 3. Document it: `help/my-tool.json`
 
-Alongside the other documents. `tagline` is the marketplace description and
-the help screen's header line; the rest is the help page (`exakit help my-tool`).
+Alongside the other documents. `repo` names the GitHub repository whose
+About is the marketplace description (fetched first, cached for a day, retried
+an hour after a failure such as the 60-per-hour API limit); `tagline` is the
+help screen's header line and the description the kit falls back to when
+GitHub cannot be reached and nothing is cached; the rest is the help page
+(`exakit help my-tool`).
 
 ### 4. Only when needed: `exakit/addons/my_tool.py`
 

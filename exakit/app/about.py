@@ -1,7 +1,11 @@
 """An add-on's one-line description: its GitHub About, fetched at most once a day, else the help document's tagline.
 
-The wording lives in the add-on's own repository, so a maintainer changes it
-there and every kit picks it up within ``EXAKIT_ABOUT_TTL`` seconds. It is
+The order is fixed: GitHub first (the add-on's own repository owns the
+wording), the cached copy when GitHub cannot be reached or answers with the
+rate limit (60 requests an hour without a token), and the kit's own
+``help/<id>.json`` tagline when there is no cache either. A cached copy is
+reused for ``EXAKIT_ABOUT_TTL`` seconds (a day); a failed fetch is retried
+after ``EXAKIT_ABOUT_RETRY`` seconds (an hour, the rate-limit window). It is
 prose the kit does not control: escape sequences and control bytes are
 stripped, it is folded to one line and capped, before it is cached.
 """
@@ -21,6 +25,7 @@ from .machine import kit_root
 
 DEFAULT_URL = "https://api.github.com/repos"
 DEFAULT_TTL = 86400
+DEFAULT_RETRY = 3600
 DEFAULT_MAX_LEN = 200
 ESCAPES = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\]8;;[^\x07\x1b]*(?:\x07|\x1b\\)")
 CONTROL = re.compile(r"[\x00-\x1f\x7f]")
@@ -57,21 +62,26 @@ def repo_of(ctx: Context, addon: Addon) -> str | None:
 
 
 def fetch(ctx: Context, addon: Addon) -> str | None:
-    """Refresh the cached About once per TTL (a failed attempt also waits the TTL). Returns the text on disk, if any."""
+    """GitHub first, once per TTL; a failed fetch (network, rate limit) is retried after EXAKIT_ABOUT_RETRY. Returns what is on disk."""
     cache_dir = ctx.paths.about_cache
     cache, attempt = cache_dir / f"{addon.id}.txt", cache_dir / f".attempt-{addon.id}"
     ttl = _int(ctx, "EXAKIT_ABOUT_TTL", DEFAULT_TTL)
     url = ctx.env.get("EXAKIT_ABOUT_URL") or DEFAULT_URL
     repo = repo_of(ctx, addon)
-    if ctx.env.get("EXAKIT_ABOUT_OFFLINE") == "1" or not repo or not url.startswith("https://") or _fresh(cache, ttl) or _fresh(attempt, ttl):
+    if ctx.env.get("EXAKIT_ABOUT_OFFLINE") == "1" or not repo or not url.startswith("https://") or _fresh(cache, ttl) \
+            or _fresh(attempt, _int(ctx, "EXAKIT_ABOUT_RETRY", DEFAULT_RETRY)):
         return _read(cache)
     cache_dir.mkdir(parents=True, exist_ok=True)
     attempt.write_text("", encoding="utf-8")
     try:
         body = ctx.net.text(f"{url}/{repo}", token=ctx.env.get("GITHUB_TOKEN"))
         text = cap(sanitise(str(json.loads(body).get("description") or "")), _int(ctx, "EXAKIT_ABOUT_MAX_LEN", DEFAULT_MAX_LEN))
-    except (ExakitError, ValueError, AttributeError, OSError):
-        ctx.log.line("INFO", f"About fetch failed for {addon.id} - keeping whatever is on disk")
+    except ExakitError as err:
+        why = "GitHub's rate limit (60 requests an hour without GITHUB_TOKEN)" if "403" in (err.hint or "") or "429" in (err.hint or "") else err.hint or "no answer"
+        ctx.log.line("INFO", f"About fetch failed for {addon.id}: {why} - using the cached copy, else the kit's own tagline")
+        return _read(cache)
+    except (ValueError, AttributeError, OSError):
+        ctx.log.line("INFO", f"About fetch for {addon.id} did not parse - keeping whatever is on disk")
         return _read(cache)
     if not text:
         ctx.log.line("INFO", f"{repo} has no About text to show for {addon.id}")
