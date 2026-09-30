@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import unittest
 from unittest import mock
 
@@ -11,7 +12,7 @@ from exakit.domain.platform import Platform
 from exakit.lifecycles import for_addon
 from exakit.lifecycles.host_extension import HostExtensionLifecycle
 from tests.unit.app.harness import MANIFEST, Sandbox
-from tests.unit.fakes import FakeRunner
+from tests.unit.fakes import FakeRunner, mode_of
 
 CREDS = {**MANIFEST, "runtime": {**MANIFEST["runtime"], "password_file": "/creds/sys_password", "user": "sys"},
          "components": {**MANIFEST["components"], "mcp_server": {"version": "2.2.0", "connection": {"user": "mcp_readonly", "password_file": "/creds/ro"}}}}
@@ -101,7 +102,7 @@ class DbtTest(unittest.TestCase):
             self.assertIn("user: sys", profile)
             self.assertIn("env_var('DBT_ENV_SECRET_EXASOL_PASSWORD')", profile)
             self.assertIn("schema: DBT", profile)
-            self.assertEqual(oct((lc.home / "profiles.yml").stat().st_mode & 0o777), "0o600")
+            self.assertIn(mode_of(lc.home / "profiles.yml"), (0o600, None))
             launcher = (box.ctx.paths.bin_dir / "dbt-exasol").read_text()
             self.assertIn('[ -r "/creds/sys_password" ]', launcher)
             self.assertIn(f'DBT_PROFILES_DIR:={lc.home}', launcher)
@@ -154,7 +155,7 @@ class JsonTablesTest(unittest.TestCase):
             shim = (lc.shim_dir / "cargo").read_text()
             self.assertIn("*json_tables_ingest*", shim)
             self.assertIn(f'exec "{lc.engine}"', shim)
-            self.assertTrue((lc.shim_dir / "cargo").stat().st_mode & 0o111)
+            self.assertTrue(os.access(lc.shim_dir / "cargo", os.X_OK))
             self.assertIn(f'PATH="{lc.shim_dir}:$PATH"', (box.ctx.paths.bin_dir / "exasol-json-tables").read_text())
         finally:
             box.close()

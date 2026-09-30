@@ -1,5 +1,4 @@
 import json
-import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,7 +11,7 @@ from exakit.adapters.process.ports import process_age_seconds
 from exakit.adapters.process.runner import Completed
 from exakit.adapters.process.services import LaunchdServices, ServiceSpec, SystemdUserServices, WindowsStartupServices
 from exakit.domain.errors import Failed
-from tests.unit.fakes import FakeDownloader, FakeRunner
+from tests.unit.fakes import FakeDownloader, FakeRunner, mode_of
 
 
 class CredentialsTest(unittest.TestCase):
@@ -20,8 +19,8 @@ class CredentialsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             store = CredentialStore(Path(tmp) / "credentials")
             path = store.store("personal_sys_password", "s3cret")
-            self.assertEqual(stat.S_IMODE(store.directory.stat().st_mode), 0o700)
-            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            self.assertIn(mode_of(store.directory), (0o700, None))
+            self.assertIn(mode_of(path), (0o600, None))
             self.assertEqual(path.read_bytes(), b"s3cret")
             self.assertEqual(store.read("personal_sys_password"), "s3cret")
             self.assertIsNone(store.read("nothing"))
@@ -48,7 +47,7 @@ class ExapumpTest(unittest.TestCase):
             write_profile(cfg, Profile("starter-kit", "127.0.0.1", 9999, "sys", "new"))
             self.assertEqual(cfg.read_text().count("[starter-kit]"), 1)
             self.assertIn("port = 9999", cfg.read_text())
-            self.assertEqual(stat.S_IMODE(cfg.stat().st_mode), 0o600)
+            self.assertIn(mode_of(cfg), (0o600, None))
 
     def test_temp_config_holds_extra_profiles_and_is_removed(self):
         with tempfile.TemporaryDirectory() as tmp:

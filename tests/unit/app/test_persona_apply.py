@@ -39,6 +39,20 @@ class ApplyTest(unittest.TestCase):
         finally:
             box.close()
 
+    def test_every_section_is_in_the_document_even_when_it_has_no_steps(self):
+        """A machine with no AI clients still answers with an mcp_clients array: the JSON shape is frozen."""
+        box = Sandbox(manifest=MANIFEST, json_mode=True, env={"EXAKIT_MCP_CLIENTS": "skip"})
+        try:
+            with mock.patch("exakit.app.machine.addon_states", _states({})), \
+                 mock.patch("exakit.app.machine.skills_current", lambda ctx, m: True):
+                planned = persona_app.plan(box.ctx, "minimal").to_dict()
+                applied = persona_app.apply(box.ctx, "minimal").to_dict()
+            for doc in (planned, applied):
+                self.assertEqual(doc["mcp_clients"], [])
+                self.assertTrue({"datasets", "mcp_clients", "addons", "skills", "pending", "failed"} <= set(doc), sorted(doc))
+        finally:
+            box.close()
+
     def test_without_yes_and_without_a_terminal_it_refuses_with_5_and_records_nothing(self):
         box = Sandbox(manifest=MANIFEST, json_mode=True, env={"EXAKIT_MCP_CLIENTS": "skip"})
         try:

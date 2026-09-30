@@ -442,6 +442,11 @@ jobs:
     # not the pinned one. That breakage arrives in commits that need not touch
     # versions.json at all, and it went unnoticed once because the gated job
     # only runs when the file is in the diff. This one always runs.
+    #
+    # A repository that does not publish these releases (a fork, a staging copy
+    # of the kit) cannot pass it; there the verdict is shown but does not fail
+    # the build. The kit downloads from krishna-exasol/update-path.
+    continue-on-error: ${{ github.repository != 'krishna-exasol/update-path' }}
     steps:
       - uses: actions/checkout@v7
       - name: every repo-published pin resolves in this repository

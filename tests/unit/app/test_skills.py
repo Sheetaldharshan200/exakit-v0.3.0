@@ -25,9 +25,9 @@ class SkillDiscoveryTest(unittest.TestCase):
         box = Sandbox()
         try:
             path = Path(box.tmp.name) / "SKILL.md"
-            path.write_text("---\nname: x\ndescription: Does things. Triggers — a, b\naddon: dash-server\n---\nbody\n")
+            path.write_text("---\nname: x\ndescription: Does things. Triggers — a, b\naddon: dash-server\n---\nbody\n", encoding="utf-8")
             self.assertEqual(skills.frontmatter(path), {"name": "x", "description": "Does things. Triggers — a, b", "addon": "dash-server"})
-            path.write_text("no frontmatter\n")
+            path.write_text("no frontmatter\n", encoding="utf-8")
             self.assertEqual(skills.frontmatter(path), {})
         finally:
             box.close()

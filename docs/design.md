@@ -558,7 +558,9 @@ the refusal object, exit codes, and every `EXAKIT_*` variable in
 - `exakit persona list|show|plan|apply --json`: the shapes in the approved
   persona design (list: `recorded`, `personas[]`; plan/apply: `persona`,
   `datasets[]`, `mcp_clients[]`, `addons[]`, `skills`, `pending`, `failed[]`),
-  each with `installed`, `status`, `remedy`.
+  each with `installed`, `status`, `remedy`. The four section arrays are
+  always present, empty when the persona or the machine gives them no step
+  (a machine with no AI client still answers `"mcp_clients": []`).
 - `EXAKIT_PERSONA=<id>` on the install.
 
 ---

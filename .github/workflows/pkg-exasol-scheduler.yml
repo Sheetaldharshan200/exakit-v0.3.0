@@ -260,8 +260,7 @@ jobs:
           doc["fallback_version"] = sys.argv[1]
           with open(path, "w") as handle:
               json.dump(doc, handle, indent=2)
-              handle.write("
-")
+              handle.write("\n")
           PY
           if git diff --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"

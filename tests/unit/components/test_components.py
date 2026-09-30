@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
 import json
 import tarfile
 import unittest
@@ -16,7 +17,7 @@ from exakit.components.personal import major
 from exakit.domain.errors import Failed
 from exakit.domain.platform import Platform
 from tests.unit.app.harness import MANIFEST, FakeVersions, Sandbox
-from tests.unit.fakes import FakeRunner, FakeRuntime
+from tests.unit.fakes import FakeRunner, FakeRuntime, mode_of
 
 
 def versions_doc(**components) -> dict:
@@ -60,7 +61,7 @@ class ExapumpTest(unittest.TestCase):
             runner.responses[(str(lc.bin), "--version")] = Completed(0, "exapump 0.13.0\n", "")
             lc.install("0.13.0")
             self.assertTrue(lc.bin.exists())
-            self.assertTrue(lc.bin.stat().st_mode & 0o111)
+            self.assertTrue(os.access(lc.bin, os.X_OK))
             self.assertEqual(box.manifest().get("components.exapump.version"), "0.13.0")
             self.assertEqual(box.manifest().get("components.exapump.path"), str(lc.bin))
             self.assertIn("exapump v0.13.0 installed", box.screen())
@@ -113,7 +114,7 @@ class ExapumpTest(unittest.TestCase):
             text = lc.config_path.read_text()
             self.assertIn("[starter-kit]", text)
             self.assertIn('password = "s3cret"', text)
-            self.assertEqual(oct(lc.config_path.stat().st_mode & 0o777), "0o600")
+            self.assertIn(mode_of(lc.config_path), (0o600, None))
             self.assertNotIn("s3cret", box.screen())
             self.assertEqual(box.manifest().get("components.exapump.profile"), "starter-kit")
         finally:

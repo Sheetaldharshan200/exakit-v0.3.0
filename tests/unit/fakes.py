@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import stat
 from pathlib import Path
 
 from exakit.domain.errors import Failed
@@ -236,3 +238,8 @@ class FakeRuntime:
         if self.reap_ok:
             self._status = self._status.__class__("stopped", self._status.port)
         return self.reap_ok
+
+
+def mode_of(path) -> int | None:
+    """The POSIX permission bits of a path, or None on Windows where files carry none."""
+    return None if os.name == "nt" else stat.S_IMODE(os.stat(path).st_mode)

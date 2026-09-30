@@ -13,6 +13,8 @@ from exakit.domain.result import Result
 from . import Context, run_plan
 from .machine import all_datasets, probe
 
+SECTIONS = ("datasets", "mcp_clients", "addons", "skills")   # every plan document carries all four, empty or not
+
 
 def recorded(ctx: Context) -> str | None:
     manifest = ctx.manifest_or_none()
@@ -75,7 +77,8 @@ def plan(ctx: Context, persona_id: str) -> Result:
     persona = ctx.catalog.persona(persona_id)
     the_plan = build_plan(ctx, persona)
     pending = len(the_plan.pending())
-    data = {"persona": {"id": persona.id, "title": persona.title, "source": persona.source}, **the_plan.to_dict()}
+    data = {"persona": {"id": persona.id, "title": persona.title, "source": persona.source},
+            **{section: [] for section in SECTIONS}, **the_plan.to_dict()}
     if not ctx.json:
         ctx.ui.plan(the_plan)
         if pending:
@@ -162,7 +165,7 @@ def apply(ctx: Context, persona_id: str) -> Result:
     the_plan = plan_for(persona, machine, answers)
     for step in the_plan.pending():
         _bind(ctx, step, answers)
-    extra = {"persona": {"id": persona.id, "title": persona.title, "source": persona.source}}
+    extra = {"persona": {"id": persona.id, "title": persona.title, "source": persona.source}, **{section: [] for section in SECTIONS}}
     result = run_plan(ctx, the_plan, confirm_question=f"Apply the {persona.title} persona now?", extra=extra)
     _record(ctx, persona, the_plan)
     if not ctx.json:

@@ -1,6 +1,5 @@
 import json
 import os
-import stat
 import tempfile
 import threading
 import unittest
@@ -10,6 +9,7 @@ from exakit.adapters.fs.atomic import atomic_write_text
 from exakit.adapters.fs.lock import FileLock
 from exakit.adapters.fs.log import FileLog, NullLog
 from exakit.adapters.fs.manifest_store import CorruptManifest, FileManifestStore
+from tests.unit.fakes import mode_of
 from exakit.adapters.fs.paths import Paths
 from exakit.domain.errors import Failed, NotInstalled
 from exakit.domain.manifest import Manifest
@@ -38,7 +38,7 @@ class AtomicWriteTest(unittest.TestCase):
             target = Path(tmp) / "sub" / "file.json"
             atomic_write_text(target, '{"a": 1}\n')
             self.assertEqual(target.read_text(), '{"a": 1}\n')
-            self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o600)
+            self.assertIn(mode_of(target), (0o600, None))
             self.assertEqual(os.listdir(target.parent), ["file.json"])
 
     def test_replaces_existing_content(self):
@@ -130,7 +130,7 @@ class LogTest(unittest.TestCase):
             lines = log.path.read_text().splitlines()
             self.assertRegex(lines[0], r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} INFO  hello$")
             self.assertRegex(lines[1], r" WARN  careful$")
-            self.assertEqual(stat.S_IMODE(log.path.stat().st_mode), 0o600)
+            self.assertIn(mode_of(log.path), (0o600, None))
 
     def test_file_log_stops_quietly_when_the_directory_cannot_be_made(self):
         with tempfile.TemporaryDirectory() as tmp:
