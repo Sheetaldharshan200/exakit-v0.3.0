@@ -34,3 +34,7 @@ static/*.mp4 export-ignore
 bootstrap/exakit text eol=lf
 bootstrap/exakit.ps1 text eol=lf
 setup/exakit.ps1 text eol=lf
+
+# The .cmd shim is a Windows file: CRLF on every checkout
+bootstrap/exakit.cmd text eol=crlf
+setup/exakit.cmd text eol=crlf

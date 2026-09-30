@@ -41,7 +41,7 @@ OWN_PACKAGES = {"exakit", "mcp"}
 # The one place outside adapters/ that opens a file: the terminal itself is the UI's device (design.md 9).
 BOUNDARY_EXCEPTIONS = {"exakit/ui/__init__.py": "/dev/tty"}
 SHELL_FILES = ["install.sh", "install.ps1", "bootstrap/ensure-python.sh", "bootstrap/ensure-python.ps1",
-               "bootstrap/exakit", "bootstrap/exakit.ps1", "setup/exakit", "setup/exakit.ps1"]
+               "bootstrap/exakit", "bootstrap/exakit.ps1", "bootstrap/exakit.cmd", "setup/exakit", "setup/exakit.ps1", "setup/exakit.cmd"]
 
 Finding = tuple[str, int, str]
 

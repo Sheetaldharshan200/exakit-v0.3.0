@@ -352,3 +352,4 @@ class MigrationSplitTest(unittest.TestCase):
     def test_launcher_copies_are_byte_identical(self):
         self.assertEqual((REPO / "setup" / "exakit").read_bytes(), (REPO / "bootstrap" / "exakit").read_bytes())
         self.assertEqual((REPO / "setup" / "exakit.ps1").read_bytes(), (REPO / "bootstrap" / "exakit.ps1").read_bytes())
+        self.assertEqual((REPO / "setup" / "exakit.cmd").read_bytes(), (REPO / "bootstrap" / "exakit.cmd").read_bytes())

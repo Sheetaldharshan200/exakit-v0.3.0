@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+**Windows installs have an `exakit` command again**, `exakit.cmd` beside the
+PowerShell launcher in `~\.local\bin`, installed by the installer and the
+self-update and removed by the uninstall; `install.ps1` no longer demands a
+file the 0.3.0 kit does not ship.
+
 **Every default is data.** `catalog/kit.json` now carries the kit's own
 settings (the repository it updates from, the installer URLs, where the
 versions manifest and an add-on's About are fetched and how long they are

@@ -123,7 +123,7 @@ def _remove_home(ctx: Context, dry: bool, gone: list[str]) -> None:
 
 
 def _remove_bins(ctx: Context, dry: bool, gone: list[str]) -> None:
-    names = ["exasol", "exakit", "exapump"] + [a.launcher or a.id for a in ctx.catalog.addons()]
+    names = ["exasol", "exasol.exe", "exakit", "exakit.ps1", "exakit.cmd", "exapump", "exapump.exe"] + [a.launcher or a.id for a in ctx.catalog.addons()]
     removed = []
     for name in names:
         path = ctx.paths.bin_dir / name

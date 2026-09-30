@@ -78,8 +78,7 @@ def artifact_missing(session: Session, step: str) -> bool:
             return own.stat().st_size == 0
         return not ctx.runner.which("exasol")
     if step == "exakit_helper":
-        helper = ctx.paths.bin_dir / "exakit"
-        return not helper.exists() or helper.stat().st_size == 0
+        return any(not target.exists() or target.stat().st_size == 0 for _source, target in helper_files(ctx, ctx.paths.kit))
     if step == "exapump":
         path = ctx.manifest().get("components.exapump.path")
         if not path:
@@ -260,29 +259,36 @@ def step_pyexasol(session: Session, title: str) -> None:
             mark(session, "pyexasol")
 
 
+def helper_files(ctx: Context, root: Path) -> list[tuple[Path, Path]]:
+    """(source in the kit copy, target in the bin dir) for the exakit command: the sh launcher, or on Windows the .cmd shim and the PowerShell launcher it runs."""
+    names = ("exakit.cmd", "exakit.ps1") if ctx.platform.os == "windows" else ("exakit",)
+    return [(root / "setup" / name, ctx.paths.bin_dir / name) for name in names]
+
+
 def step_helper(session: Session, title: str) -> None:
     """The exakit command in the bin dir, and the kit copy under the home when this run came from a checkout."""
     ctx = session.ctx
-    helper = ctx.paths.bin_dir / "exakit"
-    source = session.root / "setup" / "exakit"
+    files = helper_files(ctx, session.root)
     needed = begin(session, "exakit_helper", title)
     if not needed:
-        if not helper.exists():
+        if any(not target.exists() for _source, target in files):
             ctx.ui.info("exakit command is missing - reinstalling it")
             needed = True
-        elif source.exists() and helper.read_bytes() != source.read_bytes():
+        elif any(source.exists() and target.read_bytes() != source.read_bytes() for source, target in files):
             ctx.ui.info("exakit command is out of date - refreshing it")
             needed = True
     if not needed:
         return
-    if not source.exists():
-        raise Failed(f"This kit copy has no setup/exakit launcher at {source}.")
+    for source, _target in files:
+        if not source.exists():
+            raise Failed(f"This kit copy has no {source.name} launcher at {source}.")
     ctx.paths.bin_dir.mkdir(parents=True, exist_ok=True)
-    for_component(ctx, "exakit").install_binary(source, helper)
+    for source, target in files:
+        for_component(ctx, "exakit").install_binary(source, target)
     if session.root.resolve() != ctx.paths.kit.resolve():
         _copy_kit(session.root, ctx.paths.kit)
     mark(session, "exakit_helper")
-    ctx.ui.ok(f"exakit command installed to {helper}")
+    ctx.ui.ok(f"exakit command installed to {files[-1][1]}")
 
 
 def _copy_kit(root: Path, kit: Path) -> None:

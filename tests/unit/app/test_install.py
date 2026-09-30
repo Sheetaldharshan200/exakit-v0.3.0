@@ -7,6 +7,7 @@ from unittest import mock
 
 from exakit.app import install
 from exakit.domain.errors import Failed
+from exakit.domain.platform import Platform
 from tests.unit.app.harness import MANIFEST, Sandbox
 from tests.unit.fakes import FakeRuntime
 
@@ -200,6 +201,19 @@ class AnswersTest(unittest.TestCase):
             recorded = box.manifest()
             self.assertEqual((recorded.get("persona.id"), recorded.get("persona.source")), ("data-scientist", "install"))
             self.assertTrue(recorded.get("persona.requested_at"))
+        finally:
+            box.close()
+
+    def test_on_windows_the_helper_is_the_cmd_shim_and_the_powershell_launcher(self):
+        box, _calls, patches = box_with(env={"EXAKIT_LOAD_SAMPLE": "0", "EXAKIT_MCP_CLIENTS": "skip"}, platform=Platform("windows", "x86_64"))
+        try:
+            with Patched(patches):
+                install.run(box.ctx)
+            bin_dir = box.ctx.paths.bin_dir
+            self.assertTrue((bin_dir / "exakit.cmd").exists() and (bin_dir / "exakit.ps1").exists())
+            self.assertFalse((bin_dir / "exakit").exists())
+            self.assertIn(b"exakit.ps1", (bin_dir / "exakit.cmd").read_bytes())
+            self.assertIn("exakit_helper", box.manifest().steps_completed())
         finally:
             box.close()
 

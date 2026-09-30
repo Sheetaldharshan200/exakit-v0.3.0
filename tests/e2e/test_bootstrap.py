@@ -91,7 +91,8 @@ class UpdatePathLayoutTest(unittest.TestCase):
     def test_setup_exakit_is_the_launcher_and_nothing_else_lives_in_setup(self):
         self.assertEqual((REPO / "setup" / "exakit").read_bytes(), (REPO / "bootstrap" / "exakit").read_bytes())
         self.assertIn("python -m exakit", (REPO / "setup" / "exakit").read_text())
-        self.assertEqual(sorted(p.name for p in (REPO / "setup").iterdir()), ["exakit", "exakit.ps1"])
+        self.assertEqual(sorted(p.name for p in (REPO / "setup").iterdir()), ["exakit", "exakit.cmd", "exakit.ps1"])
+        self.assertEqual((REPO / "setup" / "exakit.cmd").read_bytes(), (REPO / "bootstrap" / "exakit.cmd").read_bytes())
 
     def test_versions_json_pins_uv_with_a_digest_per_platform(self):
         doc = json.loads((REPO / "versions.json").read_text())
@@ -104,6 +105,26 @@ class UpdatePathLayoutTest(unittest.TestCase):
         doc = json.loads((REPO / "help" / "whats-new.json").read_text())
         self.assertIn("0.3.0", doc)
         self.assertTrue(all(len(line) <= 68 for line in doc["0.3.0"]))
+
+
+class InstallerSentinelsTest(unittest.TestCase):
+    """Every file the two installers name as part of the kit exists in the tree: a deleted file must not linger in a check."""
+
+    KNOWN_ABSENT = {"setup\\lib\\ui.ps1"}     # the visual layer left with the shell tree; the installer falls back to plain text
+
+    def test_every_kit_path_the_installers_name_exists(self):
+        import re
+        repo = Path(__file__).resolve().parents[2]
+        missing = []
+        for name in ("install.sh", "install.ps1"):
+            text = (repo / name).read_text(encoding="utf-8")
+            for match in re.finditer(r'"((?:setup|bootstrap|exakit|help)[\\/][A-Za-z0-9_.\\/-]+)"', text):
+                rel = match.group(1)
+                if rel in self.KNOWN_ABSENT:
+                    continue
+                if not (repo / rel.replace("\\", "/")).exists():
+                    missing.append(f"{name}: {rel}")
+        self.assertEqual(missing, [])
 
 
 if __name__ == "__main__":

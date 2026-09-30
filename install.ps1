@@ -100,7 +100,7 @@ trap {
     return
 }
 
-# Twin of Get-ExakitHomeBase in exakit-common.ps1: exakit resolves its home
+# Twin of Paths.from_env in exakit/adapters/fs/paths.py: exakit resolves its home
 # from USERPROFILE (an existing install still winning, wherever it sits),
 # while this file used $HOME - so on a domain machine with a redirected home
 # the install landed in one tree, every later `exakit` looked in another, the
@@ -178,7 +178,7 @@ foreach ($gpoScope in @("MachinePolicy", "UserPolicy")) {
 # the machine is still untouched - a laptop that was never going to pass was
 # still left with a rewritten kit directory and an install log to explain.
 #
-# install.sh cannot do this: its check lives in setup\lib\detect.sh, inside the
+# install.sh cannot do this: its check lives in its preflight_report, inside the
 # kit it has to download first. Nothing these checks need is in the kit.
 #
 # This is a gate, not the check. Test-PersonalRequirements still runs the real one
@@ -303,7 +303,7 @@ function Get-ExakitRequirementChecks {
 
 # Write-ExakitRequirementReport - $env:EXAKIT_PREFLIGHT: say what this machine
 # can and cannot do, install nothing, and return the number of genuine
-# failures as the exit code. The twin is preflight_report (setup\lib\detect.sh),
+# failures as the exit code. The twin is preflight_report (install.sh),
 # which install.sh runs at this same point in its own flow. That one can report
 # more because it runs after the download and has the kit to read; the items it
 # adds (network reachability, the database port, python) are all things this
@@ -464,12 +464,12 @@ try {
     $inner = Get-ChildItem $incoming | Select-Object -First 1
     if (-not $inner) { throw "The downloaded kit archive was empty or malformed. Re-run to download it again." }
 
-    # Sentinels: three files every later step reads - the exakit command itself,
-    # the shared library every script dot-sources, and the versions manifest
-    # that is the kit's offline version tier. Checked BEFORE the working copy is
-    # touched, so an archive that unpacked into something unusable is a no-op
-    # instead of a broken install.
-    foreach ($sentinel in @("setup\exakit.ps1", "setup\lib\exakit-common.ps1", "versions.json")) {
+    # Sentinels: the files every later step reads - the launcher, the bootstrap
+    # that installs the kit's Python, the Python kit itself, the versions
+    # manifest that is the kit's offline version tier and the help document.
+    # Checked BEFORE the working copy is touched, so an archive that unpacked
+    # into something unusable is a no-op instead of a broken install.
+    foreach ($sentinel in @("setup\exakit.ps1", "bootstrap\ensure-python.ps1", "exakit\__main__.py", "versions.json", "help\exakit.json")) {
         if (-not (Test-Path (Join-Path $inner.FullName $sentinel))) {
             if ($LocalKit) {
                 throw "The local kit checkout is incomplete ($sentinel is missing from $LocalKit), so it was not installed and your existing kit is untouched."
@@ -516,7 +516,7 @@ $ramGb = Get-ExakitTotalRamGb
 # "RAM unknown" rather than a crash or a bare "-1 GB": the requirements gate
 # above already decided an unreadable value is not a reason to stop.
 $ramText = if ($ramGb -ge 0) { "$ramGb GB RAM" } else { "RAM unknown" }
-# Banner + plan via the kit's shared visual layer (setup\lib\ui.ps1) so the
+# Banner + plan via the kit's visual layer (setup\lib\ui.ps1, gone since 0.3.0) so the
 # EXASOL wordmark and palette match the rest of the install exactly. Available
 # now that the kit is downloaded; plain fallback if the lib is missing.
 $uiLib = Join-Path $KitDir "setup\lib\ui.ps1"

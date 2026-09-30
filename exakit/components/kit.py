@@ -13,7 +13,7 @@ from exakit.domain.versions import is_newer
 
 from .base import ComponentBase
 
-REQUIRED = ("setup/exakit", "versions.json", "exakit/__main__.py", "bootstrap/exakit", "help/exakit.json")
+REQUIRED = ("setup/exakit", "setup/exakit.ps1", "setup/exakit.cmd", "versions.json", "exakit/__main__.py", "bootstrap/exakit", "help/exakit.json", "catalog/kit.json")
 
 
 def kit_version_at(root: Path, path: str = "kit.version") -> str | None:
@@ -101,7 +101,9 @@ class Lifecycle(ComponentBase):
             shutil.rmtree(stage, ignore_errors=True)
             raise Failed("Could not install the staged starter kit update; previous kit copy was restored.") from None
         try:
-            self.install_binary(kit_dir / "setup" / "exakit", self.ctx.paths.bin_dir / "exakit")
+            from exakit.app.install_steps import helper_files
+            for source, target in helper_files(self.ctx, kit_dir):
+                self.install_binary(source, target)
         except OSError:
             self._restore(backup, kit_dir, marker)
             raise Failed(f"Could not install the exakit command to {self.ctx.paths.bin_dir} (is it writable? is the disk full?).") from None

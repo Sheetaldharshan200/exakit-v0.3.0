@@ -74,6 +74,17 @@ def protect_path(path: Path) -> str | None:
     return format(stat.S_IMODE(path.stat().st_mode), "04o")
 
 
+def _account_name(line: str) -> tuple[str, str] | None:
+    """(account, flags) of one icacls line: the account name in lower case, without its domain or the echoed path."""
+    head, colon, flags = line.rpartition(":(")
+    if not colon:
+        return None
+    flags = "(" + flags
+    account = head.rsplit("\\", 1)[-1]
+    account = account.rsplit(" ", 1)[-1]
+    return account.strip().lower(), flags
+
+
 def describe_protection(path: Path) -> str | None:
     """What ``path`` is ACTUALLY protected by right now - the read side of
     :func:`protect_path`.
@@ -108,9 +119,6 @@ def describe_protection(path: Path) -> str | None:
         except (OSError, subprocess.SubprocessError):
             return None
         username = (os.environ.get("USERNAME") or getpass.getuser()).strip().lower()
-        # icacls echoes the long form of the path; a temp directory may be
-        # spelled short (RUNNER~1), so compare against the resolved real path.
-        target = os.path.realpath(str(path)).lower()
         principals: list[str] = []
         inherited = False
         for raw in (completed.stdout or "").splitlines():
@@ -118,25 +126,27 @@ def describe_protection(path: Path) -> str | None:
             if not line or line.lower().startswith("successfully processed"):
                 continue
             # icacls prints "<path> PRINCIPAL:(FLAGS)" on its first line and a
-            # bare "PRINCIPAL:(FLAGS)" on every line after it.
-            if line.lower().startswith(target):
-                line = line[len(target):].strip()
-            if ":" not in line:
+            # bare "PRINCIPAL:(FLAGS)" on every line after it. The path may be
+            # spelled long or short (RUNNER~1) and may hold spaces, so nothing
+            # here depends on it: the account name is what follows the last
+            # backslash (DOMAIN\user) or, for a bare name, the last space.
+            account = _account_name(line)
+            if account is None:
                 continue
-            principal, _, flags = line.partition(":")
+            principal, flags = account
             # (I) marks an ACE inherited from the parent - exactly what
             # /inheritance:r removes, and exactly what a client rewriting its
             # own config re-acquires.
             if "(I)" in flags:
                 inherited = True
-            principals.append(principal.strip().lower())
+            principals.append(principal)
         if not principals:
             return None
         if inherited:
             return NOT_OWNER_ONLY_ACL
         # A principal arrives as "DOMAIN\\user" or bare "user"; compare the
         # account name, which is what protect_path granted.
-        if any(p.rsplit("\\", 1)[-1] != username for p in principals):
+        if any(p != username for p in principals):
             return NOT_OWNER_ONLY_ACL
         return OWNER_ONLY_ACL
     return format(stat.S_IMODE(path.stat().st_mode), "04o")
