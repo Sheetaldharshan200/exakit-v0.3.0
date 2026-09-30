@@ -78,7 +78,9 @@ class VersionsChainTest(unittest.TestCase):
         self.assertEqual(src.refresh(), "failed")
         self.assertEqual(src.current().updated(), "2026-09-29")
         self.assertEqual(src.source_label(), "cache")
-        self.assertEqual(self._source({}).refresh(), "fresh")   # the attempt stamp answers
+        self.assertEqual(self._source({}).refresh(), "fresh")   # the attempt stamp answers within the retry window
+        self.clock.now += 3601
+        self.assertEqual(self._source({}).refresh(), "failed")  # and is retried after it, not after the day-long TTL
 
     def test_invalid_fetched_document_is_rejected_and_cache_kept(self):
         self.cache.parent.mkdir()

@@ -71,7 +71,7 @@ class ComponentBase:
     def fetch_verified(self, url: str, dest: Path, *, digest: str | None, what: str, repo: str | None = None,
                        tag: str | None = None, asset: str | None = None) -> Path:
         if digest is None and repo and tag and asset:
-            digest = asset_digest(repo, tag, asset, self.ctx.net, token=self.ctx.env.get("GITHUB_TOKEN"))
+            digest = asset_digest(repo, tag, asset, self.ctx.net, token=self.ctx.env.get("GITHUB_TOKEN"), cache_dir=self.ctx.paths.releases_cache)
         hatch = f"EXAKIT_ALLOW_UNVERIFIED_{self.id.upper()}"
         if digest is None and self.ctx.env.get(hatch) != "1":
             raise Failed(f"No checksum available for {what}; refusing to install an unverified {self.id} binary. Add its digest to "

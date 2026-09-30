@@ -119,7 +119,8 @@ class Lifecycle(PythonVenvLifecycle):
         doc = self.ctx.versions.current()
         if doc and self.pin_applies(version) and doc.value("components.json-tables.wheel"):
             return str(doc.value("components.json-tables.wheel"))
-        assets = release_assets(self.mirror_repo(), self.release_tag(version), self.ctx.net, token=self.ctx.env.get("GITHUB_TOKEN")) or []
+        assets = release_assets(self.mirror_repo(), self.release_tag(version), self.ctx.net, token=self.ctx.env.get("GITHUB_TOKEN"),
+                                cache_dir=self.ctx.paths.releases_cache) or []
         wheels = [a.name for a in assets if a.name.endswith(".whl")]
         return wheels[0] if wheels else None
 

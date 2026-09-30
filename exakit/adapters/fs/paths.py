@@ -54,6 +54,10 @@ class Paths:
         return self.cache / "about"
 
     @property
+    def releases_cache(self) -> Path:
+        return self.cache / "releases"
+
+    @property
     def tools(self) -> Path:
         return self.home / "tools"
 

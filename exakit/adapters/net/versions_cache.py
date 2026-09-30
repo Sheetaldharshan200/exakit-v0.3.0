@@ -22,6 +22,7 @@ from ..fs.log import Log
 from .http import Downloader
 
 DEFAULT_TTL_SECONDS = 86400
+DEFAULT_RETRY_SECONDS = 3600
 DEFAULT_URL_TEMPLATE = "https://raw.githubusercontent.com/{repo}/main/versions.json"
 
 
@@ -45,11 +46,13 @@ class CachedVersionsSource:
         downloader: Downloader,
         log: Log,
         clock=time.time,
+        retry_seconds: int = DEFAULT_RETRY_SECONDS,
     ) -> None:
         self.cache_path = cache_path
         self.baked_path = baked_path
         self.url = url
         self.ttl_seconds = ttl_seconds
+        self.retry_seconds = retry_seconds
         self.downloader = downloader
         self.log = log
         self.clock = clock
@@ -63,8 +66,10 @@ class CachedVersionsSource:
         url = env.get("EXAKIT_VERSIONS_URL") or DEFAULT_URL_TEMPLATE.format(repo=kit_repo)
         ttl_text = env.get("EXAKIT_VERSIONS_TTL", "")
         ttl = int(ttl_text) if ttl_text.isdigit() else DEFAULT_TTL_SECONDS
+        retry_text = env.get("EXAKIT_VERSIONS_RETRY", "")
+        retry = int(retry_text) if retry_text.isdigit() else DEFAULT_RETRY_SECONDS
         return cls(cache_path=cache_path, baked_path=baked_path, url=url, ttl_seconds=ttl,
-                   downloader=downloader, log=log)
+                   downloader=downloader, log=log, retry_seconds=retry)
 
     # --- reading ----------------------------------------------------------------
 
@@ -114,18 +119,18 @@ class CachedVersionsSource:
         now = self.clock()
         os.utime(path, (now, now))
 
-    def _fresh(self, path: Path) -> bool:
+    def _fresh(self, path: Path, window: int | None = None) -> bool:
         try:
-            return self.clock() - path.stat().st_mtime < self.ttl_seconds
+            return self.clock() - path.stat().st_mtime < (self.ttl_seconds if window is None else window)
         except OSError:
             return False
 
     def refresh(self, *, force: bool = False) -> str:
-        """fetched | fresh | failed. Never raises; a failure keeps whatever was there."""
+        """fetched | fresh | failed. GitHub first; a failure keeps the cache (then the baked copy) and is retried after retry_seconds."""
         if not self.url.startswith("https://"):
             self.log.line("WARN", "refusing to fetch the versions manifest over a non-HTTPS URL")
             return "failed"
-        if not force and (self._fresh(self.cache_path) or self._fresh(self._attempt_stamp)):
+        if not force and (self._fresh(self.cache_path) or self._fresh(self._attempt_stamp, self.retry_seconds)):
             return "fresh"
         try:
             self.cache_path.parent.mkdir(parents=True, exist_ok=True)

@@ -86,7 +86,7 @@ class LifecycleBase:
                        tag: str | None = None, asset: str | None = None) -> Path:
         """Download and verify. Without a digest: the release API's, else refuse (or the unverified hatch)."""
         if digest is None and repo and tag and asset:
-            digest = asset_digest(repo, tag, asset, self.ctx.net, token=self.ctx.env.get("GITHUB_TOKEN"))
+            digest = asset_digest(repo, tag, asset, self.ctx.net, token=self.ctx.env.get("GITHUB_TOKEN"), cache_dir=self.ctx.paths.releases_cache)
         hatch = env_var(self.addon.id, "ALLOW_UNVERIFIED")
         if digest is None and self.ctx.env.get(f"EXAKIT_ALLOW_UNVERIFIED_{self.addon.id.upper().replace('-', '_')}") != "1":
             raise Failed(f"No checksum is available for {what}; refusing an unverified download "
