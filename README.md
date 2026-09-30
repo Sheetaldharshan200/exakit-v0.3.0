@@ -71,7 +71,7 @@ The marketplace has five optional add-ons, and you can install any of them at an
 - Few prerequisites. The kit needs Python 3.11 or newer and installs its own copy if you don't have one. You don't need Homebrew or Rust.
 - The database is ready in a few minutes. The full install, with sample data and AI client setup, takes longer, especially on Windows, so let it finish.
 - Re-running the install is always safe. It skips whatever is already done.
-- Your AI assistant has read-only access. It can read everything and change nothing, and the database enforces this.
+- Your AI assistant has read-only access. It can read everything and change nothing, and the database enforces this via MCP configuration.
 - It works with Claude, Codex, Cursor, GitHub Copilot, Gemini CLI, OpenCode and Continue.
 - Three sample datasets are loaded and verified for you.
 
