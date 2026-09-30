@@ -69,7 +69,7 @@ The marketplace has five optional add-ons, and you can install any of them at an
 ## Key features
 
 - Few prerequisites. The kit needs Python 3.11 or newer and installs its own copy if you don't have one. You don't need Homebrew or Rust.
-- The database is ready in about 5 minutes. The full install, with sample data and AI client setup, takes longer, especially on Windows, so let it finish.
+- The database is ready in a few minutes. The full install, with sample data and AI client setup, takes longer, especially on Windows, so let it finish.
 - Re-running the install is always safe. It skips whatever is already done.
 - Your AI assistant has read-only access. It can read everything and change nothing, and the database enforces this.
 - It works with Claude, Codex, Cursor, GitHub Copilot, Gemini CLI, OpenCode and Continue.
@@ -91,7 +91,7 @@ Every platform runs the same database, **Exasol Personal**, set up by the same l
 
 If you already run the kit's database in a container, re-run the install command to migrate your data, or run `exakit migrate docker-nano` later. Nothing is deleted. The sample data is not copied, because the kit loads it itself.
 
-**WSL** is supported and follows the Linux path: run the same command inside a WSL2 distro. Podman or Docker Desktop on the Windows side does not count. Windows and WSL share port 8563, so run the database on one side only; the kit asks you to stop the other side's database rather than adopt it. **Windows arm64** is not supported for local deployments. Run the kit inside WSL2 or a Linux VM instead.
+**WSL** is supported and follows the Linux path: run the same command inside a WSL2 distro. Podman or Docker Desktop on the Windows side does not count. Windows and WSL share port 8563, so run the database on one side only; the kit asks you to stop the other side's database rather than adopt it. Windows arm64 is not supported for local deployments. Run the kit inside WSL2 or a Linux VM instead.
 
 Python 3.11+ is needed on every platform. If you don't have it, the kit installs its own copy.
 
