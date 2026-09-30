@@ -27,6 +27,7 @@ class Runner(Protocol):
             timeout: float | None = None, stdin: str | None = None) -> Completed: ...
     def which(self, name: str) -> str | None: ...
     def interactive(self, cmd: Sequence[str], *, env: Mapping[str, str] | None = None) -> int: ...
+    def spawn(self, cmd: Sequence[str], *, log_path: Path) -> int: ...
 
 
 class SubprocessRunner:
@@ -50,6 +51,13 @@ class SubprocessRunner:
 
     def which(self, name: str) -> str | None:
         return shutil.which(name)
+
+    def spawn(self, cmd: Sequence[str], *, log_path: Path) -> int:
+        """Start a daemon in its own session, both streams appended to ``log_path``; the pid is the answer."""
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as log:
+            child = subprocess.Popen(list(cmd), stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+        return child.pid
 
     def interactive(self, cmd: Sequence[str], *, env: Mapping[str, str] | None = None) -> int:
         """Run with the terminal attached (a password prompt, a licence screen); the exit code is the answer."""

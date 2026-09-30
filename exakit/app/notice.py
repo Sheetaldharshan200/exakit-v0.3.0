@@ -11,6 +11,7 @@ from exakit.domain.versions import VersionPolicy
 
 from . import Context
 from .version import HEAVY, rows
+import contextlib
 
 DEFAULT_INTERVAL = 86400
 NOTICED_AFTER = frozenset({
@@ -31,10 +32,8 @@ def _due(ctx: Context) -> bool:
 
 
 def _record(ctx: Context) -> None:
-    try:
+    with contextlib.suppress(OSError):
         atomic_write_text(ctx.paths.cache / "notice-state.json", json.dumps({"last_shown": int(time.time())}) + "\n", mode=0o644)
-    except OSError:
-        pass
 
 
 def maybe_show(ctx: Context, command: str) -> None:

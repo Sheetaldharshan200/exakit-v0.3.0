@@ -166,7 +166,7 @@ class ExakitRuntimeLoader:
             return None
         try:
             document = self._filesystem.read_json(manifest_path)
-        except Exception:  # noqa: BLE001 - an unreadable manifest is the caller's problem
+        except Exception:
             return None
         components = document.get("components")
         if not isinstance(components, dict):

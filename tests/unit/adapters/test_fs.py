@@ -53,10 +53,8 @@ class FileLockTest(unittest.TestCase):
     def test_lock_is_exclusive_and_times_out_with_a_kit_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "x.lock"
-            with FileLock(path):
-                with self.assertRaises(Failed):
-                    with FileLock(path, timeout=0.2):
-                        pass
+            with FileLock(path), self.assertRaises(Failed), FileLock(path, timeout=0.2):
+                pass
 
     def test_lock_is_released_on_exit(self):
         with tempfile.TemporaryDirectory() as tmp:

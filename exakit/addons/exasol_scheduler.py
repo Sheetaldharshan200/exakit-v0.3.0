@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 from exakit.adapters.fs.credentials import CredentialStore
@@ -10,6 +9,7 @@ from exakit.adapters.process.services import ServiceSpec
 from exakit.domain.errors import Failed
 from exakit.lifecycles.base import ServiceHooks, wait_for
 from exakit.lifecycles.binary import BinaryLifecycle
+import contextlib
 
 DB_USER = "scheduler_svc"
 SCHEMA = "SCHED"
@@ -126,7 +126,7 @@ class Lifecycle(BinaryLifecycle):
     # --- the database user --------------------------------------------------------------
 
     def ensure_db_user(self) -> None:
-        from exakit.app.runtime_ops import credentials, exapump, profile_name  # noqa: PLC0415
+        from exakit.app.runtime_ops import credentials, exapump, profile_name
         pump = exapump(self.ctx)
         if pump is None:
             raise Failed("exapump is required to create the scheduler's database user")
@@ -149,7 +149,7 @@ class Lifecycle(BinaryLifecycle):
                 raise Failed("the dedicated database user could not be created - is the database running? (exakit start)", remedy="exakit start")
 
     def schema_present(self) -> bool:
-        from exakit.app.runtime_ops import exapump, profile_name  # noqa: PLC0415
+        from exakit.app.runtime_ops import exapump, profile_name
         pump = exapump(self.ctx)
         if pump is None:
             return False
@@ -160,7 +160,7 @@ class Lifecycle(BinaryLifecycle):
     def revoke_bootstrap(self) -> None:
         if self.recorded("bootstrap_revoked") is True:
             return
-        from exakit.app.runtime_ops import exapump, profile_name  # noqa: PLC0415
+        from exakit.app.runtime_ops import exapump, profile_name
         pump = exapump(self.ctx)
         if pump:
             pump.sql(profile_name(self.ctx), f"REVOKE CREATE SCHEMA FROM {DB_USER.upper()}")
@@ -170,7 +170,7 @@ class Lifecycle(BinaryLifecycle):
     # --- launcher, install, validate ----------------------------------------------------------
 
     def launcher_content(self) -> str | None:
-        from exakit.app.runtime_ops import credentials  # noqa: PLC0415
+        from exakit.app.runtime_ops import credentials
         dsn, _, _ = self.runtime_credentials()
         host, _, port = dsn.rpartition(":")
         return LAUNCHER.format(pidfile=self.pidfile, engine=self.engine, giveup=self.giveup, host=host or "127.0.0.1",
@@ -228,9 +228,7 @@ class Lifecycle(BinaryLifecycle):
             self.ctx.ui.ok("exasol-scheduler is already running")
             return
         self.giveup.unlink(missing_ok=True)
-        self.ctx.paths.logs.mkdir(parents=True, exist_ok=True)
-        with self.log_file.open("a") as log:
-            subprocess.Popen([str(self.launcher)], stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+        self.ctx.runner.spawn([str(self.launcher)], log_path=self.log_file)
         if wait_for(lambda: bool(self.pids()), seconds=4, every=1):
             self.ctx.ui.ok("exasol-scheduler started")
             return
@@ -281,12 +279,10 @@ class Lifecycle(BinaryLifecycle):
         self.ctx.ui.ok("exasol-scheduler updated; database data was not changed")
 
     def uninstall(self, *, dry_run: bool) -> list[str]:
-        from exakit.app.runtime_ops import credentials, exapump, profile_name  # noqa: PLC0415
+        from exakit.app.runtime_ops import credentials, exapump, profile_name
         if not dry_run:
-            try:
+            with contextlib.suppress(Failed):
                 self.stop()
-            except Failed:
-                pass
         removed = self.remove_paths([self.home, self.launcher, credentials(self.ctx).path("exasol_scheduler_password")], dry_run=dry_run)
         if dry_run:
             self.ctx.ui.text(f"  will drop:   database user {DB_USER} (the {SCHEMA} schema and its history stay - they are your data)")

@@ -15,7 +15,7 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from typing import IO
 
-from exakit.adapters.fs.log import Log, NullLog
+from exakit.domain.log import Log, NullLog
 from exakit.domain.plan import Plan, Step, StepState
 
 from .widgets import FANCY, PLAIN, Option, Palette, term_cols, visible_len, wrap
@@ -101,7 +101,7 @@ class ConsoleRenderer:
 
     def panel(self, title: str, lines: Sequence[str]) -> None:
         """A titled box sized to its widest line, capped and wrapped to the terminal."""
-        width = max([len(title) + 1] + [visible_len(l) for l in lines]) + 2
+        width = max([len(title) + 1] + [visible_len(line) for line in lines]) + 2
         cap = max(24, term_cols() - 4) if self.interactive else width
         body = list(lines)
         if width > cap:

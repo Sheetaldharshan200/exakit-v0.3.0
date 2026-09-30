@@ -13,6 +13,7 @@ from pathlib import Path
 
 from ..fs.atomic import atomic_write_text
 from .http import Downloader
+import contextlib
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,10 +52,8 @@ def release_assets(repo: str, tag: str, downloader: Downloader, *, token: str | 
         except (OSError, ValueError):
             return None
     if cache:
-        try:
+        with contextlib.suppress(OSError):
             atomic_write_text(cache, json.dumps({"assets": doc.get("assets", []) or []}), mode=0o644)
-        except OSError:
-            pass
     return assets
 
 

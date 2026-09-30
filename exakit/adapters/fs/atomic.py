@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
+import contextlib
 
 
 def atomic_write_text(path: Path, text: str, *, mode: int | None = 0o600) -> None:
@@ -25,8 +26,6 @@ def atomic_write_text(path: Path, text: str, *, mode: int | None = 0o600) -> Non
             os.chmod(tmp, mode)
         os.replace(tmp, path)
     except BaseException:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp)
-        except OSError:
-            pass
         raise

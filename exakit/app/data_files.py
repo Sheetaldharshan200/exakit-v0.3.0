@@ -186,10 +186,10 @@ class Receipts:
     rows: list[list[str]] = field(default_factory=list)
 
     @classmethod
-    def load(cls, path: Path) -> "Receipts":
+    def load(cls, path: Path) -> Receipts:
         rows = []
         if path.is_file():
-            rows = [l.split("\t") for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+            rows = [line.split("\t") for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
         return cls(path, rows)
 
     def record(self, target: str, file: Path, rows: int) -> None:
@@ -228,13 +228,13 @@ def normalise_json(path: Path, out_dir: Path) -> Path:
     try:
         doc = json.loads(text)
     except ValueError:
-        lines = [l for l in text.splitlines() if l.strip()]
+        lines = [line for line in text.splitlines() if line.strip()]
         try:
             for line in lines:
                 json.loads(line)
             return path
         except ValueError:
-            raise BadInput(f"{path} is not valid JSON")
+            raise BadInput(f"{path} is not valid JSON") from None
     out = out_dir / (path.stem + ".ndjson")
     with out.open("w", encoding="utf-8") as handle:
         for item in (doc if isinstance(doc, list) else [doc]):
@@ -246,7 +246,7 @@ def load_json(ctx: Context, pump: Exapump, path: Path, target: str) -> list[str]
     """Shred a JSON file into tables with the json-tables engine. Returns the targets loaded."""
     engine = json_tables_bin(ctx)
     if engine is None:
-        from .marketplace import install_addon_quietly  # noqa: PLC0415 - JSON needs the add-on; installed on demand
+        from .marketplace import install_addon_quietly
         if not install_addon_quietly(ctx, "json-tables") or json_tables_bin(ctx) is None:
             raise Failed("JSON loading needs the JSON Tables add-on, which could not be installed - see: exakit logs setup",
                          remedy="exakit marketplace json-tables")
@@ -275,7 +275,7 @@ def load_json(ctx: Context, pump: Exapump, path: Path, target: str) -> list[str]
 
 
 def ensure_schema_for(ctx: Context, pump: Exapump, schema: str) -> None:
-    from .data import ensure_schema  # noqa: PLC0415 - shared with the dataset loader
+    from .data import ensure_schema
     ensure_schema(ctx, pump, schema)
 
 
@@ -284,7 +284,7 @@ def ensure_schema_for(ctx: Context, pump: Exapump, schema: str) -> None:
 
 def load_local_path(ctx: Context, path: Path) -> Result:
     if path.is_dir():
-        from .data_folder import load_folder  # noqa: PLC0415 - the folder loader builds on this module
+        from .data_folder import load_folder
         return load_folder(ctx, path)
     return load_file(ctx, path)
 

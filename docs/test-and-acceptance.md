@@ -1,22 +1,38 @@
 # Test plan and acceptance criteria
 
 Status: living document. Every row maps to a requirement in
-[requirements.md](requirements.md) and to a check in `tests/persona.sh` or
-`tests/persona.ps1` unless marked *manual*. Update the result column in the
-same commit as the change.
+[requirements.md](requirements.md) and to a check in the suites below unless
+marked *manual*. Update the result column in the same commit as the change.
+The release gates that wrap these suites are in
+[release-checklist.md](release-checklist.md).
 
 ## 1. How the suites run
 
 ```bash
-python3 -m unittest discover -s tests/unit -t .        # pure rules and adapters with fakes; no machine state
-python3 -m unittest discover -s tests/contract -t .    # the frozen --json shapes and exit codes, against the real CLI in a sandbox
-python3 -m unittest discover -s tests/e2e -t .         # installer dry run, launcher answers, update-path layout
-EXAKIT_E2E_NETWORK=1 python3 -m unittest tests.e2e.test_bootstrap_network   # the real uv + CPython bootstrap (opt in)
-python3 tests/test_sample_data_schema.py                 # the sample dataset's files agree
+python3 tools/run_tests.py                   # every suite; reports/ gets JUnit XML, tests.json, test-report.md
+python3 tools/run_tests.py --coverage        # the same with coverage.py (pip install coverage): coverage.xml for SonarQube
+python3 tools/run_tests.py unit contract     # a subset
+python3 tools/check_standard.py              # the coding standard, mechanically (reports/standard.json)
+python3 tools/release_check.py               # the release gate (reports/release.json, release-check.md); --strict when tagging
+python3 tools/qa_report.py                   # the QA report from everything above (reports/qa-report.md)
 ```
 
-The acceptance rows below name the suite that proves each one. Rows that
-belong to `persona apply` (A21 to A24) are covered by `tests/unit/app/test_persona_apply.py` and `tests/contract/test_cli.py` (PhaseBShapeTest).
+The suites, each provable on its own with `python3 -m unittest discover -s <dir> -t .`:
+
+| Suite | Directory | Proves | Machine state |
+|---|---|---|---|
+| unit | `tests/unit` | every rule and adapter over fakes; the three upstream fallback orders | none |
+| contract | `tests/contract` | the frozen `--json` shapes and exit codes against the real CLI | a hermetic sandbox (`tests/support.py`: throwaway kit home and user home, bare PATH, no `EXAKIT_*` inherited) |
+| scenarios | `tests/scenarios` | every command x every machine state x both output modes; the refusal paths of the mutating commands; the password never printed; a read never changes the record; the edge cases | the same sandbox, seven states (`harness.STATES`) |
+| e2e | `tests/e2e` | the installer dry run, the launcher answers; the real uv + CPython bootstrap with `EXAKIT_E2E_NETWORK=1` | none (network opt-in) |
+| mcp | `mcp/tests` | the MCP subsystem | none |
+| sample-data | `tests/test_sample_data_schema.py` | the sample dataset's schema, CSVs and verification SQL agree | none |
+| real install | `.github/workflows/real-install.yml` | M-3 on a fresh runner: install with a persona, status, the agent commands, a second run, stop/start/update/data-load, uninstall | a scratch machine |
+
+A CLI-level test runs only read-only commands and refusal paths. The
+sandbox isolates the kit home and the user home, but `start`, `data-load
+--force`, `skills-install` and their kind reach the launcher, the database
+and the skill folders of the machine they run on (D31).
 
 ## 2. Acceptance criteria (personas)
 
@@ -78,27 +94,27 @@ Personas x answers x platform x mode. Each cell is covered by the check named.
 |---|---|---|---|
 | M-1 | On this Mac: `EXAKIT_LOCAL_KIT=$PWD EXAKIT_DRY_RUN=1 EXAKIT_PERSONA=data-scientist sh install.sh` | plan shown, nothing installed, no error | pending |
 | M-2 | `EXAKIT_LOCAL_KIT=$PWD EXAKIT_PERSONA=nope sh install.sh` | stops before step 1 naming the four ids | pending |
-| M-3 | Full install on a scratch machine or VM with `EXAKIT_PERSONA=analyst` | tpch loaded, detected clients connected, dash-server installed, `exakit info --json` shows the persona block | pending |
+| M-3 | Full install on a scratch machine or VM with `EXAKIT_PERSONA=analyst` | tpch loaded, detected clients connected, dash-server installed, `exakit info --json` shows the persona block | **pass on ubuntu-latest** (real-install run 36718941027, 2026-09-30): install 69 s, status running, tpch loaded (8 tables, 173,745 rows), MCP configured for 7 clients, 9 skills, dash-server up on 5100, re-run 11 s skipping all 6 steps, stop/start/update/data-load --force, uninstall clean. The persona block was missing: the installer never recorded it; fixed the same day (`install.record_persona`). macOS runner: everything but the database (no virtualisation in the hosted VM) |
 | M-4 | On a 0.2.0 install: `exakit update`, then `exakit persona list`, `exakit persona plan data-scientist`, `exakit persona apply data-scientist` interactively | update pulls 0.3.0 and shows the card; commands work; the confirm question appears once | pending |
 | M-5 | Windows 11 (PowerShell 5.1): `$env:EXAKIT_PERSONA='data-engineer'; irm .../install.ps1 \| iex` | exasol-vscode skipped with the reason when VS Code is absent, the rest installed | pending |
 
 ## 5. Latest local run
 
-Recorded on 2026-09-30 on this Mac (macOS, bash 3.2, pwsh 7, Python 3.12.10).
+Recorded on 2026-09-30 on this Mac (macOS, Python 3.12.10) by `tools/run_tests.py --coverage`; the full listing is `reports/test-report.md` (a snapshot is committed under `docs/reports/`).
 
 | Suite | Result |
 |---|---|
-| tests/unit (317 tests: domain, adapters, app incl. install/deploy/requirements/uninstall/repair/migrate and everything before, add-on and component lifecycles) | pass |
-| tests/contract (32 tests, incl. install --dry-run, preflight, repair-runtime, migrate and uninstall refusals) | pass |
-| tests/e2e (10 tests, 1 network test skipped) | pass |
-| Coding standard (ast sweep of `exakit/`): no function over 40 lines, no module over 400 | pass |
-| tests/e2e/test_bootstrap_network (real uv 0.12.21 + CPython 3.12.14) | pass, 5 s |
-| Legacy: whats-new, skills, agent-operability (645), dry-run-matrix (175), install-payload, kit-upgrade, install-resume-safety (52), agent-audit, uninstall (41), status-soft-components | pass |
-| Legacy (rerun after Phase B): marketplace (377), uninstall (41), skills (236) | pass |
-| Legacy (rerun after Phase C): dry-run-matrix (175), uninstall (41), install-resume-safety (52), agent-operability (645), status-soft-components (40) | pass |
-| Legacy: marketplace, versions-manifest (407), noninteractive-answers, agents-rosters (19), ps-table-twin, bash32-guard, ps-undefined-functions (19 files) | pass |
-| Legacy: ps-encoding-guard (111), ps-parse (31 files), ps51-json-contracts (45) | pass |
-| Legacy: legacy-crossing | 1 failure, "a stopped engine is unknown, never absent", identical on the untouched 0.2.0 checkout on this Mac: environmental (a stopped container engine), not a regression |
+| unit (331) | pass |
+| contract (30) | pass |
+| scenarios (284: 7 states x 43 commands, each in both modes, plus 8 edge cases) | pass |
+| e2e (10, 1 network test skipped) | pass |
+| mcp (116) | pass |
+| sample-data (7) | pass |
+| coverage of `exakit/` and `mcp/` | 67% (gate 65%; tasks.md E7) |
+| coding standard (`tools/check_standard.py`) | pass; 650 public functions without a docstring noted |
+| lint (`ruff.toml`) | clean |
+| release gate (`tools/release_check.py`) | pass with warnings: CHANGELOG still Unreleased; five pushed commits carry an attribution trailer |
+| real install (`real-install.yml`, ubuntu-latest) | pass, see M-3 |
 
 The legacy suites were deleted with the shell tree in Phase D (ADR 0007).
 What they proved is carried by: dry-run-matrix and install-resume-safety ->
@@ -107,6 +123,6 @@ What they proved is carried by: dry-run-matrix and install-resume-safety ->
 `tests/unit/lifecycles/test_addons.py`; skills -> `test_skills.py`; the MCP
 suites -> `test_mcp.py`; legacy-crossing -> `test_deploy_requirements_migrate.py`;
 versions-manifest -> `tests/unit/domain/test_versions.py`; the JSON shapes ->
-`tests/contract`. The PowerShell-only guards (parsing under 5.1, encoding,
-undefined functions, the table twin) have no Python counterpart to guard;
-`windows.yml` parses the bootstrap under 5.1 instead.
+`tests/contract` and `tests/scenarios`. The PowerShell-only guards (parsing
+under 5.1, encoding, undefined functions, the table twin) have no Python
+counterpart to guard; `quality.yml` parses the bootstrap under 5.1 instead.

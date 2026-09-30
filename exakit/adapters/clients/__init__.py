@@ -42,7 +42,7 @@ class InProcessClientOps:
         if str(self.kit_root) not in sys.path:
             sys.path.insert(0, str(self.kit_root))
         try:
-            from mcp.cli import main as mcp_main  # noqa: PLC0415 - loaded from the kit copy on demand
+            from mcp.cli import main as mcp_main
         except ImportError as err:
             return ClientCall(1, None, f"the kit's mcp package could not be loaded: {err}")
         out, err = io.StringIO(), io.StringIO()

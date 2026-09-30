@@ -620,7 +620,7 @@ deletes `setup/`.
 
 ---
 
-## 13. Coding standard (checked in review; enforced by `tests/unit/test_style.py` where mechanical)
+## 13. Coding standard (checked in review; enforced by `tools/check_standard.py` and `ruff.toml` where mechanical)
 
 - Python 3.11+, stdlib only in `exakit/`. `from __future__ import annotations`, full type hints, `@dataclass(slots=True)` for data, `Protocol` for boundaries, `Enum` for closed sets.
 - One concept per module; a module is at most 400 lines; a function at most 40 lines and one level of responsibility. If a function needs a comment to separate phases, split it.
@@ -661,3 +661,45 @@ deletes `setup/`.
 | D28 | The marketplace description is the add-on's own GitHub About (`app/about.py`): fetched from `https://api.github.com/repos/<repo>` at most once per `EXAKIT_ABOUT_TTL` (a day), sanitised and capped at `EXAKIT_ABOUT_MAX_LEN` (200), cached under `cache/about/`, with the help document's `tagline` behind it and `EXAKIT_ABOUT_OFFLINE=1` to never fetch. The order is GitHub first, the cache when GitHub fails or rate-limits (a failed fetch is retried after `EXAKIT_ABOUT_RETRY`, an hour, not after the day-long TTL), the kit's own tagline when there is no cache. | The old kit did exactly this so an add-on's wording is maintained in one place, its own repository; the Python port had regressed to the tagline. |
 | D29 | Every upstream lookup follows one order, proved by `tests/unit/test_fallback_order.py`: GitHub first; the cached answer when GitHub fails or rate-limits; the kit's own copy last. The versions manifest: fetched from the kit repository, then `cache/versions.json`, then the copy baked into the kit, then the catalog `fallback_version`; a failed fetch is retried after `EXAKIT_VERSIONS_RETRY` (an hour), not after the day-long TTL. A release asset's digest: the pin in `versions.json` needs no network at all; an unpinned version asks the release API, whose answer is cached under `cache/releases/` so a rate-limited re-run still verifies; with nothing to verify against the download is refused unless the `EXAKIT_ALLOW_UNVERIFIED_<ID>=1` hatch is set. | The 60-per-hour unauthenticated GitHub limit is the failure a shared or scripted machine actually hits; every path must survive it without changing what gets installed. |
 
+| D30 | Quality gates are code in `tools/` and run on every push: the coding standard (`check_standard.py`), the lint (`ruff.toml`, SonarQube-aligned), every suite with JUnit and coverage (`run_tests.py`), the release gate (`release_check.py`), the QA report (`qa_report.py`). | A rule that is not checked mechanically drifts; the first run of the checker found six deviations from section 9 and the lint 485 findings. |
+| D31 | The sandbox every CLI-level suite runs in is hermetic: a throwaway user home, a bare PATH, every `EXAKIT_*` of the caller dropped. The scenario matrix runs only read-only commands and the refusal paths of the mutating ones. | A probe that ran `start`, `data-load --force` and `skills-install` in a kit-home-only sandbox reached the launcher, the database and the skills of the machine it ran on. |
+| D32 | `--json` is answered by every path, including `<command> --help` and a corrupt install record (one refusal object, exit 1, never a traceback; `EXAKIT_DEBUG=1` re-raises). | The contract is "one object on stdout"; two paths broke it. |
+| D33 | The Log protocol lives in `domain/log.py`; the UI imports nothing from `adapters/`. Daemons start through `Runner.spawn`, HTTP probes through `adapters.net.http.http_status`. | The layer rule of section 9, held by the checker. The one exception, the terminal device in `ui/__init__.py`, is named in the checker. |
+
+## 15. Variables the code reads that the user guide does not list
+
+Read by `ctx.env.get`, set by tests, the CI, the installers or the kit's own
+children. Documented here so the release gate (tools/release_check.py) can
+hold the rule that every variable the code reads is written down somewhere.
+
+| Variable | Meaning |
+|---|---|
+| `EXAKIT_ABOUT_URL` | the GitHub API base the About fetch uses (tests point it at a fake) |
+| `EXAKIT_BANNER_SHOWN` | set by the installer for its children so the banner prints once |
+| `EXAKIT_DEBUG` | 1 re-raises an unexpected error with its traceback instead of the one-line refusal |
+| `EXAKIT_EXAPUMP_CONFIG_DIR` | where exapump's config.toml lives (default ~/.exapump); tests relocate it |
+| `EXAKIT_EXAPUMP_PROFILE` | the exapump profile the kit writes and reads (default starter-kit) |
+| `EXAKIT_EXASOL_SCHEDULER_MIRROR_REPO` | the repository whose release carries the scheduler binaries (default: the kit repository) |
+| `EXAKIT_EXASOL_SCHEDULER_RELEASE_TAG` | that release's tag (default: the pinned one) |
+| `EXAKIT_FORCE_COMPONENT_INSTALL` | 1 installs a component even when a system copy is present |
+| `EXAKIT_INSTALL_URL` | the installer URL the remedies quote (default https://www.exasol.com/install/starter-kit.sh) |
+| `EXAKIT_JSON_TABLES_BIN` | the exasol-json-tables launcher to use for JSON loads (default: the kit's) |
+| `EXAKIT_JSON_TABLES_MIRROR_REPO` | the repository whose release carries the JSON Tables wheel and engine |
+| `EXAKIT_JSON_TABLES_MIRROR_TAG` | that release's tag |
+| `EXAKIT_KIT_REPO` | the repository versions.json and the kit's own updates come from (EXAKIT_REPO is the older name) |
+| `EXAKIT_KIT_SOURCE` | what kit.source records (default checkout:<path>); the installers set it to <repo>@<ref> |
+| `EXAKIT_LAUNCHAGENT_DIR` | macOS: where the autostart LaunchAgent is written (default ~/Library/LaunchAgents) |
+| `EXAKIT_LEGACY_EXPORT_DIR` | where a migration exports the docker-nano tables (default $EXAKIT_HOME/migration) |
+| `EXAKIT_MCP_PACKAGE` | the MCP server package uvx runs (default exasol-mcp-server) |
+| `EXAKIT_MCP_READONLY_USER` | the dedicated read-only database user for MCP (default MCP_READONLY) |
+| `EXAKIT_ON_EXISTING` | data-load on a table that already holds foreign rows: skip, append or replace |
+| `EXAKIT_PERSONAL_DEPLOY_DIR` | the Exasol Personal deployment directory (default ~/.exasol/personal/deployments/default) |
+| `EXAKIT_PYEXASOL_PACKAGE` | the pyexasol package spec the venv installs (default pyexasol) |
+| `EXAKIT_PYEXASOL_VENV` | the pyexasol venv (default $EXAKIT_HOME/pyexasol-venv) |
+| `EXAKIT_SCHEMA` | the schema data-load targets for files (default STARTER_KIT) |
+| `EXAKIT_SKILL_ROOTS` | where skills are installed, separated by the path separator (default ~/.claude/skills and ~/.agents/skills) |
+| `EXAKIT_STARTUP_DIR` | Windows: the Startup folder the autostart shortcut goes to |
+| `EXAKIT_SYSTEMD_USER_DIR` | Linux: where the autostart user unit is written (default ~/.config/systemd/user) |
+| `EXAKIT_UNINSTALL_DB_SKIPPED` | set by uninstall for its children when the database was kept |
+| `EXAKIT_UNINSTALL_FULL` | set by uninstall for its children during the EVERYTHING row |
+| `EXAKIT_UPLOAD_PIECE_KB` | the piece size a large file upload is cut into, in KB |

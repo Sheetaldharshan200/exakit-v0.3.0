@@ -152,7 +152,7 @@ def remove_component(ctx: Context, key: str) -> None:
     elif key == "everything":
         remove_everything(ctx, dry=False)
     elif ctx.catalog.has_addon(key):
-        from . import skills  # noqa: PLC0415
+        from . import skills
         for_addon(ctx, ctx.catalog.addon(key)).uninstall(dry_run=False)
         skills.remove_for_addon(ctx, key)
         services.unregister_autostart(ctx, key)
@@ -180,7 +180,7 @@ def _menu(ctx: Context) -> Result:
         return Result(True, "nothing")
     if "everything" in picked:
         picked = ["everything"]
-    lines = [dict((o.id, o.label) for o in options)[key] for key in picked]
+    lines = [{o.id: o.label for o in options}[key] for key in picked]
     if "database" in picked or "everything" in picked:
         lines += ["", "Database: the local Exasol Personal deployment", "The deployment IS the database - removing it cannot be undone."]
     ctx.ui.text("")

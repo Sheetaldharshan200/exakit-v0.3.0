@@ -105,9 +105,8 @@ class HostExtensionLifecycle(LifecycleBase):
             self.ctx.ui.text(f"  will remove: the Exasol VS Code extension ({self.extension_id}) from VS Code")
             return [self.extension_id]
         cli = self.host_cli()
-        if cli and self.live_version():
-            if not self.ctx.runner.run([cli, "--uninstall-extension", self.extension_id], timeout=600).ok:
-                self.ctx.ui.warn("VS Code could not remove the extension - remove it from the Extensions view.")
+        if cli and self.live_version() and not self.ctx.runner.run([cli, "--uninstall-extension", self.extension_id], timeout=600).ok:
+            self.ctx.ui.warn("VS Code could not remove the extension - remove it from the Extensions view.")
         self.forget()
         self.ctx.ui.ok(f"{self.addon.title} removed - reinstall any time with: exakit marketplace")
         return [self.extension_id]

@@ -32,7 +32,7 @@ class Lifecycle(ComponentBase):
     step = "exakit_helper"
 
     def installed_version(self) -> str | None:
-        from exakit.app.machine import installed_version  # noqa: PLC0415
+        from exakit.app.machine import installed_version
         return installed_version(self.ctx, "exakit", self.ctx.manifest_or_none())[0]
 
     def target_version(self) -> str:
@@ -110,8 +110,8 @@ class Lifecycle(ComponentBase):
         return staged, backup if had_kit else None
 
     def update(self, options: list[str] | None = None) -> None:
-        from exakit.app import skills, whats_new  # noqa: PLC0415
-        from exakit.app.machine import kit_root  # noqa: PLC0415
+        from exakit.app import skills, whats_new
+        from exakit.app.machine import kit_root
         latest = self.target_version()
         current = self.installed_version()
         if latest == current:

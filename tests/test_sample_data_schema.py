@@ -49,8 +49,8 @@ def _parse_schema_columns() -> dict[str, list[str]]:
         table_name = match.group(1).lower()
         body = match.group(2)
         columns = []
-        for line in body.splitlines():
-            line = line.strip().rstrip(",")
+        for raw in body.splitlines():
+            line = raw.strip().rstrip(",")
             if not line or line.upper().startswith("CONSTRAINT"):
                 continue
             columns.append(line.split()[0].lower())
@@ -66,10 +66,7 @@ def _csv_header(table_name: str) -> list[str]:
 
 def _function_block(text: str, function_name: str, end_marker: str | None = None) -> str:
     start = text.index(function_name)
-    if end_marker is not None:
-        next_function = text.find(end_marker, start + len(function_name))
-    else:
-        next_function = text.find("\nfunction ", start + len(function_name))
+    next_function = text.find(end_marker, start + len(function_name)) if end_marker is not None else text.find("\nfunction ", start + len(function_name))
     if next_function == -1:
         next_function = len(text)
     return text[start:next_function]

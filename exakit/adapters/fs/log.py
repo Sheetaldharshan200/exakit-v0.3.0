@@ -9,21 +9,10 @@ from __future__ import annotations
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
 
+from exakit.domain.log import Log, NullLog
 
-class Log(Protocol):
-    path: Path | None
-    def line(self, level: str, message: str) -> None: ...
-
-
-class NullLog:
-    """For read-only queries and tests: records nothing, never touches the disk."""
-
-    path: Path | None = None
-
-    def line(self, level: str, message: str) -> None:
-        return None
+__all__ = ["FileLog", "Log", "NullLog"]
 
 
 class FileLog:

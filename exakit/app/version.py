@@ -9,7 +9,7 @@ current, ahead, unsupported, unknown, available, blocked_on_kit, missing, update
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from typing import Any
 
 from exakit.domain.ids import env_var
@@ -106,9 +106,7 @@ def build_row(ctx: Context, cid: str) -> Row:
         installed = None
     elif installed is None and is_addon and present is False:
         status, remedy, severity = "available", f"exakit marketplace {cid}", "normal"
-    elif advertised is None or label == "unknown":
-        status = "unknown"
-    elif installed is None and cid in HEAVY:
+    elif advertised is None or label == "unknown" or (installed is None and cid in HEAVY):
         status = "unknown"
     elif installed is not None and is_newer(installed, advertised):
         status, severity = "ahead", "normal"
@@ -158,7 +156,7 @@ def local_time(stamp: str | None) -> str:
     if not stamp:
         return "unknown"
     try:
-        parsed = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        parsed = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     except ValueError:
         return stamp
     return parsed.astimezone().strftime("%Y-%m-%d %H:%M")

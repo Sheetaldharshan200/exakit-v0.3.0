@@ -107,8 +107,8 @@ class Lifecycle(ComponentBase):
     # --- update -----------------------------------------------------------------------------------
 
     def snapshot(self) -> None:
-        from exakit.app import mcp as mcp_app  # noqa: PLC0415 - the client operations live with the use case
-        from exakit.domain.ids import CLIENT_IDS  # noqa: PLC0415
+        from exakit.app import mcp as mcp_app
+        from exakit.domain.ids import CLIENT_IDS
         call = mcp_app._clients(self.ctx).operation("backup", self.ctx.paths.home, list(CLIENT_IDS))
         reference = (call.doc or {}).get("backup_reference") if call.code == 0 else None
         if reference:
@@ -117,7 +117,7 @@ class Lifecycle(ComponentBase):
             self.ctx.ui.warn("MCP pre-update snapshot was not created; generated configs will still be refreshed.")
 
     def update(self, options: list[str] | None = None) -> None:
-        from exakit.app import mcp as mcp_app  # noqa: PLC0415
+        from exakit.app import mcp as mcp_app
         latest = self.target_version()
         current = self.installed_version()
         if latest == current:
@@ -135,7 +135,7 @@ class Lifecycle(ComponentBase):
         self.ctx.ui.ok("MCP server updated; database data was not changed")
 
     def uninstall(self, *, dry_run: bool) -> list[str]:
-        from exakit.app import mcp as mcp_app  # noqa: PLC0415
+        from exakit.app import mcp as mcp_app
         if dry_run:
             self.ctx.ui.info("  will remove: the managed MCP configuration from the AI clients")
             return ["mcp configs"]

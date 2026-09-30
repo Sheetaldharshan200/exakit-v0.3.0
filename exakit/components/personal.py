@@ -33,7 +33,7 @@ class Lifecycle(ComponentBase):
         return self.ctx.paths.bin_dir / ("exasol.exe" if self.ctx.platform.os == "windows" else "exasol")
 
     def runtime(self):
-        from exakit.app.runtime_ops import runtime  # noqa: PLC0415
+        from exakit.app.runtime_ops import runtime
         return runtime(self.ctx)
 
     def installed_version(self) -> str | None:
@@ -107,7 +107,7 @@ class Lifecycle(ComponentBase):
     # --- update -------------------------------------------------------------------------------------
 
     def _record_launcher(self, version: str) -> None:
-        from exakit.app.runtime_ops import credentials  # noqa: PLC0415
+        from exakit.app.runtime_ops import credentials
         rt = self.runtime()
         def change(m):
             warning = rt.record(m, credentials(self.ctx)) if hasattr(rt, "record") else None

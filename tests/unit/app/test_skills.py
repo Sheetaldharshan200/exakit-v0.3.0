@@ -152,9 +152,9 @@ class ListTest(unittest.TestCase):
             self.assertEqual(set(doc), {"skills", "installed_version", "advertised_version", "status", "next"})
             self.assertEqual(doc["status"], "missing")
             self.assertEqual(doc["next"], "exakit skills-install")
-            gated = [r for r in doc["skills"] if r["name"] == "dash-server"][0]
+            gated = next(r for r in doc["skills"] if r["name"] == "dash-server")
             self.assertEqual((gated["state"], gated["addon"], gated["remedy"]), ("needs-addon", "dash-server", "exakit marketplace dash-server"))
-            core = [r for r in doc["skills"] if r["name"] == "exasol-marketplace"][0]
+            core = next(r for r in doc["skills"] if r["name"] == "exasol-marketplace")
             self.assertEqual(set(core), {"name", "state", "summary"})
         finally:
             box.close()

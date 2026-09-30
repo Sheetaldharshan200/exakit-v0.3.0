@@ -43,7 +43,7 @@ def _help_color(ctx: Context) -> bool:
 
 
 def help_command(args: list[str], ctx: Context) -> Result:
-    positional, flags = _split(args, JSON_FLAGS + ("--all", "-a", "--help", "-h"), "help")
+    positional, flags = _split(args, (*JSON_FLAGS, "--all", "-a", "--help", "-h"), "help")
     docs = _help_docs(ctx)
     topic = positional[0] if positional else ""
     if ctx.json:
@@ -62,8 +62,10 @@ def help_command(args: list[str], ctx: Context) -> Result:
 
 
 def topic_help(topic: str, ctx: Context) -> Result:
-    """``exakit <command> --help`` and ``exakit <component>``: the page for one topic."""
+    """``exakit <command> --help`` and ``exakit <component>``: the page for one topic; under --json, its document."""
     docs = _help_docs(ctx)
+    if ctx.json:
+        return Result(True, "ok", data=help_app.json_payload(docs, topic), raw=True)
     mode = "component" if topic in docs else "command"
     text, rc = help_app.render(docs, mode, topic, color=_help_color(ctx), width=term_cols())
     sys.stdout.write(text)
@@ -102,7 +104,7 @@ def version_command(args: list[str], ctx: Context) -> Result:
 
 
 def persona_command(args: list[str], ctx: Context) -> Result:
-    positional, flags = _split(args, JSON_FLAGS + ("--yes", "-y"), "persona")
+    positional, flags = _split(args, (*JSON_FLAGS, "--yes", "-y"), "persona")
     sub = positional[0] if positional else ""
     pid = positional[1] if len(positional) > 1 else ""
     if len(positional) > 2:

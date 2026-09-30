@@ -5,6 +5,13 @@ name: real install
 # public path (install.sh, the kit's own Python, `python -m exakit install`)
 # with a persona, then the commands an agent runs, then a re-run, then the
 # full uninstall. Nothing here is mocked; the runner is thrown away after.
+#
+# ubuntu-latest is the machine that proves the database: Podman is there and
+# the deployment runs. macos-latest is a VM itself and Apple's Virtualization
+# framework is not available inside it, so the launcher cannot deploy the
+# database there; that job proves everything around it (the bootstrap, the
+# launcher download, the persona's add-ons and skills, status with no
+# database, the uninstall) and is allowed to fail at "status must be running".
 on:
   workflow_dispatch:
 

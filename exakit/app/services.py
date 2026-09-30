@@ -20,7 +20,7 @@ class Service:
 def services_adapter(ctx: Context):
     if ctx.services is None:
         home = ctx.env.get("HOME") or str(ctx.paths.home.parent)
-        from pathlib import Path  # noqa: PLC0415
+        from pathlib import Path
         ctx.services = for_platform(ctx.platform, home=Path(home), logs_dir=ctx.paths.logs, runner=ctx.runner,
                                     env=dict(ctx.env), log=ctx.log)
     return ctx.services
@@ -28,7 +28,7 @@ def services_adapter(ctx: Context):
 
 def service_ids(ctx: Context) -> list[Service]:
     """``database`` when a runtime is recorded, then each installed add-on with service hooks."""
-    from exakit.lifecycles import for_addon  # noqa: PLC0415
+    from exakit.lifecycles import for_addon
     manifest = ctx.manifest_or_none()
     out: list[Service] = []
     if manifest and manifest.runtime_type():

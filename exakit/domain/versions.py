@@ -17,7 +17,8 @@ import json
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 SCHEMA_VERSION = 1
 
@@ -39,7 +40,7 @@ class VersionPolicy(str, Enum):
     PINNED = "pinned"       # the kit's built-in fallbacks, no network
 
     @classmethod
-    def from_env(cls, value: str | None) -> "VersionPolicy":
+    def from_env(cls, value: str | None) -> VersionPolicy:
         """``manifest`` and ``latest`` by name; anything else, including unset-but-odd values, is pinned."""
         if value is None or value == "":
             return cls.MANIFEST
@@ -99,7 +100,7 @@ class VersionsDoc:
     raw: dict[str, Any]
 
     @classmethod
-    def parse(cls, text: str) -> "VersionsDoc":
+    def parse(cls, text: str) -> VersionsDoc:
         try:
             doc = json.loads(text)
         except ValueError as err:
@@ -188,7 +189,7 @@ def parse_version(text: str) -> tuple[tuple[int, ...], tuple[int, ...], int]:
         v = m.group(1).rstrip(".-_")
         pre = ({"alpha": 0, "a": 0, "beta": 1, "b": 1, "rc": 2}[m.group(2)], int(m.group(3) or 0))
     nums = tuple(int(p) for p in re.findall(r"\d+", v))
-    return (nums, (1,) if not pre else (0,) + pre, post)
+    return (nums, (1,) if not pre else (0, *pre), post)
 
 
 def compare(a: str, b: str) -> int:

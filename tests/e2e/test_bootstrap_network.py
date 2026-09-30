@@ -23,7 +23,7 @@ class EnsurePythonTest(unittest.TestCase):
             env.update({"HOME": tmp, "EXAKIT_HOME": f"{tmp}/home", "EXAKIT_KIT_DIR": str(REPO),
                         "PATH": "/usr/bin:/bin:/usr/sbin:/sbin"})
             script = f'. "{REPO}/bootstrap/ensure-python.sh" && ensure_python && "$EXAKIT_PYTHON" --version'
-            done = subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, timeout=600)
+            done = subprocess.run(["sh", "-c", script], check=False, env=env, capture_output=True, text=True, timeout=600)
             self.assertEqual(done.returncode, 0, done.stderr)
             self.assertIn("Python 3.12", done.stdout)
             self.assertTrue((Path(tmp) / "home" / "tools" / "uv" / "uv").exists())

@@ -152,9 +152,8 @@ class PersonalLauncher:
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
         try:
-            with socket.create_connection(("127.0.0.1", port), timeout=5) as raw:
-                with context.wrap_socket(raw, server_hostname="localhost"):
-                    return True
+            with socket.create_connection(("127.0.0.1", port), timeout=5) as raw, context.wrap_socket(raw, server_hostname="localhost"):
+                return True
         except (OSError, ssl.SSLError):
             return False
 
@@ -339,7 +338,7 @@ class PersonalLauncher:
         done = self.runner.run(["podman", "info", "--format", "{{.Host.Arch}}"], timeout=30)
         if done.ok:
             return True, ""
-        lines = [l for l in (done.out + done.err).splitlines() if l.strip()]
+        lines = [line for line in (done.out + done.err).splitlines() if line.strip()]
         return False, lines[-1] if lines else ""
 
     def guest_rebuild_expected(self, manifest_value: str | None, wanted: str | None) -> bool:

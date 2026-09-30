@@ -6,6 +6,7 @@ import os
 import stat
 from pathlib import Path
 
+from exakit.adapters.process.runner import Completed
 from exakit.domain.errors import Failed
 
 
@@ -53,8 +54,7 @@ class ListLog:
 class FakeRunner:
     """Answers commands from a table keyed by the leading argv words; records every call."""
 
-    def __init__(self, responses: dict[tuple[str, ...], "Completed"] | None = None, which: dict[str, str] | None = None) -> None:
-        from exakit.adapters.process.runner import Completed
+    def __init__(self, responses: dict[tuple[str, ...], Completed] | None = None, which: dict[str, str] | None = None) -> None:
         self._default = Completed(0, "", "")
         self.responses = dict(responses or {})
         self.which_table = dict(which or {})
@@ -63,7 +63,7 @@ class FakeRunner:
     def run(self, cmd, *, env=None, cwd=None, timeout=None, stdin=None):
         self.calls.append(tuple(cmd))
         best = None
-        for key, value in self.responses.items():
+        for key in self.responses:
             if tuple(cmd[: len(key)]) == key and (best is None or len(key) > len(best)):
                 best = key
         return self.responses[best] if best is not None else self._default
@@ -74,6 +74,10 @@ class FakeRunner:
     def interactive(self, cmd, *, env=None):
         self.calls.append(tuple(cmd))
         return self.run(cmd).code
+
+    def spawn(self, cmd, *, log_path):
+        self.calls.append(("spawn", *cmd))
+        return 4242
 
 
 class FakeClientOps:
@@ -109,9 +113,8 @@ class FakeClientOps:
 class FakeExapump:
     """Answers SQL by substring rules: the first rule whose needle is in the statement wins."""
 
-    def __init__(self, rules: list[tuple[str, "Completed"]] | None = None, default=None, bin: str = "/fake/exapump") -> None:
-        from exakit.adapters.process.runner import Completed
-        self.bin = bin
+    def __init__(self, rules: list[tuple[str, Completed]] | None = None, default=None, binary: str = "/fake/exapump") -> None:
+        self.bin = binary
         self.rules = list(rules or [])
         self.default = default or Completed(0, "", "")
         self.calls: list[tuple[str, str]] = []
@@ -201,7 +204,6 @@ class FakeRuntime:
         manifest.set("runtime.dsn", f"127.0.0.1:{self._status.port}")
         manifest.set("runtime.user", "sys")
         manifest.set("runtime.status", status or self._status.state)
-        return None
 
     def deploy_again(self):
         self.deployed_again = getattr(self, "deployed_again", 0) + 1

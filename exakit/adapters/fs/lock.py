@@ -36,7 +36,7 @@ class FileLock:
         self.poll = poll
         self._fd: int | None = None
 
-    def __enter__(self) -> "FileLock":
+    def __enter__(self) -> FileLock:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._fd = os.open(str(self.path), os.O_RDWR | os.O_CREAT, 0o600)
         deadline = time.monotonic() + self.timeout
@@ -51,7 +51,7 @@ class FileLock:
                     raise Failed(
                         f"Another exakit process holds {self.path.name}; try again in a moment.",
                         hint="a previous install or update may still be running (exakit status shows it)",
-                    )
+                    ) from None
                 time.sleep(self.poll)
 
     def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None) -> None:

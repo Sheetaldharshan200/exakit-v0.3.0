@@ -24,6 +24,7 @@ from unittest import mock
 from mcp.core.models import OperationStatus, Severity
 from mcp.runtime.environment import ExecutionEnvironment
 from mcp.service import MCPAccessSubsystem
+import contextlib
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -246,14 +247,12 @@ class StaleVersionPinCLITests(unittest.TestCase):
         self._listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._listener.bind(("127.0.0.1", 0))
         self._listener.listen(8)
-        self.dsn = "127.0.0.1:%d" % self._listener.getsockname()[1]
+        self.dsn = f"127.0.0.1:{self._listener.getsockname()[1]}"
         self._write_manifest(self.dsn)
 
     def tearDown(self) -> None:
-        try:
+        with contextlib.suppress(OSError):
             self._listener.close()
-        except OSError:
-            pass
         shutil.rmtree(self._temp_dir, ignore_errors=True)
 
     def _env(self, version: str) -> dict:
@@ -313,8 +312,7 @@ class StaleVersionPinCLITests(unittest.TestCase):
         self.assertIn(
             setup["status"],
             {"success", "success_with_warnings"},
-            "setup did not succeed; status=%s findings=%s summary=%s"
-            % (
+            "setup did not succeed; status={} findings={} summary={}".format(
                 setup.get("status"),
                 [
                     (f.get("severity"), f.get("code"), f.get("message"))

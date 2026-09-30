@@ -12,7 +12,7 @@ from exakit.adapters.fs.manifest_store import CorruptManifest
 from exakit.adapters.fs.notes import lock_holder_alive, process_start_time
 from exakit.components import for_component
 from exakit.domain.errors import BadInput, ExakitError, Failed
-from exakit.domain.manifest import Manifest
+from exakit.domain.manifest import Manifest, utc_now
 from exakit.domain.persona import Answers, answers_for
 from exakit.domain.plan import Plan, Step, StepState
 from exakit.domain.result import Result
@@ -26,6 +26,7 @@ from .legacy_crossing import crossing_before
 from .machine import all_datasets, kit_root
 from .marketplace import rows as marketplace_rows
 from .requirements import check as check_requirements
+import contextlib
 
 TITLES = {"launcher": "Step 1/6  Exasol launcher", "runtime": "Step 2/6  Local database deployment", "exapump": "Step 3/6  exapump (data loading CLI)",
           "mcp": "Step 4/6  AI bridge (MCP server, clients and skills)", "pyexasol": "Step 5/6  pyexasol (Exasol Python driver)",
@@ -101,10 +102,21 @@ def record_kit(ctx: Context, root: Path) -> None:
         if version:
             m.set("kit.version", version)
         for cid in ("personal", "exapump", "mcp", "pyexasol"):
-            try:
+            with contextlib.suppress(ExakitError):
                 m.set(f"desired.{cid}", for_component(ctx, cid).target_version())
-            except ExakitError:
-                pass
+    ctx.manifest_store.update(change)
+
+
+def record_persona(ctx: Context) -> None:
+    """The persona the install follows (EXAKIT_PERSONA, already validated) goes into the record as source ``install``."""
+    persona_id = ctx.env.get("EXAKIT_PERSONA")
+    if not persona_id:
+        return
+
+    def change(m: Manifest) -> None:
+        m.set("persona.id", persona_id)
+        m.set("persona.source", "install")
+        m.set("persona.requested_at", m.get("persona.requested_at") or utc_now())
     ctx.manifest_store.update(change)
 
 
@@ -181,7 +193,7 @@ def autostart_default_on(ctx: Context) -> None:
     if ctx.manifest().get("autostart.enabled") in (True, False):
         return
     loud = ctx.ui
-    from exakit.ui.silent import SilentRenderer  # noqa: PLC0415 - a default the installer chose is not news
+    from exakit.ui.silent import SilentRenderer
     ctx.ui = SilentRenderer(ctx.log)
     try:
         services.autostart_enable(ctx)
@@ -261,6 +273,7 @@ def _steps(session: steps.Session) -> None:
 
 
 def run(ctx: Context) -> Result:
+    answers = resolve_answers(ctx)      # an unknown persona stops here, dry run or not
     if ctx.dry_run:
         the_plan = plan(ctx)
         ctx.ui.plan(the_plan)
@@ -269,7 +282,8 @@ def run(ctx: Context) -> Result:
     init_manifest(ctx)
     acquire_lock(ctx)
     root = kit_root(ctx)
-    session = steps.Session(ctx, resolve_answers(ctx), root)
+    session = steps.Session(ctx, answers, root)
+    record_persona(ctx)
     try:
         if ctx.env.get("EXAKIT_BANNER_SHOWN") != "1":
             ctx.ui.banner("Personal Local Starter Kit")

@@ -10,7 +10,6 @@ from exakit.adapters.net.github import asset_digest, download_url, release_asset
 from exakit.adapters.process.ports import process_age_seconds
 from exakit.adapters.process.runner import Completed
 from exakit.adapters.process.services import LaunchdServices, ServiceSpec, SystemdUserServices, WindowsStartupServices
-from exakit.domain.errors import Failed
 from tests.unit.fakes import FakeDownloader, FakeRunner, mode_of
 
 

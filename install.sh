@@ -1,5 +1,5 @@
 #!/bin/sh
-# install.sh — Exasol Personal Local Starter Kit, one-command installer.
+# install.sh - Exasol Personal Local Starter Kit, one-command installer.
 #
 #   curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | sh
 #
@@ -77,7 +77,7 @@ main() {
     # the step/gutter hierarchy the setup scripts use once ui.sh is loaded.
     # UTF-8 bullet only on UTF-8 locales; ASCII everywhere else.
     case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
-        *[Uu][Tt][Ff]*) _say_glyph='•' ;;
+        *[Uu][Tt][Ff]*) _say_glyph='*' ;;
         *)              _say_glyph='*' ;;
     esac
     say() { printf '  \033[1;34m%s\033[0m %s\n' "$_say_glyph" "$*"; }
@@ -87,12 +87,12 @@ main() {
     # read in the next session and no way to tell "never ran" from "ran and
     # refused". Best-effort: a note is a nicety and must not mask the real error.
     fail() {
-        printf '\033[1;31m  ✗\033[0m %s\n' "$*" >&2
+        printf '\033[1;31m  x\033[0m %s\n' "$*" >&2
         _fail_home="${EXAKIT_HOME:-$HOME/.exasol-starter-kit}"
         if mkdir -p "$_fail_home" 2>/dev/null; then
             # TWO lines, matching exakit_note_failure: line 1 the reason, line 2
             # when it happened. `exakit status --json` reads the date off line 2,
-            # and this writer left it empty — so the one failure an agent is most
+            # and this writer left it empty - so the one failure an agent is most
             # likely to meet (the installer dying before the kit exists) produced
             # exactly the undated note that makes a healthy machine look broken
             # months later. date is POSIX; a missing one must not break the note.
@@ -117,7 +117,7 @@ main() {
     # POSIX sh too, but the launchers the kit writes for add-ons and the Exasol
     # launcher's own hooks expect bash on PATH. Checked here, beside curl and
     # tar, so the refusal comes before anything is downloaded.
-    command -v bash >/dev/null 2>&1 || fail "bash is required. Install it with your package manager — e.g. 'sudo apk add bash', 'sudo apt-get install -y bash' or 'sudo dnf install -y bash' — then re-run this installer."
+    command -v bash >/dev/null 2>&1 || fail "bash is required. Install it with your package manager - e.g. 'sudo apk add bash', 'sudo apt-get install -y bash' or 'sudo dnf install -y bash' - then re-run this installer."
 
     # --- 2. detect -----------------------------------------------------------
     os="$(uname -s)"
@@ -170,10 +170,10 @@ main() {
     # The failure text names the OWNERSHIP case explicitly. "Check that it is
     # writable" is not an action, and the documented escape hatch for a
     # /mnt/c or cloud-synced HOME (EXAKIT_HOME=/opt/exakit) lands here on every
-    # distro, because /opt is root-owned — while the installer separately, and
+    # distro, because /opt is root-owned - while the installer separately, and
     # correctly, refuses to be run with sudo. The two messages read as a
     # contradiction unless this one says which sudo command is the right one.
-    mkdir -p "$kit_dir" || fail "Could not create $kit_dir: $EXAKIT_HOME is not writable by $(id -un). If EXAKIT_HOME points at a system path such as /opt, create it and take ownership once — sudo mkdir -p '$EXAKIT_HOME' && sudo chown \"\$(id -un)\" '$EXAKIT_HOME' — then re-run this installer as your normal user (never with sudo). Otherwise pick a path you own, or check the disk is not full."
+    mkdir -p "$kit_dir" || fail "Could not create $kit_dir: $EXAKIT_HOME is not writable by $(id -un). If EXAKIT_HOME points at a system path such as /opt, create it and take ownership once - sudo mkdir -p '$EXAKIT_HOME' && sudo chown \"\$(id -un)\" '$EXAKIT_HOME' - then re-run this installer as your normal user (never with sudo). Otherwise pick a path you own, or check the disk is not full."
     if [ -n "${EXAKIT_LOCAL_KIT:-}" ]; then
         [ -f "$EXAKIT_LOCAL_KIT/install.sh" ] || fail "EXAKIT_LOCAL_KIT does not look like a kit checkout: $EXAKIT_LOCAL_KIT"
         EXAKIT_KIT_SOURCE="local:$EXAKIT_LOCAL_KIT"
@@ -225,7 +225,7 @@ main() {
     render_banner_plan
 
     if [ "${EXAKIT_DRY_RUN:-0}" = "1" ]; then
-        say "Dry run requested (EXAKIT_DRY_RUN=1) — nothing was installed, and nothing under $EXAKIT_HOME was changed."
+        say "Dry run requested (EXAKIT_DRY_RUN=1) - nothing was installed, and nothing under $EXAKIT_HOME was changed."
         say "The kit is unpacked for inspection in a temporary folder: $kit_dir"
         say "To install, run the same command again without EXAKIT_DRY_RUN=1."
         exit 0
@@ -277,7 +277,7 @@ main() {
     fi
 }
 
-# preflight_report — EXAKIT_PREFLIGHT=1: what this machine has, nothing
+# preflight_report - EXAKIT_PREFLIGHT=1: what this machine has, nothing
 # installed (not even the kit's Python). The same checks `exakit preflight`
 # makes once the kit is in place; POSIX sh so it runs before anything else.
 preflight_report() {
@@ -293,17 +293,17 @@ preflight_report() {
         _pf_ram="$(awk '/MemTotal/ { printf "%d", ($2 / 1048576) + 0.5 }' /proc/meminfo 2>/dev/null || echo 0)"
     fi
     _pf_disk="$(df -Pk "$HOME" 2>/dev/null | awk 'NR == 2 { printf "%d", $4 / 1048576 }')"
-    [ "${_pf_ram:-0}" -ge 8 ] && _pf_ok "Memory: ${_pf_ram} GB (Exasol Personal needs 8+)" || _pf_bad "Memory: ${_pf_ram:-0} GB — Exasol Personal needs at least 8 GB"
-    [ "${_pf_disk:-0}" -ge 20 ] && _pf_ok "Free disk at $HOME: ${_pf_disk} GB (20+ recommended)" || _pf_bad "Free disk at $HOME: ${_pf_disk:-0} GB — free up space (20 GB recommended for the local database)"
+    [ "${_pf_ram:-0}" -ge 8 ] && _pf_ok "Memory: ${_pf_ram} GB (Exasol Personal needs 8+)" || _pf_bad "Memory: ${_pf_ram:-0} GB - Exasol Personal needs at least 8 GB"
+    [ "${_pf_disk:-0}" -ge 20 ] && _pf_ok "Free disk at $HOME: ${_pf_disk} GB (20+ recommended)" || _pf_bad "Free disk at $HOME: ${_pf_disk:-0} GB - free up space (20 GB recommended for the local database)"
     for _pf_tool in curl tar bash; do
-        command -v "$_pf_tool" >/dev/null 2>&1 && _pf_ok "$_pf_tool available" || _pf_bad "$_pf_tool missing — install it with your package manager"
+        command -v "$_pf_tool" >/dev/null 2>&1 && _pf_ok "$_pf_tool available" || _pf_bad "$_pf_tool missing - install it with your package manager"
     done
     if [ "$platform" = "wsl" ] && grep -qi "microsoft" /proc/version 2>/dev/null && ! grep -qiE "wsl2|microsoft-standard" /proc/version 2>/dev/null; then
         _pf_bad "WSL 1: Exasol Personal needs a real Linux kernel; convert this distro with: wsl --set-version <distro> 2"
     fi
     if [ "$platform" = "linux" ] || [ "$platform" = "wsl" ]; then
         command -v podman >/dev/null 2>&1 && _pf_ok "Podman: available (the Exasol Personal deployment runs through it)" \
-            || _pf_bad "Podman is required and is not on PATH — install it with your package manager (e.g. 'sudo apt-get install -y podman uidmap')"
+            || _pf_bad "Podman is required and is not on PATH - install it with your package manager (e.g. 'sudo apt-get install -y podman uidmap')"
     fi
     printf '\n'
     [ "$_pf_fail" -eq 0 ] && printf 'Ready to install.\n' || printf '%s check(s) failed - fix them, then run the installer.\n' "$_pf_fail"

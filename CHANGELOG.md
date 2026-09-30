@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+**Quality gates, and the bugs they found.** The repository now carries its
+own QA: `tools/check_standard.py` holds the coding standard mechanically,
+`ruff.toml` the SonarQube-aligned lint, `tools/run_tests.py` runs every suite
+with JUnit and coverage reports, `tools/release_check.py` is the release
+gate and `tools/qa_report.py` assembles the QA report; `quality.yml` runs
+them on Linux, macOS and Windows and `sonar-project.properties` is ready
+for SonarQube. A new `tests/scenarios` suite runs every command in every
+machine state in both output modes. What that found and fixed: the
+installer never recorded the persona it followed (`exakit status` showed
+none after `EXAKIT_PERSONA=analyst`); a corrupt install record produced a
+traceback instead of one refusal naming `exakit install`; `exakit update
+--dry-run` acted instead of planning; `<command> --help --json` printed a
+human page; the install dry run did not stop on an unknown `EXAKIT_PERSONA`;
+an f-string in the catalog validator needed Python 3.12 although the kit
+promises 3.11; and the real install on a scratch runner (the new
+`real-install.yml`) passed end to end on Linux.
+
 **The kit is one Python implementation, and it has personas.** `exakit` is now
 `python -m exakit`: a launcher on PATH finds the kit's own Python (installed by
 the bootstrap through a pinned, digest-checked uv into `~/.exasol-starter-kit/python`,

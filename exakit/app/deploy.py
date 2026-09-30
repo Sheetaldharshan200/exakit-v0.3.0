@@ -93,7 +93,8 @@ def _start_existing(ctx: Context) -> bool | None:
             if attempt.endswith("runner") and not rt.reap_orphan(rt.db_port(), ctx.ui.info):
                 continue
             rt.start(ctx.ui.info)
-        except Exception:  # noqa: BLE001 - the launcher's refusal is the next attempt's cue
+        except Exception as err:
+            ctx.log.line("WARN", f"the deployment did not start ({attempt}): {err}")
             continue
         ctx.ui.ok(f"Reusing the existing Exasol deployment ({attempt})")
         if not rt.wait_ready_or_deploy(ctx.ui.info):

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable
-from dataclasses import dataclass
 from typing import Protocol
 
 from exakit.domain.catalog import Addon
@@ -41,9 +40,9 @@ def for_addon(ctx, addon: Addon) -> LifecycleBase:
     except ModuleNotFoundError as err:
         if err.name != module_name:
             raise
-    from .python_venv import PythonVenvLifecycle  # noqa: PLC0415
-    from .binary import BinaryLifecycle  # noqa: PLC0415
-    from .host_extension import HostExtensionLifecycle  # noqa: PLC0415
+    from .python_venv import PythonVenvLifecycle
+    from .binary import BinaryLifecycle
+    from .host_extension import HostExtensionLifecycle
     generic: dict[str, Callable] = {"python-venv": PythonVenvLifecycle, "binary": BinaryLifecycle, "host-extension": HostExtensionLifecycle}
     if addon.kind not in generic:
         raise ValueError(f"add-on {addon.id} has kind '{addon.kind}' and no lifecycle module")

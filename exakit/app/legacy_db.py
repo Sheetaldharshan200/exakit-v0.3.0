@@ -144,7 +144,7 @@ def db_answers(ctx: Context) -> bool:
 
 
 def wait_db(ctx: Context, budget: int) -> bool:
-    import time  # noqa: PLC0415
+    import time
     waited = 0
     while not db_answers(ctx):
         waited += 5
@@ -160,7 +160,7 @@ def tables(ctx: Context) -> list[str]:
         return []
     done = pump.sql(PROFILE, "SELECT 'EXAKIT_LT[' || TABLE_SCHEMA || '.' || TABLE_NAME || ']' AS T FROM EXA_ALL_TABLES "
                              f"WHERE TABLE_SCHEMA NOT IN ({SYSTEM_SCHEMAS}) ORDER BY TABLE_SCHEMA, TABLE_NAME")
-    import re  # noqa: PLC0415
+    import re
     return re.findall(r"EXAKIT_LT\[([^\]]*)\]", done.out) if done.ok else []
 
 
@@ -170,7 +170,7 @@ def table_ddl(ctx: Context, schema: str, table: str) -> str | None:
         return None
     done = pump.sql(PROFILE, "SELECT 'EXAKIT_LC[' || COLUMN_NAME || '<<:>>' || COLUMN_TYPE || ']' AS C FROM EXA_ALL_COLUMNS "
                              f"WHERE COLUMN_SCHEMA = '{schema}' AND COLUMN_TABLE = '{table}' ORDER BY COLUMN_ORDINAL_POSITION")
-    import re  # noqa: PLC0415
+    import re
     columns = re.findall(r"EXAKIT_LC\[([^\]]*)\]", done.out) if done.ok else []
     parts = [f'"{c.split("<<:>>", 1)[0]}" {c.split("<<:>>", 1)[1]}' for c in columns if "<<:>>" in c]
     return f'CREATE TABLE "{schema}"."{table}" ({", ".join(parts)})' if parts else None
@@ -195,7 +195,7 @@ def table_rows(ctx: Context, schemas: list[str]) -> dict[str, int]:
     quoted = ",".join(f"'{s}'" for s in schemas)
     done = pump.sql(PROFILE, "SELECT 'EXAKIT_LR[' || TABLE_SCHEMA || '.' || TABLE_NAME || '<<:>>' || CAST(TABLE_ROW_COUNT AS VARCHAR(40)) || ']' AS R "
                              f"FROM EXA_ALL_TABLES WHERE TABLE_SCHEMA IN ({quoted})")
-    import re  # noqa: PLC0415
+    import re
     out: dict[str, int] = {}
     for item in re.findall(r"EXAKIT_LR\[([^\]]*)\]", done.out) if done.ok else []:
         name, _, count = item.partition("<<:>>")

@@ -84,7 +84,7 @@ def _explain(ctx: Context, name: str, current: str, latest: str) -> None:
 
 
 def _major_differs(current: str, latest: str) -> bool:
-    from exakit.components.personal import major  # noqa: PLC0415
+    from exakit.components.personal import major
     return bool(major(current) and major(latest) and major(current) != major(latest))
 
 
@@ -172,7 +172,34 @@ def _skip_reason(ctx: Context, target: str, name: str, current: str | None, adve
 
 def _min_kit_ok(ctx: Context, needed: str) -> bool:
     kit = kit_current(ctx)
-    return not kit or kit == "unknown" or kit == needed or is_newer(kit, needed)
+    return not kit or kit in ("unknown", needed) or is_newer(kit, needed)
+
+
+def _update_component(ctx: Context, component: str, name: str, target: str, options: list[str], yes: bool,
+                      planned: list[dict[str, str | None]]) -> tuple[int, int]:
+    """(acted, deferred) for one component: skipped, planned (dry run), offered (a runtime) or updated."""
+    current = current_version(ctx, name)
+    resolved = available(ctx, name)
+    advertised = resolved.version if resolved else None
+    if _skip_reason(ctx, target, name, current, advertised) == "skip":
+        return 0, 0
+    if ctx.dry_run:
+        planned.append({"component": name, "current": current, "advertised": advertised})
+        ctx.ui.info(f"{name} {current or 'not installed'} -> {advertised or 'unknown'}   (dry run: nothing changes)")
+        return 0, 0
+    if target == "all" and component in HEAVY:
+        return _offer_heavy(ctx, name, current, advertised, yes)
+    if advertised:
+        ctx.ui.info(f"{name} {current or 'not installed'} -> {advertised}")
+    update_one(ctx, component, options)
+    return 1, 0
+
+
+def _offer_heavy(ctx: Context, name: str, current: str | None, advertised: str | None, yes: bool) -> tuple[int, int]:
+    """(acted, deferred) for a runtime change under ``update all``: offered, never forced."""
+    if not (current and advertised) or current in ("unknown", advertised):
+        return 0, 0
+    return (1, 0) if offer_runtime(ctx, name, current, advertised, yes) else (0, 1)
 
 
 def run(ctx: Context, args: list[str]) -> Result:
@@ -184,28 +211,17 @@ def run(ctx: Context, args: list[str]) -> Result:
     if ctx.policy is not VersionPolicy.MANIFEST or ctx.versions.source_label() != "baked":
         ctx.ui.info(source_line(ctx))
     acted = deferred = 0
+    planned: list[dict[str, str | None]] = []
     for component in plan:
-        name = actual(ctx, component) if component in RUNTIME_WORDS and ctx.manifest().runtime_type() else component
         if component in RUNTIME_WORDS and not ctx.manifest().runtime_type():
             if target != "all":
                 raise Failed("No runtime is recorded in the manifest.")
             continue
-        current = current_version(ctx, name)
-        resolved = available(ctx, name)
-        advertised = resolved.version if resolved else None
-        if _skip_reason(ctx, target, name, current, advertised) == "skip":
-            continue
-        if target == "all" and component in HEAVY:
-            if current and advertised and current != "unknown" and current != advertised:
-                if offer_runtime(ctx, name, current, advertised, yes):
-                    acted += 1
-                else:
-                    deferred += 1
-            continue
-        if advertised:
-            ctx.ui.info(f"{name} {current or 'not installed'} -> {advertised}")
-        update_one(ctx, component, options)
-        acted += 1
+        name = actual(ctx, component) if component in RUNTIME_WORDS else component
+        done, held = _update_component(ctx, component, name, target, options, yes, planned)
+        acted, deferred = acted + done, deferred + held
+    if ctx.dry_run:
+        return Result(True, "dry-run", data={"planned": planned})
     if not acted and not deferred:
         ctx.ui.ok("Everything is already current.")
     if deferred:

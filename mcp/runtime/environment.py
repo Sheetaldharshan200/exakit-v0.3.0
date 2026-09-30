@@ -16,7 +16,7 @@ class ExecutionEnvironment:
     cwd: Path | None = None
 
     @classmethod
-    def current(cls) -> "ExecutionEnvironment":
+    def current(cls) -> ExecutionEnvironment:
         return cls(
             os_name=sys.platform,
             home=Path.home(),

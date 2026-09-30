@@ -49,7 +49,7 @@ class ConsoleTest(unittest.TestCase):
         self.assertEqual(lines[1], "  | alpha" + " " * (width - 5 - 2) + " |")
         self.assertEqual(lines[2], "  | a longer line" + " " * (width - 13 - 2) + " |")
         self.assertEqual(lines[3], "  +" + "-" * width + "+")
-        self.assertTrue(all(len(l) == len(lines[3]) for l in lines[1:3]))
+        self.assertTrue(all(len(line) == len(lines[3]) for line in lines[1:3]))
 
     def test_plan_renders_every_state(self):
         r, out = _plain()

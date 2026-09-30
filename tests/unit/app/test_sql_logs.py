@@ -1,6 +1,5 @@
 import json
 import unittest
-from pathlib import Path
 
 from exakit.adapters.process.runner import Completed
 from exakit.app import logs, sql
@@ -43,11 +42,11 @@ class SqlParsingTest(unittest.TestCase):
         lines, cmd = sql.remedy_lines("TLS handshake failed", "SELECT 1")
         self.assertEqual(cmd, "exakit status")
         lines, _ = sql.remedy_lines("syntax error", "SELECT TOP 5 * FROM t")
-        self.assertTrue(any("LIMIT" in l for l in lines))
+        self.assertTrue(any("LIMIT" in line for line in lines))
         lines, _ = sql.remedy_lines("object FOO not found", "SELECT * FROM STARTER_KIT.FOO")
         self.assertEqual(len(lines), 2)
         lines, _ = sql.remedy_lines("insufficient privileges", "DROP TABLE x")
-        self.assertTrue(any("--write" in l for l in lines))
+        self.assertTrue(any("--write" in line for line in lines))
         self.assertEqual(sql.remedy_lines("fine", "SELECT 1"), ([], None))
 
     def test_error_detail(self):
@@ -125,7 +124,8 @@ class LogsTest(unittest.TestCase):
             log.write_text("a\nb\nc\n")
             logs.run(box.ctx, ["setup", "--lines", "2"])
             self.assertEqual(box.screen().strip().splitlines(), ["b", "c"])
-            box.out.truncate(0); box.out.seek(0)
+            box.out.truncate(0)
+            box.out.seek(0)
             logs.run(box.ctx, ["setup", "--path"])
             self.assertEqual(box.screen().strip(), str(log))
             for bad in (["--lines", "x"], ["a", "b"], ["--nope"]):

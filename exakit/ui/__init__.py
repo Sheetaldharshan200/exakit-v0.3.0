@@ -13,7 +13,7 @@ from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager
 from typing import IO, Protocol
 
-from exakit.adapters.fs.log import Log
+from exakit.domain.log import Log
 from exakit.domain.plan import Plan, Step
 
 from .console import ConsoleRenderer
@@ -68,7 +68,7 @@ def has_terminal(out: IO[str]) -> bool:
         return False
     if os.name != "nt":
         try:
-            with open("/dev/tty", "r", encoding="utf-8"):
+            with open("/dev/tty", encoding="utf-8"):
                 return True
         except OSError:
             return False
@@ -85,7 +85,7 @@ def _tty_reader():
             pass
         if os.name != "nt":
             try:
-                with open("/dev/tty", "r", encoding="utf-8") as tty:
+                with open("/dev/tty", encoding="utf-8") as tty:
                     return tty.readline()
             except OSError:
                 return ""

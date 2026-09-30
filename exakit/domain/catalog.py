@@ -82,7 +82,8 @@ def _check_id_list(doc: dict[str, Any], key: str, problems: Problems, *, allow_w
     if isinstance(value, str) and value in allow_words:
         return
     if not isinstance(value, list) or not all(isinstance(v, str) and is_token(v) for v in value):
-        words = f' or one of "{'", "'.join(allow_words)}"' if allow_words else ""
+        joined = '", "'.join(allow_words)
+        words = f' or one of "{joined}"' if allow_words else ""
         problems.append(f"{key} must be a list of ids{words}")
 
 
@@ -103,7 +104,7 @@ class Component:
     manifest_key: str
 
     @classmethod
-    def from_doc(cls, doc: dict[str, Any]) -> "Component":
+    def from_doc(cls, doc: dict[str, Any]) -> Component:
         return cls(
             id=doc["id"], title=doc["title"], kind=doc["kind"], source=dict(doc.get("source") or {"type": "kit"}),
             install_order=int(doc.get("install_order", 100)), step_id=doc.get("step_id"),
@@ -154,7 +155,7 @@ class Addon:
     directory: Path | None = field(default=None, compare=False)
 
     @classmethod
-    def from_doc(cls, doc: dict[str, Any], directory: Path | None = None) -> "Addon":
+    def from_doc(cls, doc: dict[str, Any], directory: Path | None = None) -> Addon:
         return cls(
             id=doc["id"], title=doc["title"], kind=doc["kind"], source=dict(doc["source"]),
             platforms=tuple(doc.get("platforms") or ()), requires=tuple(doc.get("requires") or ()),
@@ -185,9 +186,8 @@ def validate_addon(doc: Any, *, expected_id: str | None = None) -> Problems:
         if key in doc:
             _check_id_list(doc, key, problems)
     service = doc.get("service")
-    if service is not None:
-        if not isinstance(service, dict) or not isinstance(service.get("port", 0), int):
-            problems.append("service must be an object with an integer port")
+    if service is not None and (not isinstance(service, dict) or not isinstance(service.get("port", 0), int)):
+        problems.append("service must be an object with an integer port")
     for key in ("launcher", "skill", "help", "fallback_version", "manifest_key"):
         if key in doc and not _is_str(doc[key]):
             problems.append(f"{key} must be a non-empty string")
@@ -210,7 +210,7 @@ class Persona:
     path: Path | None = field(default=None, compare=False)
 
     @classmethod
-    def from_doc(cls, doc: dict[str, Any], *, source: str, path: Path | None = None) -> "Persona":
+    def from_doc(cls, doc: dict[str, Any], *, source: str, path: Path | None = None) -> Persona:
         def norm(value: Any) -> str | tuple[str, ...]:
             return value if isinstance(value, str) else tuple(value)
         return cls(
@@ -309,7 +309,7 @@ class Catalog:
         self._personas = personas
 
     @classmethod
-    def load(cls, kit_root: Path, user_root: Path | None, *, warn: Callable[[str], None]) -> "Catalog":
+    def load(cls, kit_root: Path, user_root: Path | None, *, warn: Callable[[str], None]) -> Catalog:
         """Read the kit's catalog and the user's personas. A bad file is skipped with one warning."""
         components = _load_components(kit_root / "catalog" / "components", warn)
         addons = _load_addons(kit_root / "catalog" / "addons", warn)

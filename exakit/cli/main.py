@@ -9,11 +9,13 @@ a refusal with exit 2.
 
 from __future__ import annotations
 
+import os
 import sys
+import traceback
 from collections.abc import Callable
 
 from exakit.app import Context, notice
-from exakit.domain.errors import BadInput, ExakitError
+from exakit.domain.errors import BadInput, ExakitError, Failed
 from exakit.domain.result import Result
 
 from . import _context, commands
@@ -85,22 +87,35 @@ def main(argv: list[str] | None = None) -> int:
         wants_page = command != "sql" and command not in ("help",) and any(a in ("--help", "-h") for a in rest)
         readonly = command in READONLY_COMMANDS or wants_page or command not in HANDLERS
         ctx = _context.build(json=flags["json"], yes=flags["yes"], dry_run=flags["dry_run"], readonly=readonly, mutating=not readonly)
-        if wants_page:
-            return commands.topic_help(command, ctx).exit_code
+        if wants_page or (command not in HANDLERS and not rest and commands.is_help_topic(command, ctx)):
+            page = commands.topic_help(command, ctx)      # a command's --help, or a bare component id
+            _emit(page, ctx)
+            return page.exit_code
         if command in HANDLERS:
             result = HANDLERS[command](rest, ctx)
             _emit(result, ctx)
             notice.maybe_show(ctx, command)
             return result.exit_code
-        # A bare component id is its help page; anything else is unknown.
-        if not rest and commands.is_help_topic(command, ctx):
-            return commands.topic_help(command, ctx).exit_code
         raise unknown_command(command)
     except ExakitError as err:
         _emit_refusal(err, ctx, flags["json"])
         return err.code
     except KeyboardInterrupt:
         return 130
+    except Exception as err:  # the last line of defence: a user never sees a traceback, the log does
+        return _unexpected(err, ctx, flags["json"])
+
+
+def _unexpected(err: Exception, ctx: Context | None, json_mode: bool) -> int:
+    """A bug, reported like any failure (exit 1, the refusal object under --json); EXAKIT_DEBUG=1 re-raises it."""
+    if os.environ.get("EXAKIT_DEBUG") == "1":
+        raise err
+    if ctx is not None and ctx.log.path:
+        ctx.log.line("ERROR", "unexpected: " + "".join(traceback.format_exception(err)).rstrip())
+    where = f" (details: {ctx.log.path})" if ctx is not None and ctx.log.path else ""
+    failed = Failed(f"Unexpected error: {type(err).__name__}: {err}{where}", hint="re-run with EXAKIT_DEBUG=1 for the traceback")
+    _emit_refusal(failed, ctx, json_mode)
+    return failed.code
 
 
 def unknown_command(command: str) -> BadInput:

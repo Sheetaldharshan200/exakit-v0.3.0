@@ -200,7 +200,7 @@ class SchedulerTest(unittest.TestCase):
             lc.launcher.write_text("#!/bin/sh\n")
             lc.home.mkdir(parents=True, exist_ok=True)
             lc.giveup.write_text("gave up after 5 rapid failures (last exit 1) at now\n")
-            with mock.patch.object(lc, "pids", lambda: []):
+            with mock.patch.object(lc, "pids", list):
                 self.assertTrue(lc.status().startswith("stopped (gave up after 5 rapid failures"))
             with mock.patch.object(lc, "pids", lambda: [42]):
                 self.assertEqual(lc.status(), "running")

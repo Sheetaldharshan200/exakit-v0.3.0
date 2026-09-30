@@ -132,7 +132,7 @@ class PerClientScopingTests(unittest.TestCase):
 
         self.paths["vscode_copilot"].write_text(EMPTY_FILE, encoding="utf-8")
         healthy = ["claude_desktop", "claude_code", "cursor", "codex"]
-        clients = healthy + ["vscode_copilot"]
+        clients = [*healthy, "vscode_copilot"]
         with self._mock_connectivity():
             result = self._subsystem().execute(self._request(clients))
 
@@ -166,7 +166,7 @@ class PerClientScopingTests(unittest.TestCase):
         """
 
         healthy = ["claude_desktop", "cursor"]
-        clients = healthy + ["vscode_copilot"]
+        clients = [*healthy, "vscode_copilot"]
 
         # Run 1: everything works, and every client earns a manifest record.
         with self._mock_connectivity():
@@ -205,9 +205,9 @@ class PerClientScopingTests(unittest.TestCase):
 
         healthy = ["claude_desktop", "claude_code", "cursor", "codex"]
         orders = {
-            "broken_first": ["vscode_copilot"] + healthy,
-            "broken_last": healthy + ["vscode_copilot"],
-            "broken_middle": healthy[:2] + ["vscode_copilot"] + healthy[2:],
+            "broken_first": ["vscode_copilot", *healthy],
+            "broken_last": [*healthy, "vscode_copilot"],
+            "broken_middle": [*healthy[:2], "vscode_copilot", *healthy[2:]],
         }
         outcomes = {}
         for name, order in orders.items():

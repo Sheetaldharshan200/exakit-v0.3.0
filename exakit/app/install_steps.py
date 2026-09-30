@@ -56,8 +56,8 @@ class Session:
         except ExakitError as err:
             self.ctx.log.line("ERROR", f"{label}: {err.message}")
             if not read_failure_note(self.ctx.paths.failure_note)[0]:
-                from exakit.adapters.fs.notes import write_failure_note  # noqa: PLC0415
-                from exakit.domain.manifest import utc_now  # noqa: PLC0415
+                from exakit.adapters.fs.notes import write_failure_note
+                from exakit.domain.manifest import utc_now
                 write_failure_note(self.ctx.paths.failure_note, err.message, utc_now())
             self.record_soft(component, repair, label)
             self.ctx.ui.warn(f"{label} did not finish - carrying on so the rest of the install completes")

@@ -31,8 +31,8 @@ def find_uv(env: Mapping[str, str], home: Path, runner: Runner, windows: bool = 
 
 
 class UvTool:
-    def __init__(self, bin: str, runner: Runner, *, windows: bool = False, python_version: str = MANAGED_PYTHON) -> None:
-        self.bin = bin
+    def __init__(self, binary: str, runner: Runner, *, windows: bool = False, python_version: str = MANAGED_PYTHON) -> None:
+        self.bin = binary
         self.runner = runner
         self.windows = windows
         self.python_version = python_version

@@ -231,7 +231,6 @@ def preflight(ctx: Context) -> Result:
     failures: list[str] = []
     notes: list[str] = []
     p = ctx.platform
-    word = "wsl" if p.is_wsl else p.os
 
     def ok(text: str) -> None:
         ctx.ui.text(f"  [ok] {text}")

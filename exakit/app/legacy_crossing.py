@@ -12,7 +12,7 @@ from .runtime_ops import exapump
 
 READY_BUDGET = 120
 
-__all__ = ["crossing_before", "crossing_after", "choose", "READY_BUDGET"]
+__all__ = ["READY_BUDGET", "choose", "crossing_after", "crossing_before"]
 
 
 def _forget_old_steps(ctx: Context) -> None:
@@ -175,7 +175,7 @@ def _ask_once(ctx: Context, db: ldb.LegacyDb, directory: Path) -> bool:
     if choice == "migrate":
         ctx.ui.info("Nothing in the old database is changed. One thing to know: a text column that held an empty string arrives as NULL.")
         return True
-    import shutil  # noqa: PLC0415
+    import shutil
     shutil.rmtree(directory, ignore_errors=True)
     ctx.manifest_store.update(lambda m: (m.set("legacy.export_dir", ""), m.set("legacy.crossing_done", True)))
     ctx.ui.info("The old database is left exactly as it was, stopped, with its data.")

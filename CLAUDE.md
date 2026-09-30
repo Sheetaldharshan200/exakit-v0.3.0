@@ -55,11 +55,20 @@ as the change they describe.
 - **Adding an AI skill?** Unchanged: `skills/<name>/SKILL.md` with `name` and
   `description` frontmatter (ending in a `Triggers —` list), a row in
   `skills/README.md`, and a bump of `components.skills.version`.
-- **Tests:** `python3 -m unittest discover -s tests/unit -t .` (no machine
-  state), `-s tests/contract` (the frozen `--json` shapes and exit codes
-  against the real CLI in a sandbox), `-s tests/e2e` (installer dry run,
-  launcher). One behaviour per test; fakes from `tests/unit/fakes.py`, never
-  the network.
+- **Tests:** `python3 tools/run_tests.py` runs every suite and writes
+  `reports/` (JUnit XML, `test-report.md`; `--coverage` when coverage.py is
+  installed): `tests/unit` (no machine state), `tests/contract` (the frozen
+  `--json` shapes and exit codes against the real CLI in a hermetic sandbox),
+  `tests/scenarios` (every command in every machine state, both modes),
+  `tests/e2e` (installer dry run, launcher), `mcp/tests`. One behaviour per
+  test; fakes from `tests/unit/fakes.py`, never the network. A CLI-level test
+  runs only read-only commands and refusal paths: the sandbox isolates the kit
+  home and the user home, but a mutating command can still reach the machine.
+- **Gates before a push:** `python3 tools/check_standard.py` (the standard of
+  docs/design.md 13, mechanically), `ruff check exakit mcp tests tools`
+  (`ruff.toml`), `python3 tools/release_check.py`. The CI (`quality.yml`)
+  runs the same and assembles `reports/qa-report.md`; see
+  [docs/release-checklist.md](docs/release-checklist.md).
 - **Shell lives only in `bootstrap/` and the two installers.** `install.sh`
   and `install.ps1` download the kit and hand over to `python -m exakit
   install`; `bootstrap/ensure-python.*` installs the managed Python;

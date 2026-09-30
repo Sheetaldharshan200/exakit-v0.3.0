@@ -12,6 +12,7 @@ import subprocess
 
 from mcp.core.errors import MCPSubsystemError
 from mcp.core.serialization import sha256_text
+import contextlib
 
 # What protect_path() reports when it applied a Windows ACL rather than a POSIX
 # mode. It is a label, not a mode: nothing about it is chmod-shaped, and callers
@@ -169,10 +170,8 @@ class FileSystem:
                 protect_path(tmp)
             os.replace(tmp, path)
         except BaseException:
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp)
-            except OSError:
-                pass
             raise
 
     def write_json(self, path: Path, content: dict) -> None:

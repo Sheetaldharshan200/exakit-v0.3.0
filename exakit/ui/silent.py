@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 
-from exakit.adapters.fs.log import Log, NullLog
+from exakit.domain.log import Log, NullLog
 from exakit.domain.plan import Plan, Step
 
 from .widgets import Option

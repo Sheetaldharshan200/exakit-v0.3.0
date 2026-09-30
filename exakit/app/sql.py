@@ -28,7 +28,6 @@ class SqlArgs:
 
 def parse_args(args: list[str]) -> SqlArgs:
     parsed = SqlArgs()
-    it = iter(range(len(args)))
     i = 0
     while i < len(args):
         arg = args[i]
@@ -67,7 +66,7 @@ def _statement(parsed: SqlArgs, text: str) -> None:
 
 
 def clean(text: str) -> str:
-    lines = [l for l in text.splitlines() if l.strip() and not re.match(r"^\s*--", l)]
+    lines = [line for line in text.splitlines() if line.strip() and not re.match(r"^\s*--", line)]
     body = "\n".join(lines).rstrip()
     return body[:-1].rstrip() if body.endswith(";") else body
 
@@ -120,7 +119,7 @@ def remedy_lines(output: str, statement: str) -> tuple[list[str], str | None]:
 
 def error_detail(output: str) -> str:
     lines = output.splitlines()
-    errors = [l for l in lines if l.startswith("Error: ")]
+    errors = [line for line in lines if line.startswith("Error: ")]
     if errors:
         return errors[-1][len("Error: "):]
     for line in lines:
@@ -181,7 +180,7 @@ def _text_answer(ctx: Context, done, text: str) -> Result:
     if lines:
         for line in lines:
             ctx.ui.text(f"! {line}")
-        ctx.ui.text("\n".join(l for l in output.splitlines() if not re.match(r"^\s*Hint: ", l)))
+        ctx.ui.text("\n".join(line for line in output.splitlines() if not re.match(r"^\s*Hint: ", line)))
     else:
         ctx.ui.text(output)
     return Result(True, "failed", exit_code=done.code or 1)

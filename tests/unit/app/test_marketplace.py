@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import io
 import unittest
 from unittest import mock
 
@@ -10,7 +9,6 @@ from exakit.app import marketplace
 from exakit.domain.errors import BadInput, Failed, NotConfirmed
 from exakit.lifecycles.base import ServiceHooks
 from exakit.ui.console import ConsoleRenderer
-from exakit.ui.widgets import PLAIN
 from tests.unit.app.harness import MANIFEST, Sandbox
 
 ALL = ("dash-server", "dbt-exasol", "exasol-scheduler", "exasol-vscode", "json-tables")

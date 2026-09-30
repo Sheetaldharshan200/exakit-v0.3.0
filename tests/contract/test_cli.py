@@ -10,46 +10,10 @@ the machine), the document surfaces (catalog, help) must agree with it.
 from __future__ import annotations
 
 import json
-import os
-import shutil
-import subprocess
-import sys
-import tempfile
 import unittest
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
-MANIFEST = {
-    "manifest_version": 1, "kit_level": 1, "installed_at": "2026-09-30T00:00:00Z", "os": "macos", "arch": "arm64",
-    "runtime": {"type": "personal", "status": "running", "version": "2.3.0"},
-    "components": {"skills": {"version": "1.12.1"}, "mcp_server": {"version": "2.2.0"}},
-    "data": {"loaded": True, "datasets": {"tpch": {"loaded": True}}},
-    "steps_completed": ["launcher", "runtime", "exapump", "mcp", "pyexasol", "exakit_helper"], "log_dir": "/tmp/x",
-}
-
-
-class Sandbox:
-    def __init__(self, *, manifest: dict | None) -> None:
-        self.dir = tempfile.mkdtemp(prefix="exakit-contract-")
-        self.home = Path(self.dir) / "home"
-        self.home.mkdir()
-        if manifest is not None:
-            (self.home / "manifest.json").write_text(json.dumps(manifest))
-        self.env = {**os.environ, "EXAKIT_HOME": str(self.home), "EXAKIT_BIN_DIR": str(Path(self.dir) / "bin"),
-                    "EXAKIT_VERSIONS_TTL": "999999", "EXAKIT_NO_UPDATE_NOTICE": "1", "NO_COLOR": "1",
-                    "PYTHONPATH": str(REPO)}
-
-    def run(self, *args: str) -> subprocess.CompletedProcess:
-        return subprocess.run([sys.executable, "-m", "exakit", *args], cwd=REPO, env=self.env, capture_output=True, text=True, timeout=120)
-
-    def close(self) -> None:
-        shutil.rmtree(self.dir, ignore_errors=True)
-
-
-def _one_object(text: str) -> dict:
-    lines = [l for l in text.splitlines() if l.strip()]
-    assert len(lines) == 1, f"expected one JSON line, got {len(lines)}: {text[:200]!r}"
-    return json.loads(lines[0])
+from tests.support import MANIFEST, REPO, Sandbox, one_object as _one_object
 
 
 class StateQueryShapeTest(unittest.TestCase):
@@ -65,7 +29,7 @@ class StateQueryShapeTest(unittest.TestCase):
         done = self.box.run("persona", "list", "--json")
         self.assertEqual(done.returncode, 0, done.stderr)
         doc = _one_object(done.stdout)
-        self.assertEqual([k for k in doc][:3], ["installed", "status", "remedy"])
+        self.assertEqual(list(doc)[:3], ["installed", "status", "remedy"])
         self.assertEqual((doc["installed"], doc["status"], doc["remedy"], doc["recorded"]), (True, "none", None, None))
         self.assertEqual([p["id"] for p in doc["personas"]], ["analyst", "data-engineer", "data-scientist", "minimal"])
         self.assertEqual(set(doc["personas"][0]), {"id", "title", "summary", "source", "recorded"})
@@ -96,7 +60,7 @@ class StateQueryShapeTest(unittest.TestCase):
         try:
             doc = _one_object(box.run("persona", "list", "--json").stdout)
             self.assertEqual((doc["status"], doc["recorded"]), ("recorded", "analyst"))
-            self.assertTrue([p for p in doc["personas"] if p["id"] == "analyst"][0]["recorded"])
+            self.assertTrue(next(p for p in doc["personas"] if p["id"] == "analyst")["recorded"])
         finally:
             box.close()
 
@@ -104,7 +68,7 @@ class StateQueryShapeTest(unittest.TestCase):
         done = self.box.run("version", "--json")
         self.assertEqual(done.returncode, 0, done.stderr)
         doc = _one_object(done.stdout)
-        self.assertEqual([k for k in doc][:3], ["installed", "status", "remedy"])
+        self.assertEqual(list(doc)[:3], ["installed", "status", "remedy"])
         self.assertIn(doc["status"], ("current", "update_pending"))
         self.assertEqual(set(doc) - {"installed", "status", "remedy"}, {"pending", "kit", "versions_source", "components"})
         row = doc["components"][0]

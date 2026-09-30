@@ -40,8 +40,8 @@ def scan_folder(folder: Path) -> list[ScanEntry]:
             continue
         kind = file_kind(path)
         lower = path.name.lower()
-        if kind == "csv" and (lower.endswith(".txt") or lower.endswith(".tsv") or any(lower.endswith(".txt" + c) for c in COMPRESSED)):
-            if lower.endswith(".txt") and _looks_tabular(path) or lower.endswith(".tsv"):
+        if kind == "csv" and (lower.endswith((".txt", ".tsv")) or any(lower.endswith(".txt" + c) for c in COMPRESSED)):
+            if (lower.endswith(".txt") and _looks_tabular(path)) or lower.endswith(".tsv"):
                 entries.append(ScanEntry("skip", "extension", "", path))
             else:
                 entries.append(ScanEntry("skip", "unsupported", "", path))
@@ -170,8 +170,9 @@ def _land(ctx: Context, pump: Exapump, entry: ScanEntry, target: str) -> list[st
 def _settle(outcomes: list[Outcome], schema: str, after: dict[str, int], receipts: Receipts) -> list[Outcome]:
     """Fill in the row counts of what landed and write the receipts."""
     settled: list[Outcome] = []
-    for mark, entry, table_text, rows_text, reason in outcomes:
-        if rows_text == "@ROWS@":
+    for mark, entry, table_text, placeholder, reason in outcomes:
+        rows_text = placeholder
+        if placeholder == "@ROWS@":
             total = 0
             for name in table_text.split(","):
                 count = after.get(f"{schema}.{name}", 0)

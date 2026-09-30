@@ -16,7 +16,7 @@ class Paths:
     bin_dir: Path         # EXAKIT_BIN_DIR, default ~/.local/bin (the launcher and add-on launchers)
 
     @classmethod
-    def from_env(cls, env: Mapping[str, str], user_home: Path) -> "Paths":
+    def from_env(cls, env: Mapping[str, str], user_home: Path) -> Paths:
         home = Path(env.get("EXAKIT_HOME") or user_home / ".exasol-starter-kit")
         bin_dir = Path(env.get("EXAKIT_BIN_DIR") or user_home / ".local" / "bin")
         return cls(home=home.expanduser(), bin_dir=bin_dir.expanduser())

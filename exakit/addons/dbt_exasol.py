@@ -8,6 +8,7 @@ from pathlib import Path
 from exakit.adapters.fs.atomic import atomic_write_text
 from exakit.lifecycles.base import temp_dir
 from exakit.lifecycles.python_venv import PythonVenvLifecycle
+import contextlib
 
 PROFILE_NAME = "exasol_starter_kit"
 SCHEMA = "DBT"
@@ -131,10 +132,8 @@ class Lifecycle(PythonVenvLifecycle):
         if dry_run:
             self.ctx.ui.text("  (anything else in that folder is left alone)")
             return removed
-        try:
+        with contextlib.suppress(OSError):
             self.home.rmdir()
-        except OSError:
-            pass
         self.forget()
         self.ctx.ui.ok("dbt-exasol removed - reinstall any time with: exakit marketplace")
         return removed

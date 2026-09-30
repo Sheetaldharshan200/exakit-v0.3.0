@@ -21,7 +21,7 @@ REPO = Path(__file__).resolve().parents[2]
 
 
 def _run(cmd: list[str], env: dict[str, str], cwd: Path = REPO) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=300)
+    return subprocess.run(cmd, check=False, cwd=cwd, env=env, capture_output=True, text=True, timeout=300)
 
 
 @unittest.skipUnless(shutil.which("sh") and os.name != "nt", "POSIX shell installer")

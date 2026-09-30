@@ -62,7 +62,7 @@ class CachedVersionsSource:
 
     @classmethod
     def from_env(cls, env: Mapping[str, str], *, kit_repo: str, cache_path: Path, baked_path: Path | None,
-                 downloader: Downloader, log: Log) -> "CachedVersionsSource":
+                 downloader: Downloader, log: Log) -> CachedVersionsSource:
         url = env.get("EXAKIT_VERSIONS_URL") or DEFAULT_URL_TEMPLATE.format(repo=kit_repo)
         ttl_text = env.get("EXAKIT_VERSIONS_TTL", "")
         ttl = int(ttl_text) if ttl_text.isdigit() else DEFAULT_TTL_SECONDS

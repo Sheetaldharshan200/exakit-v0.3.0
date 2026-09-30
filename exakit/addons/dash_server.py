@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import re
 import tarfile
-import urllib.request
 from pathlib import Path
 
 from exakit.adapters.process.ports import port_holders, port_in_use
 from exakit.adapters.process.services import ServiceSpec
+from exakit.adapters.net.http import http_status
 from exakit.domain.errors import Failed
 from exakit.lifecycles.base import ServiceHooks, temp_dir, wait_for
 from exakit.lifecycles.python_venv import PythonVenvLifecycle
+import contextlib
 
 DEFAULT_PORT = 5100
 
@@ -105,13 +105,9 @@ class Lifecycle(PythonVenvLifecycle):
         raise Failed(f"no free port found between {port} and {port + 20} - free one, or name one with EXAKIT_DASH_SERVER_PORT=<port>")
 
     def http_answers(self, port: int, path: str = "/mcp") -> bool:
-        try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=5) as response:  # noqa: S310 - loopback
-                return response.status in (200, 301, 302, 303, 307, 308) or 400 <= response.status < 500
-        except urllib.error.HTTPError as err:
-            return err.code < 500
-        except Exception:
-            return False
+        """Something HTTP answers on the port (any status below 500 counts: the server is up)."""
+        status = http_status(f"http://127.0.0.1:{port}{path}", timeout=5)
+        return status is not None and status < 500
 
     # --- install -----------------------------------------------------------------------
 
@@ -169,7 +165,7 @@ class Lifecycle(PythonVenvLifecycle):
         self.write_launchers()
         self.record(version=version, venv=str(self.venv), python=str(self.python), command=str(self.launcher), port=port,
                     instance=str(self.instance))
-        from exakit.app import mcp  # noqa: PLC0415 - the endpoint joins the connected clients
+        from exakit.app import mcp
         try:
             mcp.register_addon_servers(self.ctx, "dash-server")
         except Exception as err:
@@ -222,13 +218,9 @@ class Lifecycle(PythonVenvLifecycle):
         if holder:
             self.ctx.ui.warn(f"Port {port} is held by another process ({holder}), so dash-server cannot start. Move it with: EXAKIT_DASH_SERVER_PORT=<port> exakit update")
             raise Failed(f"port {port} is held by another process", remedy="exakit start")
-        import subprocess  # noqa: PLC0415 - a detached long-running process, not a tool call
-        self.ctx.paths.logs.mkdir(parents=True, exist_ok=True)
-        with self.log_file.open("a") as log:
-            proc = subprocess.Popen([str(self.launcher), "--host", "127.0.0.1", "--port", str(port)], stdout=log, stderr=subprocess.STDOUT,
-                                    stdin=subprocess.DEVNULL, start_new_session=True)
+        pid = self.ctx.runner.spawn([str(self.launcher), "--host", "127.0.0.1", "--port", str(port)], log_path=self.log_file)
         self.home.mkdir(parents=True, exist_ok=True)
-        self.pidfile.write_text(str(proc.pid))
+        self.pidfile.write_text(str(pid))
         if wait_for(lambda: self.http_answers(port), seconds=60):
             self.record(port=port)
             self.ctx.ui.ok(f"dash-server is running: http://127.0.0.1:{port} (MCP: /mcp)")
@@ -282,10 +274,8 @@ class Lifecycle(PythonVenvLifecycle):
 
     def uninstall(self, *, dry_run: bool) -> list[str]:
         if not dry_run:
-            try:
+            with contextlib.suppress(Failed):
                 self.stop()
-            except Failed:
-                pass
         removed = self.remove_paths([self.venv, self.pidfile, self.launcher], dry_run=dry_run)
         if self.instance.exists():
             if self.ctx.env.get("EXAKIT_UNINSTALL_FULL") == "1":
@@ -294,12 +284,10 @@ class Lifecycle(PythonVenvLifecycle):
                 self.ctx.ui.text(f"  keeping your dashboards: {self.instance} (reinstalling the add-on picks them up again; "
                                  "delete the folder yourself if you no longer want them)")
         elif not dry_run and self.home.exists():
-            try:
+            with contextlib.suppress(OSError):
                 self.home.rmdir()
-            except OSError:
-                pass
         if not dry_run:
-            from exakit.app import mcp  # noqa: PLC0415
+            from exakit.app import mcp
             try:
                 mcp.unregister_server_entry(self.ctx, "dash-server", "dash-server")
             except Exception as err:

@@ -63,5 +63,18 @@ Update this file in the same commit as the work. Design sections are in
 - [x] D1 `setup/lib`, the legacy CLIs, the setup scripts, `upgrade/`, `setup/load-data.sh` and every legacy `tests/*.sh` / `*.ps1` suite deleted; `setup/` holds only the two launcher copies; help documents in `help/`, the what's-new file in `help/whats-new.json`, the cargo shim source in `shim/`; Kit 2 (`upgrade-kit2`, `rollback-kit2`, `upgrade/`) removed outright - it was never going to ship; `MIGRATED_COMMANDS` removed; CI runs the Python suites on ubuntu, macOS and Windows; the bump workflows retune `fallback_version` in the catalog (D27)
 - [x] D2 `CLAUDE.md`, `MARKETPLACE.md` (the add-on walkthrough is the catalog file plus a `Lifecycle` subclass), `AGENTS.md` describe only the Python kit
 - [ ] D3 Optional: `ui/tui/` on Textual in the kit venv, `exakit ui` command (decision A3) - not started
-- [ ] D4 Manual acceptance M-3 and M-5 (a real install through the Python path on a scratch macOS/Linux machine and on Windows) - the first thing to run before tagging 0.3.0
+- [x] D4 Manual acceptance M-3 on a scratch Linux machine: `.github/workflows/real-install.yml` (run 36718941027, 2026-09-30) installed with the analyst persona, status running, tpch loaded, the agent commands, a second run skipping every step, stop/start/update/data-load, uninstall. macOS runners cannot virtualise: everything but the database proven there. M-5 (Windows 11) still manual
+- [ ] D4b Manual acceptance M-5 on Windows 11 (PowerShell 5.1) and M-4 on a 0.2.0 install
 - [ ] D5 The exapump glibc container shim (Linux with glibc < 2.38) is not ported; Windows uninstall leaves `$EXAKIT_HOME/python` for the user to delete
+
+## Phase E: quality gates (2026-09-30)
+
+- [x] E1 `tools/check_standard.py`: the coding standard mechanically (size, complexity, layers, boundary, stdlib, shell ASCII, docstrings noted); the deviations it found were fixed (the Log protocol moved to `domain/`, daemons and HTTP probes through the adapters, `install.sh` ASCII)
+- [x] E2 `ruff.toml`: the SonarQube-aligned lint; 485 findings fixed or decided (every ignore carries its reason); `sonar-project.properties`
+- [x] E3 `tests/scenarios`: every command in every machine state, both output modes, the refusal paths of the mutating commands, the password never printed, the record never changed by a read; the edge cases (unknown persona, flag placement, colour, spaces in paths, corrupt record, concurrency, help in both modes)
+- [x] E4 `tools/run_tests.py` (JUnit XML, tests.json, test-report.md, coverage), `tools/release_check.py` (the release gate), `tools/qa_report.py` (the QA report); `docs/release-checklist.md`
+- [x] E5 `.github/workflows/quality.yml`: standard + lint + shellcheck, the suites on Linux 3.11/3.12, macOS and Windows with coverage, the release gate, the QA report as the run summary, SonarQube when the token is set (`windows-ps51.yml` and the `kit-tests` job folded in)
+- [x] E6 Bugs the gates found and fixed: the installer never recorded the persona; a corrupt install record was a traceback; `update --dry-run` acted; `<command> --help --json` printed no JSON; the dry run did not validate `EXAKIT_PERSONA`; a 3.12-only f-string in `domain/catalog.py`; the two package workflows did not parse
+- [ ] E7 Raise the coverage gate from 65% as `app/legacy_*`, `app/deploy.py` and the runtime adapter gain tests
+- [ ] E8 Five commits in the pushed history carry an attribution trailer (before the rule); the release gate warns until the history is rewritten, which is the owner's call
+- [ ] E9 Docstrings on the 650 public functions the standard notes (not gating)

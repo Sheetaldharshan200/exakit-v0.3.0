@@ -28,7 +28,7 @@ REPAIRABLE_CODES = {"permission_drift", "manifest_drift_hash_mismatch", "manifes
 
 def _clients(ctx: Context):
     if ctx.clients is None:
-        from exakit.adapters.clients import InProcessClientOps  # noqa: PLC0415
+        from exakit.adapters.clients import InProcessClientOps
         ctx.clients = InProcessClientOps(kit_root(ctx))
     return ctx.clients
 
@@ -68,7 +68,7 @@ def _select_from_env(ctx: Context, raw: str) -> list[str] | None:
 
 
 def _select_from_menu(ctx: Context) -> list[str] | None:
-    states = detected_clients(ctx) or {c: "pending" for c in CLIENT_IDS}
+    states = detected_clients(ctx) or dict.fromkeys(CLIENT_IDS, "pending")
     pending = [c for c in CLIENT_IDS if states.get(c) == "pending"]
     if not pending:
         if not any(s == "connected" for s in states.values()):
@@ -100,10 +100,10 @@ def setup(ctx: Context) -> Result:
     configure_readonly_access(ctx)
     ctx.ui.info("Applying MCP setup")
     call = _clients(ctx).setup(ctx.paths.home, chosen)
-    return _report_setup(ctx, call, chosen)
+    return _report_setup(ctx, call)
 
 
-def _report_setup(ctx: Context, call: ClientCall, chosen: list[str]) -> Result:
+def _report_setup(ctx: Context, call: ClientCall) -> Result:
     doc = call.doc or {}
     details = doc.get("details") or {}
     configured = list(details.get("configured_clients") or [])
@@ -160,7 +160,7 @@ def _clients_from_args(args: list[str]) -> list[str]:
     try:
         return parse_client_selection(" ".join(args))
     except BadInput:
-        raise BadInput("Please choose valid AI clients: claude, claude_desktop, claude_code, codex, cursor, copilot, gemini, opencode, continue, or all.")
+        raise BadInput("Please choose valid AI clients: claude, claude_desktop, claude_code, codex, cursor, copilot, gemini, opencode, continue, or all.") from None
 
 
 def status(ctx: Context, args: list[str]) -> Result:
@@ -270,7 +270,7 @@ def remove(ctx: Context, args: list[str]) -> Result:
     ctx.manifest()
     clients = _clients_from_args(args)
     call = _clients(ctx).operation("uninstall", ctx.paths.home, clients)
-    if call.doc is None or call.code not in (0,) and (call.doc or {}).get("status") not in ("no_change",):
+    if call.doc is None or (call.code not in (0,) and (call.doc or {}).get("status") not in ("no_change",)):
         raise Failed("Could not remove the MCP entries", remedy="exakit mcp-status")
     doc = _stamp(dict(call.doc))
     if not ctx.json:

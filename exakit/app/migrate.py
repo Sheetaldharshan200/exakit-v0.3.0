@@ -70,12 +70,12 @@ def _restore_waiting(ctx: Context, db: ldb.LegacyDb, directory: Path, outcome: M
     return outcome
 
 
-def _stop_for_port(ctx: Context, db: ldb.LegacyDb, db_port: int, outcome: MigrateOutcome) -> bool:
+def _stop_for_port(ctx: Context, db_port: int, outcome: MigrateOutcome) -> bool:
     rt = runtime(ctx)
     with ctx.ui.busy("Stopping your database for the copy"):
         try:
             rt.stop(ctx.ui.info)
-        except Exception:  # noqa: BLE001
+        except Exception:
             _fail(ctx, outcome, "Your database could not be stopped, so the container cannot take the port.", "exakit stop, then exakit migrate docker-nano")
             return False
     for _ in range(15):
@@ -130,7 +130,7 @@ def migrate_now(ctx: Context, db: ldb.LegacyDb, *, yes: bool) -> MigrateOutcome:
 def _copy_and_restore(ctx: Context, db: ldb.LegacyDb, state: str, directory: Path, outcome: MigrateOutcome, *, clash: bool) -> MigrateOutcome:
     db_stopped = False
     if clash:
-        if not _stop_for_port(ctx, db, runtime(ctx).db_port(), outcome):
+        if not _stop_for_port(ctx, runtime(ctx).db_port(), outcome):
             return outcome
         db_stopped = True
     started = False

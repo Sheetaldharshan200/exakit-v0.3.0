@@ -177,7 +177,7 @@ class DiscoverClientsTests(unittest.TestCase):
         }
         result = subprocess.run(
             [sys.executable, "-m", "mcp", "discover-clients", "--runtime-root", str(self._temp_dir)],
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
             env=env,
             cwd=str(repo_root),

@@ -8,7 +8,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
-from exakit.domain.errors import NotInstalled
+from exakit.domain.errors import Failed, NotInstalled
 from exakit.domain.manifest import Manifest
 
 from .atomic import atomic_write_text
@@ -22,11 +22,12 @@ class ManifestStore(Protocol):
     def update(self, change: Callable[[Manifest], None]) -> Manifest: ...
 
 
-class CorruptManifest(Exception):
-    """The file exists but is not JSON. The caller decides whether to quarantine."""
+class CorruptManifest(Failed):
+    """The file exists but is not JSON. The installer quarantines and rebuilds it; every other command reports it (exit 1)."""
 
     def __init__(self, path: Path) -> None:
-        super().__init__(f"{path} does not parse as JSON")
+        super().__init__(f"The install record {path} does not parse as JSON (an interrupted run?).", remedy="exakit install",
+                         hint="the installer keeps the broken file aside, rebuilds the record and recovers the completed steps")
         self.path = path
 
 

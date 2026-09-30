@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import unittest
-from pathlib import Path
 from unittest import mock
 
-from exakit.app import install, install_steps
-from exakit.domain.errors import Failed, NotConfirmed
+from exakit.app import install
+from exakit.domain.errors import Failed
 from tests.unit.app.harness import MANIFEST, Sandbox
 from tests.unit.fakes import FakeRuntime
 
@@ -177,7 +175,7 @@ class SoftFailureTest(unittest.TestCase):
             box.close()
 
     def test_a_hard_failure_before_the_steps_releases_the_lock_and_names_the_step(self):
-        box, calls, patches = box_with()
+        box, _calls, patches = box_with()
         try:
             patches[2] = mock.patch("exakit.app.install.check_requirements", mock.Mock(side_effect=Failed("Insufficient memory: 4 GB.")))
             with Patched(patches), self.assertRaises(Failed) as caught:
@@ -199,6 +197,9 @@ class AnswersTest(unittest.TestCase):
             self.assertEqual(box.ctx.env["EXAKIT_MCP_CLIENTS"], "all")
             self.assertEqual(box.ctx.env["EXAKIT_PERSONA_ACTIVE"], "1")
             self.assertIn("mcp.setup", calls.log)
+            recorded = box.manifest()
+            self.assertEqual((recorded.get("persona.id"), recorded.get("persona.source")), ("data-scientist", "install"))
+            self.assertTrue(recorded.get("persona.requested_at"))
         finally:
             box.close()
 

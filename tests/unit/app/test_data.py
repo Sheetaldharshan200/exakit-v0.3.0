@@ -1,4 +1,3 @@
-import json
 import unittest
 from pathlib import Path
 
@@ -269,7 +268,8 @@ class FilesTest(unittest.TestCase):
             self.assertEqual(m.get("data.last_load.files"), 2)
             receipts = data_files.Receipts.load(box.ctx.paths.cache / "load-receipts.tsv")
             self.assertEqual({r[0] for r in receipts.rows}, {"STARTER_KIT.SALES", "STARTER_KIT.ORDERS"})
-            box.out.truncate(0); box.out.seek(0)
+            box.out.truncate(0)
+            box.out.seek(0)
             pump.uploads.clear()
             result = data_folder.load_folder(box.ctx, folder)
             self.assertEqual(pump.uploads, [])
@@ -285,7 +285,7 @@ class FilesTest(unittest.TestCase):
             (folder / "sales.csv").write_text("a,b\n1,2\n")
             pump = FakeExapump([("EXA_ALL_SCHEMAS", Completed(0, "EXAKIT_SCHEMA_PRESENT", "")), ("LISTING_ANSWERED", _listing({"STARTER_KIT.SALES": 9}))])
             box.ctx.exapump = pump
-            result = data_folder.load_folder(box.ctx, folder)
+            data_folder.load_folder(box.ctx, folder)
             self.assertEqual(pump.uploads, [])
             self.assertIn("not loaded: the table already holds rows this kit did not put there", box.screen())
             self.assertIn("already holds every file", box.screen())

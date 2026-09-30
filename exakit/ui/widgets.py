@@ -39,7 +39,8 @@ def wrap(text: str, width: int) -> list[str]:
         return [text]
     lines: list[str] = []
     current = ""
-    for word in text.split(" "):
+    for token in text.split(" "):
+        word = token
         while visible_len(word) > width:
             room = width - (visible_len(current) + 1 if current else 0)
             if room <= 0:

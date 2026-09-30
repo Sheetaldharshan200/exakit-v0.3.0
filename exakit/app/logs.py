@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime
@@ -29,7 +28,7 @@ def targets(ctx: Context) -> list[LogTarget]:
         out.append(LogTarget("setup", "Installer and setup runs", installs[-1]))
     manifest = ctx.manifest_or_none()
     for addon in ctx.catalog.addons():
-        if manifest and addon_installed_version(ctx, addon, manifest)[1] and addon.service is not None or addon.id == "json-tables":
+        if (manifest and addon_installed_version(ctx, addon, manifest)[1] and addon.service is not None) or addon.id == "json-tables":
             path = ctx.paths.logs / f"{addon.id}.log"
             if manifest and addon_installed_version(ctx, addon, manifest)[1]:
                 out.append(LogTarget(addon.id, f"{addon.id} service", path))
@@ -121,7 +120,7 @@ def _show(ctx: Context, path: Path, *, follow: bool, lines: int) -> None:
     if follow:
         ctx.ui.info(f"Following {path} - Ctrl-C to stop")
         sys.stdout.flush()
-        subprocess.call(["tail", "-n", str(lines), "-f", str(path)])
+        ctx.runner.interactive(["tail", "-n", str(lines), "-f", str(path)])
         return
     text = path.read_text(encoding="utf-8", errors="replace").splitlines()
     ctx.ui.text("\n".join(text[-lines:]))

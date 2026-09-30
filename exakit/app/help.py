@@ -386,7 +386,7 @@ class HelpScreens:
 def render(docs: dict[str, dict[str, Any]], mode: str, arg: str, *, color: bool, width: int) -> tuple[str, int]:
     """One of overview | all | component | command | catalog -> (text, exit code)."""
     screens = HelpScreens(docs, color=color, width=width)
-    code = {"overview": screens.overview, "all": screens.all_commands}.get(mode, None)
+    code = {"overview": screens.overview, "all": screens.all_commands}.get(mode)
     if code is not None:
         rc = code()
     elif mode == "component":

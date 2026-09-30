@@ -216,7 +216,7 @@ def apply_allowlist(ctx: Context) -> str:
     if not isinstance(permissions, dict):
         return "SKIP permissions-not-an-object"
     added = 0
-    for key, wanted_entries in zip(("allow", "deny"), allowlist_entries()):
+    for key, wanted_entries in zip(("allow", "deny"), allowlist_entries(), strict=False):
         existing = permissions.setdefault(key, [])
         if not isinstance(existing, list):
             continue
@@ -241,7 +241,7 @@ def remove_allowlist(ctx: Context) -> str:
     if not isinstance(permissions, dict):
         return "REMOVED 0"
     removed = 0
-    for key, ours in zip(("allow", "deny"), allowlist_entries()):
+    for key, ours in zip(("allow", "deny"), allowlist_entries(), strict=False):
         existing = permissions.get(key)
         if isinstance(existing, list):
             kept = [e for e in existing if e not in ours]

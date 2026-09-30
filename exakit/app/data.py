@@ -300,10 +300,7 @@ def menu(ctx: Context) -> Result:
     options.append(Option("local", "A local CSV / Parquet / JSON file, or a folder of them"))
     options.append(Option("skip", "Skip"))
     defaults = [d.id for d in todo] or ["local"]
-    if not ctx.ui.interactive:
-        chosen = defaults
-    else:
-        chosen = ctx.ui.checkboxes("Datasets to load", options, defaults=defaults)
+    chosen = defaults if not ctx.ui.interactive else ctx.ui.checkboxes("Datasets to load", options, defaults=defaults)
     if not chosen or "skip" in chosen:
         ctx.ui.info("Data loading cancelled.")
         return Result(True, "cancelled")

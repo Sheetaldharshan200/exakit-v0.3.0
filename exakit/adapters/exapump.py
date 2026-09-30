@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import os
 import re
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Protocol
+from typing import Protocol
+from collections.abc import Iterator
 
 
 from .fs.atomic import atomic_write_text
@@ -53,10 +54,7 @@ def write_profile(config_path: Path, profile: Profile) -> None:
         text = config_path.read_text(encoding="utf-8")
     section = profile.toml()
     pattern = re.compile(rf"\[{re.escape(profile.name)}\][^\[]*", re.S)
-    if pattern.search(text):
-        text = pattern.sub(section.replace("\\", "\\\\"), text, count=1)
-    else:
-        text = (text.rstrip("\n") + "\n\n" if text.strip() else "") + section
+    text = pattern.sub(section.replace("\\", "\\\\"), text, count=1) if pattern.search(text) else (text.rstrip("\n") + "\n\n" if text.strip() else "") + section
     atomic_write_text(config_path, text, mode=0o600)
 
 
@@ -72,8 +70,8 @@ class Exapump(Protocol):
 class ExapumpCli:
     """The real binary. ``config`` overrides EXAPUMP_CONFIG for one call (a temp file with extra profiles)."""
 
-    def __init__(self, bin: str, runner: Runner, *, config_path: Path | None = None) -> None:
-        self.bin = bin
+    def __init__(self, binary: str, runner: Runner, *, config_path: Path | None = None) -> None:
+        self.bin = binary
         self.runner = runner
         self.config_path = config_path
 
@@ -119,10 +117,8 @@ def temp_config(directory: Path, profiles: list[Profile]) -> Iterator[Path]:
     try:
         yield path
     finally:
-        try:
+        with suppress(OSError):
             path.unlink()
-        except OSError:
-            pass
 
 
 # --- parsing the answers the kit relies on ---------------------------------------
@@ -137,8 +133,8 @@ def table_listing(done: Completed) -> dict[str, int] | None:
     if not done.ok or "EXAKIT.LISTING_ANSWERED|1" not in done.out:
         return None
     rows: dict[str, int] = {}
-    for line in done.out.splitlines():
-        line = line.strip()
+    for raw in done.out.splitlines():
+        line = raw.strip()
         if _LISTING_LINE.match(line) and not line.startswith("EXAKIT.LISTING_ANSWERED|"):
             name, count = line.rsplit("|", 1)
             rows[name.upper()] = int(count)
@@ -147,7 +143,7 @@ def table_listing(done: Completed) -> dict[str, int] | None:
 
 def failure_reason(log_tail: str, *, delimiter_name: str = "comma", crlf: bool = False) -> str:
     """The one line that explains a failed upload, from exapump's last ``Error:`` line."""
-    errors = [l for l in log_tail.splitlines() if l.startswith("Error: ")]
+    errors = [line for line in log_tail.splitlines() if line.startswith("Error: ")]
     if not errors:
         return "exapump did not say why (see the log)"
     line = re.sub(r"\{[^}]*\}", "<JSON value>", errors[-1])

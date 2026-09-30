@@ -108,7 +108,7 @@ def install_env(ctx: Context, persona_id: str) -> dict[str, str]:
 
 def _bind(ctx: Context, step: Step, answers) -> None:
     """Give a pending step the use case that does it; each one records its own manifest facts."""
-    from . import data, marketplace, mcp, skills  # noqa: PLC0415 - the sections this plan drives
+    from . import data, marketplace, skills
     if step.section == "datasets":
         step.run = lambda: data.load(ctx, data.dataset(ctx, step.id))
         step.remedy = step.remedy or f"exakit data-load {step.id}"
@@ -125,8 +125,8 @@ def _bind(ctx: Context, step: Step, answers) -> None:
 
 
 def _connect(ctx: Context, clients: str) -> None:
-    from exakit.domain.errors import Failed  # noqa: PLC0415
-    from . import mcp  # noqa: PLC0415
+    from exakit.domain.errors import Failed
+    from . import mcp
     env = {**dict(ctx.env), "EXAKIT_MCP_CLIENTS": clients}
     saved = ctx.env
     ctx.env = env
@@ -139,7 +139,7 @@ def _connect(ctx: Context, clients: str) -> None:
 
 
 def _install_addon(ctx: Context, marketplace, addon_id: str) -> None:
-    from exakit.domain.errors import Failed  # noqa: PLC0415
+    from exakit.domain.errors import Failed
     if not marketplace.install_one(ctx, ctx.catalog.addon(addon_id)):
         raise Failed(f"{addon_id} did not finish installing", remedy=f"exakit update {addon_id}")
 

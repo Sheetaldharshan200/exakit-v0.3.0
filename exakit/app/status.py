@@ -60,41 +60,53 @@ def install_progress(ctx: Context, manifest: Manifest) -> tuple[bool, str | None
 
 def remedies_for(ctx: Context, db: str, running: bool, installing: bool, step: str | None, steps: list[str],
                  pyexasol: str | None) -> tuple[dict[str, str], dict[str, str], list[str]]:
+    """(remedies, hints, missing steps): one runnable command per thing that is wrong, and the sentence behind it."""
     install_cmd = ctx.install_command()
     remedies: dict[str, str] = {}
     hints: dict[str, str] = {}
     if not pyexasol:
         remedies["pyexasol"] = "exakit update"
-    if not running:
-        if db.startswith("interrupted"):
-            remedies["database"] = "exakit repair-runtime"
-        elif db.startswith("not installed"):
-            remedies["database"] = install_cmd
-            hints["database"] = "no database is deployed; the installer resumes at the unfinished step"
-        elif db.startswith("not deployed"):
-            remedies["database"] = "exakit repair-runtime"
-            hints["database"] = "the launcher is installed but no database is deployed; this deploys one"
-        else:
-            remedies["database"] = "exakit start"
-    if db.startswith("conflict"):
-        remedies["database"] = "exakit start"
-        hints["database"] = "another process is listening on the database port - stop it first, then run the remedy"
+    fix, hint = _database_remedy(db, running, install_cmd)
+    if fix:
+        remedies["database"] = fix
+    if hint:
+        hints["database"] = hint
     if installing:
         remedies["install"] = "exakit status --json"
         hints["install"] = f"the installer is still running (step: {step or 'unknown'}) - poll the remedy until status is running"
     elif step:
         remedies["install"] = install_cmd
         hints["install"] = f"the installer died at step '{step}' - re-running resumes there"
-    missing: list[str] = []
-    if not installing:
-        for step_id, fix in STEP_REMEDIES:
-            if step_id not in steps:
-                missing.append(step_id)
-                if step_id not in remedies:
-                    remedies[step_id] = fix or install_cmd
-                    if fix is None:
-                        hints[step_id] = "this install step never finished; the installer resumes at it"
+    missing = [] if installing else _missing_steps(steps, remedies, hints, install_cmd)
     return remedies, hints, missing
+
+
+def _database_remedy(db: str, running: bool, install_cmd: str) -> tuple[str | None, str | None]:
+    """The one command that brings the database back, and the sentence that explains it; nothing when it runs."""
+    if db.startswith("conflict"):
+        return "exakit start", "another process is listening on the database port - stop it first, then run the remedy"
+    if running:
+        return None, None
+    if db.startswith("interrupted"):
+        return "exakit repair-runtime", None
+    if db.startswith("not installed"):
+        return install_cmd, "no database is deployed; the installer resumes at the unfinished step"
+    if db.startswith("not deployed"):
+        return "exakit repair-runtime", "the launcher is installed but no database is deployed; this deploys one"
+    return "exakit start", None
+
+
+def _missing_steps(steps: list[str], remedies: dict[str, str], hints: dict[str, str], install_cmd: str) -> list[str]:
+    """The install steps that never finished, each with its remedy unless a more specific one is already there."""
+    missing: list[str] = []
+    for step_id, fix in STEP_REMEDIES:
+        if step_id not in steps:
+            missing.append(step_id)
+            if step_id not in remedies:
+                remedies[step_id] = fix or install_cmd
+                if fix is None:
+                    hints[step_id] = "this install step never finished; the installer resumes at it"
+    return missing
 
 
 def legacy_database(manifest: Manifest, install_cmd: str) -> dict[str, Any] | None:
@@ -166,7 +178,7 @@ def run(ctx: Context) -> Result:
     if legacy:
         payload["legacy_database"] = legacy
     if not ctx.json:
-        _render(ctx, manifest, db, running, installing, step, loaded, service_states, remedies, missing)
+        _render(ctx, manifest, db, running, installing, step, loaded, service_states)
     return Result(True, top, remedy=remedy, remedy_hint=hints.get("install") or hints.get("database"), data=payload,
                   exit_code=0 if running and not installing else 3)
 
@@ -179,7 +191,7 @@ def _pad(label: str, value: str) -> str:
 
 
 def _render(ctx: Context, manifest: Manifest, db: str, running: bool, installing: bool, step: str | None, loaded: list[str],
-            service_states: dict[str, str], remedies: dict[str, str], missing: list[str]) -> None:
+            service_states: dict[str, str]) -> None:
     ctx.ui.panel("Kit", _kit_lines(ctx, manifest, db, running, installing, step))
     ctx.ui.text("")
     ctx.ui.panel("Add-ons", _addon_lines(ctx, manifest, service_states))

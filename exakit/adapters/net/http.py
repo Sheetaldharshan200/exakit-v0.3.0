@@ -29,6 +29,19 @@ def _require_https(url: str) -> None:
         raise BadInput(f"Refusing to download over a non-HTTPS URL: {url}")
 
 
+def http_status(url: str, *, timeout: float = 5) -> int | None:
+    """The status code an HTTP GET of ``url`` answers, or None when nothing answers at all."""
+    if not url.lower().startswith(("https://", "http://")):
+        raise ValueError(f"unsupported URL scheme: {url}")
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:  # noqa: S310 - http(s) only, checked above
+            return int(response.status)
+    except urllib.error.HTTPError as err:
+        return int(err.code)
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+
+
 class UrllibDownloader:
     """The real downloader. Standard library only."""
 
@@ -41,7 +54,9 @@ class UrllibDownloader:
         headers = {"User-Agent": self.user_agent, "Accept": "*/*"}
         if token:
             headers["Authorization"] = f"Bearer {token}"
-        request = urllib.request.Request(url, headers=headers)
+        if not url.lower().startswith(("https://", "http://")):
+            raise ValueError(f"unsupported URL scheme: {url}")
+        request = urllib.request.Request(url, headers=headers)  # noqa: S310 - http(s) only, checked above
         last: Exception | None = None
         for attempt in range(2):
             try:

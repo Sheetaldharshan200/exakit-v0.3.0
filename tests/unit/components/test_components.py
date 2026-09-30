@@ -340,7 +340,7 @@ class SkillSetTest(unittest.TestCase):
     def test_source_checkout_places_what_it_carries(self):
         box = Sandbox(manifest={**MANIFEST, "components": {**MANIFEST["components"], "skills": {"version": "0.0.1"}}})
         try:
-            with mock.patch("exakit.app.skills.install", lambda ctx: 3) as placed:
+            with mock.patch("exakit.app.skills.install", lambda ctx: 3):
                 for_component(box.ctx, "skills").update()
             self.assertIn("source checkout", box.screen())
         finally:

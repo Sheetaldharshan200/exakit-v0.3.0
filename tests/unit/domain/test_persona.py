@@ -15,13 +15,13 @@ def _persona(pid="data-scientist", datasets="all", clients="all", addons=("dash-
 
 
 def _machine(**over) -> MachineState:
-    base = dict(
-        all_datasets=tuple(ALL_DS), loaded_datasets=frozenset({"tpch"}),
-        client_states={"claude_code": "pending", "cursor": "connected", "codex": "missing"},
-        addon_states={"dash-server": (ADDON_AVAILABLE, ""), "json-tables": (ADDON_UNAVAILABLE, "no engine for macos-x86_64"),
+    base = {
+        "all_datasets": tuple(ALL_DS), "loaded_datasets": frozenset({"tpch"}),
+        "client_states": {"claude_code": "pending", "cursor": "connected", "codex": "missing"},
+        "addon_states": {"dash-server": (ADDON_AVAILABLE, ""), "json-tables": (ADDON_UNAVAILABLE, "no engine for macos-x86_64"),
                       "exasol-vscode": (ADDON_SYSTEM, ""), "dbt-exasol": (ADDON_INSTALLED, "")},
-        all_addons=("dash-server", "dbt-exasol", "exasol-vscode", "json-tables"), skills_current=True,
-    )
+        "all_addons": ("dash-server", "dbt-exasol", "exasol-vscode", "json-tables"), "skills_current": True,
+    }
     base.update(over)
     return MachineState(**base)
 
@@ -108,7 +108,7 @@ class PlanTest(unittest.TestCase):
         self.assertEqual([s.id for s in plan.steps if s.section == "addons"], ["dash-server", "dbt-exasol", "exasol-vscode", "json-tables"])
         self.assertEqual({s.id: s.state for s in plan.steps if s.section == "addons"}["exasol-vscode"], StepState.SKIPPED)
         plan = plan_for(_persona(addons=("ghost",)), _machine())
-        ghost = [s for s in plan.steps if s.id == "ghost"][0]
+        ghost = next(s for s in plan.steps if s.id == "ghost")
         self.assertEqual(ghost.state, StepState.SKIPPED)
 
     def test_explicit_answers_shape_the_plan(self):

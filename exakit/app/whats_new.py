@@ -21,7 +21,7 @@ def _load(root: Path) -> dict[str, list[str]] | None:
         return None
     if not isinstance(doc, dict):
         return None
-    return {k: [str(l) for l in v] for k, v in doc.items() if not k.startswith("_") and isinstance(v, list)}
+    return {k: [str(item) for item in v] for k, v in doc.items() if not k.startswith("_") and isinstance(v, list)}
 
 
 def versions(root: Path) -> list[str]:

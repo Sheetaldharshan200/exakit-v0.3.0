@@ -16,6 +16,7 @@ from pathlib import Path
 from exakit.domain.errors import Failed
 
 from .atomic import atomic_write_text
+import contextlib
 
 _TOKEN_ALPHABET = string.ascii_uppercase + string.digits
 
@@ -54,10 +55,8 @@ class CredentialStore:
         return path
 
     def remove(self, name: str) -> None:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             self.path(name).unlink()
-        except FileNotFoundError:
-            pass
 
     @staticmethod
     def new_token() -> str:

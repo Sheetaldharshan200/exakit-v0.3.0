@@ -45,6 +45,7 @@
     {
       "title": "Repair and removal",
       "commands": [
+        "install",
         "preflight",
         "repair-runtime",
         "migrate",
@@ -64,6 +65,21 @@
     }
   ],
   "commands": [
+    {
+      "command": "install",
+      "options": "[--dry-run] [--yes]",
+      "summary": "Run (or resume) the install of this kit; completed steps are skipped.",
+      "description": "The same installer install.sh and install.ps1 hand over to: the machine check, the Exasol launcher, the local database, exapump, the sample data, the AI bridge, pyexasol and the exakit command, in that order, each step recorded so a re-run resumes where it stopped. --dry-run prints the plan and changes nothing. EXAKIT_PERSONA=<id> answers every choice from a persona; the other EXAKIT_* answers in AGENTS.md win over it, variable by variable.",
+      "exit_codes": {
+        "0": "installed, or every step already done",
+        "1": "a step failed; the log names it and a re-run resumes there",
+        "2": "an unknown persona or option"
+      },
+      "examples": [
+        "exakit install --dry-run",
+        "EXAKIT_PERSONA=analyst exakit install"
+      ]
+    },
     {
       "command": "preflight",
       "options": "",

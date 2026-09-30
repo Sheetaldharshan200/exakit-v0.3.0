@@ -17,7 +17,7 @@ Schema history (always additive, so an older kit reads a newer file):
 from __future__ import annotations
 
 import copy
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from typing import Any
 
 from .platform import Platform
@@ -28,7 +28,7 @@ STEP_IDS: tuple[str, ...] = ("launcher", "runtime", "exapump", "mcp", "pyexasol"
 
 def utc_now() -> str:
     """The timestamp format every record in the manifest uses."""
-    return datetime.now(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class Manifest:
@@ -40,7 +40,7 @@ class Manifest:
         self._doc = doc
 
     @classmethod
-    def new(cls, *, platform: Platform, log_dir: str, steps_completed: list[str] | None = None) -> "Manifest":
+    def new(cls, *, platform: Platform, log_dir: str, steps_completed: list[str] | None = None) -> Manifest:
         """The document a fresh install starts from (the legacy initial shape, plus schema 2)."""
         return cls({
             "manifest_version": 1,
@@ -65,7 +65,7 @@ class Manifest:
         value = self._doc.get("schema_version", 1)
         return value if isinstance(value, int) else 1
 
-    def copy(self) -> "Manifest":
+    def copy(self) -> Manifest:
         return Manifest(copy.deepcopy(self._doc))
 
     # --- dot-path access -------------------------------------------------------

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from exakit.adapters.process.runner import Runner
+import contextlib
 
 RUNTIME_NOTE_WORDS = ("exakit start", "cannot start", "held by another process", "not running")
 
@@ -23,10 +24,8 @@ def read_failure_note(path: Path) -> tuple[str | None, str | None]:
 def write_failure_note(path: Path, reason: str, when: str) -> None:
     if not path.parent.is_dir():
         return
-    try:
+    with contextlib.suppress(OSError):
         path.write_text(f"{reason}\n{when}\n", encoding="utf-8")
-    except OSError:
-        pass
 
 
 def clear_failure_note(path: Path) -> None:

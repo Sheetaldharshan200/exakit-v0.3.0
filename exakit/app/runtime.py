@@ -25,11 +25,10 @@ def _start_database(ctx: Context) -> None:
         ctx.ui.ok("The database is already starting - give it a moment.")
         ctx.ui.info("Watch it come up with: exakit status   (it answers 'running' when ready)")
         return
-    if state.state == "conflict":
-        if not rt.reap_orphan(state.port, ctx.ui.info):
-            hint = f" ({state.detail})" if state.detail else ""
-            raise Failed(f"Port {state.port} is held by another process{hint}, not by Exasol, so the database cannot start. "
-                         "Stop that process, then: exakit start", remedy="exakit start")
+    if state.state == "conflict" and not rt.reap_orphan(state.port, ctx.ui.info):
+        hint = f" ({state.detail})" if state.detail else ""
+        raise Failed(f"Port {state.port} is held by another process{hint}, not by Exasol, so the database cannot start. "
+                     "Stop that process, then: exakit start", remedy="exakit start")
     ensure_running(ctx, deploy=True)
 
 

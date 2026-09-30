@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from exakit.domain.catalog import Addon
-from exakit.domain.ids import CLIENT_IDS, manifest_key
+from exakit.domain.ids import CLIENT_IDS
 from exakit.domain.manifest import Manifest
 from exakit.domain.persona import (
     ADDON_AVAILABLE, ADDON_INSTALLED, ADDON_MISSING_MODULE, ADDON_SYSTEM, ADDON_UNAVAILABLE, MachineState,
@@ -98,39 +98,47 @@ def installed_version(ctx: Context, cid: str, manifest: Manifest | None) -> tupl
         return None, False
     if cid == "exakit":
         return manifest.get("kit.version") or kit_bundled_version(ctx), True
-    if cid in ("personal", "runtime"):
-        version = manifest.get("runtime.version")
+    if cid in _RECORDED_VERSION_KEYS:
+        version = manifest.get(_RECORDED_VERSION_KEYS[cid])
         return (version, True) if version else (None, False)
     if cid == "exapump":
-        path = manifest.get("components.exapump.path") or ctx.runner.which("exapump")
-        if not path or not Path(path).exists():
-            return None, False
-        done = ctx.runner.run([str(path), "--version"], timeout=10)
-        match = _VERSION_IN_TEXT.search(done.out.splitlines()[0] if done.out else "")
-        return (match.group(0) if match else manifest.get("components.exapump.version")), True
+        return _exapump_version(ctx, manifest)
     if cid == "pyexasol":
-        python = manifest.get("components.pyexasol.python") or str(ctx.paths.home / "pyexasol-venv" / "bin" / "python")
-        if not Path(python).exists():
-            return None, False
-        done = ctx.runner.run([python, "-c", "import pyexasol; print(pyexasol.__version__)"], timeout=20)
-        text = done.out.strip().splitlines()[0] if done.ok and done.out.strip() else ""
-        return (text if re.fullmatch(r"[A-Za-z0-9._+-]+", text) else manifest.get("components.pyexasol.version")), True
-    if cid == "mcp":
-        version = manifest.get("components.mcp_server.version")
-        return (version, True) if version else (None, False)
-    if cid == "skills":
-        version = manifest.get("components.skills.version")
-        return (version, True) if version else (None, False)
+        return _pyexasol_version(ctx, manifest)
     if ctx.catalog.has_addon(cid):
         return addon_installed_version(ctx, ctx.catalog.addon(cid), manifest)
     return None, False
+
+
+_RECORDED_VERSION_KEYS = {"personal": "runtime.version", "runtime": "runtime.version",
+                          "mcp": "components.mcp_server.version", "skills": "components.skills.version"}
+
+
+def _exapump_version(ctx: Context, manifest: Manifest) -> tuple[str | None, bool]:
+    """The binary's own answer to --version, else the recorded one; absent when the file is gone."""
+    path = manifest.get("components.exapump.path") or ctx.runner.which("exapump")
+    if not path or not Path(path).exists():
+        return None, False
+    done = ctx.runner.run([str(path), "--version"], timeout=10)
+    match = _VERSION_IN_TEXT.search(done.out.splitlines()[0] if done.out else "")
+    return (match.group(0) if match else manifest.get("components.exapump.version")), True
+
+
+def _pyexasol_version(ctx: Context, manifest: Manifest) -> tuple[str | None, bool]:
+    """The module's own version from the kit's venv, else the recorded one; absent when the venv is gone."""
+    python = manifest.get("components.pyexasol.python") or str(ctx.paths.home / "pyexasol-venv" / "bin" / "python")
+    if not Path(python).exists():
+        return None, False
+    done = ctx.runner.run([python, "-c", "import pyexasol; print(pyexasol.__version__)"], timeout=20)
+    text = done.out.strip().splitlines()[0] if done.ok and done.out.strip() else ""
+    return (text if re.fullmatch(r"[A-Za-z0-9._+-]+", text) else manifest.get("components.pyexasol.version")), True
 
 
 def addon_installed_version(ctx: Context, addon: Addon, manifest: Manifest) -> tuple[str | None, bool]:
     """The record says installed AND the add-on's lifecycle still finds it on disk."""
     if not manifest.get(f"components.{addon.manifest_key}.version"):
         return None, False
-    from exakit.lifecycles import for_addon  # noqa: PLC0415 - lifecycles sit above app.machine
+    from exakit.lifecycles import for_addon
     try:
         version = for_addon(ctx, addon).installed_version()
     except (ValueError, OSError):
@@ -172,7 +180,7 @@ def skills_current(ctx: Context, manifest: Manifest | None) -> bool:
 
 def system_present(ctx: Context, addon: Addon) -> bool:
     """A copy the user installed themselves, as the add-on's lifecycle recognises it."""
-    from exakit.lifecycles import for_addon  # noqa: PLC0415 - lifecycles sit above app.machine
+    from exakit.lifecycles import for_addon
     try:
         return for_addon(ctx, addon).system_present()
     except (ValueError, OSError):
@@ -183,7 +191,7 @@ def applicable(ctx: Context, addon: Addon) -> tuple[bool, str]:
     """Can this add-on run here? The catalog's platforms first, then the lifecycle's own probe."""
     if not addon.supports(ctx.platform.platform_key):
         return False, f"no build is published for this platform ({ctx.platform.platform_key})"
-    from exakit.lifecycles import for_addon  # noqa: PLC0415
+    from exakit.lifecycles import for_addon
     try:
         return for_addon(ctx, addon).applicable()
     except ValueError as err:

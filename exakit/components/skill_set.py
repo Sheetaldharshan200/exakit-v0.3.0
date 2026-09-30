@@ -23,11 +23,11 @@ class Lifecycle(ComponentBase):
         return self.recorded("version") or None
 
     def fallback_version(self) -> str | None:
-        from exakit.app.machine import skills_local_version  # noqa: PLC0415
+        from exakit.app.machine import skills_local_version
         return skills_local_version(self.ctx)
 
     def install(self, version: str) -> None:
-        from exakit.app import skills  # noqa: PLC0415
+        from exakit.app import skills
         skills.install(self.ctx)
 
     def _stage(self, latest: str, current: str | None) -> Path | None:
@@ -59,8 +59,8 @@ class Lifecycle(ComponentBase):
         return stage
 
     def update(self, options: list[str] | None = None) -> None:
-        from exakit.app import skills  # noqa: PLC0415
-        from exakit.app.machine import kit_root  # noqa: PLC0415
+        from exakit.app import skills
+        from exakit.app.machine import kit_root
         try:
             latest = self.target_version()
         except Failed:
@@ -107,7 +107,7 @@ class Lifecycle(ComponentBase):
         return backup
 
     def uninstall(self, *, dry_run: bool) -> list[str]:
-        from exakit.app import skills  # noqa: PLC0415
+        from exakit.app import skills
         removed: list[str] = []
         names = [s.id for s in skills.shipped(self.ctx)] or list(self.recorded("installed") or [])
         for root in skills.roots(self.ctx):
