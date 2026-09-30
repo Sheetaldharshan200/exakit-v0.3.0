@@ -226,6 +226,9 @@ Fault "engine.state" "absent";      Check "absent"   "absent"  (Get-LegacyContai
 Fault "engine.state" "unknown";     Check "unparseable is unknown, never absent" "unknown" (Get-LegacyContainerState)
 Seed -Engine "no-such-engine";      Check "an engine that is gone answers unknown" "unknown" (Get-LegacyContainerState)
 Check "...and the engine is never asked for" 0 @(Calls "engine").Count
+# Docker Desktop stopped: the CLI is there, inspect fails and the server version
+# is empty. An engine that will not talk, not a missing container.
+Seed; Fault "engine.state" "down";  Check "a stopped engine is unknown, never absent" "unknown" (Get-LegacyContainerState)
 Seed -NoContainer;                  Check "no container name reads as absent" "absent" (Get-LegacyContainerState)
 Check "...and the removal command has nothing to name" "" (Get-LegacyRemoveCommand)
 

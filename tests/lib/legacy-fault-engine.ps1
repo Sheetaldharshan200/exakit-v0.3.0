@@ -16,9 +16,14 @@ Add-Content -Path (Join-Path $dir "engine.calls") -Value ($args -join " ")
 
 $state = Read-Knob "engine.state" "running"
 $verb = "" + $args[0]; $noun = "" + $args[1]
+# down: the CLI is there, the daemon or machine is not (Docker Desktop stopped).
+if ($verb -eq "version") {
+    if ($state -eq "down") { exit 1 }
+    Write-Output "1.0"; exit 0
+}
 if ($verb -eq "container" -and $noun -eq "inspect") {
     if ($state -eq "hang")   { Start-Sleep -Seconds ([int](Read-Knob "engine.hang_seconds" "30")); exit 0 }
-    if ($state -eq "absent") { exit 1 }
+    if ($state -eq "absent" -or $state -eq "down") { exit 1 }
     if ($state -eq "noformat") { if ($args -contains "-f") { exit 1 }; exit 0 }
     if ($args -contains "-f") {
         switch ($state) {

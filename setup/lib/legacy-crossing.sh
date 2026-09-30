@@ -229,6 +229,14 @@ legacy_engine_run() {
     exakit_run_bounded "${EXAKIT_ENGINE_PROBE_TIMEOUT:-20}" "$_ler_bin" "$@" 2>/dev/null
 }
 
+# legacy_engine_answers — is the engine's daemon/machine up, not just its CLI?
+# The server version is empty when Docker Desktop or the Podman machine is
+# stopped. Twin of Test-LegacyEngineAnswers.
+legacy_engine_answers() {
+    _lea="$(legacy_engine_run version --format '{{.Server.Version}}')" || return 1
+    [ -n "$_lea" ]
+}
+
 # legacy_container_state — running | stopped | absent | unknown.
 # "unknown" is its own answer: an engine that will not talk is not evidence
 # that the user's database is gone.
@@ -238,7 +246,12 @@ legacy_container_state() {
     [ -n "$(legacy_engine)" ] || { echo "unknown"; return 0; }
     _lcs_out="$(legacy_engine_run container inspect -f '{{.State.Running}}' "$_lcs_name")" || {
         # A refusal is ambiguous on its own; ask whether it exists at all.
+        # Silence is not absence: with the daemon or machine stopped every
+        # inspect fails, and that read as "the container is gone". Only an
+        # engine that answers can say it is absent.
         if legacy_engine_run container inspect "$_lcs_name" >/dev/null 2>&1; then
+            echo "unknown"
+        elif ! legacy_engine_answers; then
             echo "unknown"
         else
             echo "absent"
@@ -876,6 +889,8 @@ legacy_crossing_before() {
         _lcb_can=no; _lcb_retry=1; _lcb_why="the container engine this database needs is not on this machine any more"
     elif [ "$_lcb_state" = "absent" ]; then
         _lcb_can=no; _lcb_why="the container is gone, so there is nothing left to copy"
+    elif [ "$_lcb_state" = "unknown" ]; then
+        _lcb_can=no; _lcb_retry=1; _lcb_why="$(legacy_engine_name) is not answering (is Docker Desktop or the Podman machine running?)"
     elif ! command -v "$(exapump_cli)" >/dev/null 2>&1 && [ ! -x "$(exapump_cli)" ]; then
         _lcb_can=no; _lcb_retry=1; _lcb_why="exapump is not installed yet, and it is what reads the tables out"
     fi
@@ -1226,7 +1241,7 @@ legacy_migrate_now() {
     _lmn_state="$(legacy_container_state)"
     case "$_lmn_state" in
         absent)  _legacy_migrate_fail "There is no container named '$_lmn_container' in $_lmn_engine_name. List them with '$_lmn_engine_name ps -a' and name the right one with --container." ; return 1 ;;
-        unknown) _legacy_migrate_fail "$_lmn_engine_name did not answer about the container '$_lmn_container'. Is the engine running?" ; return 1 ;;
+        unknown) _legacy_migrate_fail "$_lmn_engine_name did not answer about the container '$_lmn_container' - it looks stopped. Start it (Docker Desktop, or: podman machine start), then run: exakit migrate docker-nano" ; return 1 ;;
     esac
     _lmn_exapump="$(exapump_cli)"
     if ! command -v "$_lmn_exapump" >/dev/null 2>&1 && [ ! -x "$_lmn_exapump" ]; then
