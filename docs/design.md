@@ -638,9 +638,15 @@ with exit 2 and names `exakit status --json` and `exakit catalog --json`.
 Layout: the header (wordmark, title), a search bar, a sidebar on the left,
 the content on the right, the footer with the command palette (Ctrl-P:
 Textual's own commands such as the theme, plus the kit's entries). The
-sidebar is a list (arrows, Enter, the mouse): **Status** (the database, the
-runtime, datasets, services, autostart, persona, the last failure; Start and
-Stop as actions), **Catalog** (every component and add-on in a second list;
+sidebar is a list (arrows, Enter, the mouse): **Status**, one card per
+installed piece, all the same height: the starter kit (version, advertised,
+source repository, record, persona), the database (state, DSN, admin user,
+password file, launcher version, TLS), each service add-on (state, URL,
+version), each other component (installed, advertised; the MCP card names
+its read-only user and password file), the sample data and autostart; each
+card carries the actions that fit it (start or stop that one service, update
+that one component, the MCP doctor, load data, change autostart) and the
+page starts with Start everything and Stop everything; **Catalog** (every component and add-on in a second list;
 the selected one's title, kind, tagline, role, installed and advertised
 versions, status, platforms, requirements, launcher and its help page),
 **Marketplace** with two tabs, *Add-ons* (the marketplace rows; Install as
@@ -655,11 +661,17 @@ searches the same entries.
 Data and actions come through `cli/dashboard_data.DashboardData`, a facade
 over the app layer (status, version rows, catalog entries, marketplace rows,
 the help documents) that reads with a silent copy of the Context in a worker
-thread, so the ui layer imports nothing from app. An action (install an
-add-on, update everything, start, stop) is the ordinary command run in a
-worker with `TuiRenderer` writing into a job view (the log pane with its
-live rows, the modal questions), one at a time; the views refresh when it
-ends. During an install the screens keep the plan sidebar (6.1): the
+thread, so the ui layer imports nothing from app. An action is the ordinary command run in a worker with `TuiRenderer`
+writing into a job view (the log pane with its live rows, the modal
+questions), one at a time; the view carries a running row with the elapsed
+time for the whole action and tails the kit's log file while it runs (the
+lines the renderer did not already show: CMD, LAUNCHER, DATA, WARN), so a
+quiet step is never a blank screen; the views refresh when it ends. Buttons
+are plain rounded boxes in the terminal's colours. Every block of facts is a
+`Facts` (`ui/tui/facts.py`): key/value rows rendered at the width Rich
+gives, a long value wrapping under itself in its column, never under its
+key. The search bar's results are the same pointer list as the menus; Tab
+fills the input with the first match's name. During an install the screens keep the plan sidebar (6.1): the
 dashboard is for afterwards.
 
 ### 6.2 Progress (`ui/progress.py`)

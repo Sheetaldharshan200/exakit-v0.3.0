@@ -16,6 +16,16 @@ The 0.2.0 self-update insisted on five library files this tree no longer
 has, so they ship as empty stubs; a workflow installs the real 0.2.0 kit
 on scratch machines and proves both routes.
 
+**The dashboard's facts keep their columns** (a long value wraps under
+itself), its search completes on Tab and lists matches with the same
+pointer list as the menus, and scrollbars are thin and uncoloured.
+
+**The dashboard's Status page is one card per installed piece**, all the
+same height, with the connection details (DSN, users, password files), the
+kit's version and source and every component's versions, each card with
+its own start, stop, update or doctor action. A running action shows its
+elapsed time and the kit's log as it goes; buttons are plain boxes.
+
 **`exakit ui`: the kit has a dashboard.** A bare `exakit` in a terminal
 (or `exakit ui`) opens it: Status, Catalog, Marketplace (add-ons and
 updates), Virtual schemas (coming soon) and Commands in a sidebar, each

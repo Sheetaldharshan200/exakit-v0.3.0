@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
-from textual.widgets import Button, Label, ListItem, ListView, Static, TabbedContent, TabPane
+from textual.widgets import Button, Static, TabbedContent, TabPane
 
+from exakit.ui.widgets import Option
+
+from .choices import ChoiceList
+from .facts import Facts
 from .panels import LogPane
 
 ACCENT = "green"
@@ -27,14 +32,10 @@ class RunJob(Message):
         self.target = target
 
 
-def _kv(text: Text, key: str, value: Any) -> None:
-    text.append(f"{key:<18}", style="dim").append(f"{value}\n")
-
-
 class Card(Vertical):
     """One installed piece: its title, its facts, the actions that fit it."""
 
-    def __init__(self, title: str, lines: Text, actions: list[tuple[str, str, str]], *, state: str = "") -> None:
+    def __init__(self, title: str, lines: Facts, actions: list[tuple[str, str, str]], *, state: str = "") -> None:
         super().__init__(classes="card")
         self.title_text, self.lines, self.actions, self.state_word = title, lines, actions, state
 
@@ -56,29 +57,41 @@ class Card(Vertical):
         self.post_message(RunJob(kind, target))
 
 
-def _service_card(name: str, state: str, url: str | None, title: str) -> Card:
-    lines = Text()
+def _service_card(name: str, state: str, url: str | None, title: str, row: dict[str, Any]) -> Card:
+    lines = Facts()
     if url:
-        _kv(lines, "URL", url)
+        lines.kv("URL", url)
+    lines.kv("Version", f"{row.get('installed_label') or '-'}  (advertised {row.get('advertised') or '-'})")
     running = state.startswith("running")
     actions = [("Stop", "service-stop", name)] if running else [("Start", "service-start", name)]
     return Card(title, lines, actions, state=state)
 
 
-def _component_card(row: dict[str, Any], title: str) -> Card:
-    lines = Text()
-    _kv(lines, "Installed", row.get("installed_label") or row.get("installed") or "-")
-    _kv(lines, "Advertised", row.get("advertised") or "-")
+def _component_card(row: dict[str, Any], title: str, record: dict[str, Any]) -> Card:
+    lines = Facts()
+    lines.kv("Installed", row.get("installed_label") or row.get("installed") or "-")
+    lines.kv("Advertised", row.get("advertised") or "-")
+    if row["component"] == "mcp":
+        connection = ((record.get("components") or {}).get("mcp_server") or {}).get("connection") or {}
+        lines.kv("DB user", connection.get("user") or "mcp_readonly")
+        if connection.get("password_file"):
+            lines.kv("Password", _tilde(connection["password_file"]))
     if row.get("note"):
-        _kv(lines, "Note", row["note"])
+        lines.kv("Note", row["note"])
     actions = [("Update", "update", row["component"])] if row.get("status") == "update_available" else []
     if row["component"] == "mcp":
         actions.append(("Doctor", "mcp-doctor", ""))
     return Card(title, lines, actions, state=str(row.get("status", "")))
 
 
+def _tilde(path: Any) -> str:
+    text = str(path or "")
+    home = str(Path.home())
+    return text.replace(home, "~", 1) if home and text.startswith(home) else text
+
+
 class StatusView(VerticalScroll):
-    """What ``exakit status`` and ``exakit version`` know, one card per installed piece, each with the actions that fit it."""
+    """What the kit knows about itself, one card per installed piece, each with the actions that fit it."""
 
     def __init__(self, state: dict[str, Any]) -> None:
         super().__init__(id="view")
@@ -91,9 +104,9 @@ class StatusView(VerticalScroll):
             yield Static(Text("Loading…", style="dim"), id="status-text")
             return
         if not doc.get("installed", True):
-            text = Text(f"{doc.get('status')}\n", style="bold")
+            text = Facts().line(f"{doc.get('status')}\n", "bold")
             if doc.get("remedy"):
-                _kv(text, "Next", doc["remedy"])
+                text.kv("Next", doc["remedy"])
             yield Static(text, id="status-text")
             return
         with Horizontal(id="actions"):
@@ -103,28 +116,49 @@ class StatusView(VerticalScroll):
             yield from self.cards(doc)
 
     def cards(self, doc: dict[str, Any]) -> list[Card]:
-        """The database, each service, each other installed component, the datasets, autostart."""
+        """The kit, the database, each service, each other installed component, the datasets, autostart."""
         titles = {e["id"]: e["title"] for e in self.state.get("catalog") or []}
+        rows = {r["component"]: r for r in self.state.get("versions") or []}
+        record = self.state.get("info") or {}
         services = doc.get("services") or {}
-        urls = doc.get("urls") or {}
-        db_state = "running" if doc.get("running") else str(doc.get("status") or "stopped")
-        db = Text()
-        _kv(db, "Runtime", (doc.get("runtime") or {}).get("type", "?"))
-        _kv(db, "Datasets", ", ".join(doc.get("datasets_loaded") or []) or "none")
-        out = [Card(titles.get("personal", "Exasol Personal (the database)"), db,
-                    [("Stop", "service-stop", "database")] if doc.get("running") else [("Start", "service-start", "database")], state=db_state)]
-        out += [_service_card(name, str(state), urls.get(name), titles.get(name, name)) for name, state in services.items()]
-        for row in self.state.get("versions") or []:
-            cid = row["component"]
+        out = [self._kit_card(rows.get("exakit") or {}, record, doc), self._database_card(doc, record, rows.get("personal") or {}, titles)]
+        for name, state in services.items():
+            out.append(_service_card(name, str(state), (doc.get("urls") or {}).get(name), titles.get(name, name), rows.get(name) or {}))
+        for cid, row in rows.items():
             if row.get("installed") and cid not in services and cid not in ("personal", "exakit"):
-                out.append(_component_card(row, titles.get(cid, cid)))
-        data = Text()
-        _kv(data, "Loaded", ", ".join(doc.get("datasets_loaded") or []) or "none")
+                out.append(_component_card(row, titles.get(cid, cid), record))
+        data = Facts()
+        data.kv("Loaded", ", ".join(doc.get("datasets_loaded") or []) or "none")
+        data.kv("Source", doc.get("datasets_source") or "-")
         out.append(Card("Sample data", data, [("Load more", "data-load", "")]))
-        auto = Text()
-        _kv(auto, "At login", "on" if doc.get("autostart") else "off")
+        auto = Facts()
+        auto.kv("At login", "on" if doc.get("autostart") else "off")
         out.append(Card("Autostart", auto, [("Change", "autostart", "")], state="on" if doc.get("autostart") else "off"))
         return out
+
+    def _kit_card(self, row: dict[str, Any], record: dict[str, Any], doc: dict[str, Any]) -> Card:
+        text = Facts()
+        text.kv("Version", row.get("installed_label") or (record.get("kit") or {}).get("version") or "-")
+        text.kv("Advertised", row.get("advertised") or "-")
+        text.kv("Source", (record.get("kit") or {}).get("source") or "-")
+        text.kv("Record", _tilde(doc.get("manifest")))
+        if doc.get("persona"):
+            text.kv("Persona", doc["persona"])
+        actions = [("Update", "update", "")] if row.get("status") == "update_available" else []
+        return Card("Starter kit", text, actions, state=str(row.get("status") or ""))
+
+    def _database_card(self, doc: dict[str, Any], record: dict[str, Any], row: dict[str, Any], titles: dict[str, str]) -> Card:
+        runtime = record.get("runtime") or {}
+        text = Facts()
+        text.kv("DSN", runtime.get("dsn") or "unknown")
+        text.kv("Admin user", runtime.get("user") or "sys")
+        if runtime.get("password_file"):
+            text.kv("Password", _tilde(runtime["password_file"]))
+        text.kv("Launcher", f"{row.get('installed_label') or '-'}  (advertised {row.get('advertised') or '-'})")
+        text.kv("TLS", "self-signed certificate")
+        state = "running" if doc.get("running") else str(doc.get("status") or "stopped")
+        actions = [("Stop", "service-stop", "database")] if doc.get("running") else [("Start", "service-start", "database")]
+        return Card(titles.get("personal", "Exasol Personal (the database)"), text, actions, state=state)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Start or stop everything (the cards answer their own buttons)."""
@@ -136,7 +170,7 @@ class StatusView(VerticalScroll):
 class EntryList(Horizontal):
     """A list on the left, the selected entry's detail on the right; shared by the catalog, the marketplace and the commands."""
 
-    def __init__(self, entries: list[dict[str, Any]], *, label: Callable[[dict[str, Any]], str], detail: Callable[[dict[str, Any]], Text],
+    def __init__(self, entries: list[dict[str, Any]], *, label: Callable[[dict[str, Any]], str], detail: Callable[[dict[str, Any]], Facts],
                  key: str, action: tuple[str, str, Callable[[dict[str, Any]], bool]] | None = None, view_id: str = "view") -> None:
         super().__init__(id=view_id)
         self.entries = entries
@@ -144,28 +178,43 @@ class EntryList(Horizontal):
 
     def compose(self) -> ComposeResult:
         """The list and the detail."""
-        yield ListView(*[ListItem(Label(self.label(e)), name=str(e[self.key])) for e in self.entries], classes="entries")
+        yield ChoiceList([Option(str(e[self.key]), *self._columns(e)) for e in self.entries], single=True, widget_id="entries", classes="entries", marks=False)
         with VerticalScroll(classes="detail"):
             yield Static(self.detail_of(self.entries[0]) if self.entries else Text("Nothing here yet.", style="dim"), classes="detail-text")
             if self.action:
                 yield Button(self.action[1], id=f"act-{self.action[0]}", disabled=not (self.entries and self.action[2](self.entries[0])))
 
+    def _columns(self, entry: dict[str, Any]) -> tuple[str, str]:
+        """The row as (name column, status column): the label function's two halves, padded by the list."""
+        text = self.label(entry)
+        head, _, rest = text.partition("  ")
+        return head.strip(), rest.strip()
+
     def current(self) -> dict[str, Any] | None:
-        """The highlighted entry."""
-        index = self.query_one(ListView).index
-        return self.entries[index] if index is not None and 0 <= index < len(self.entries) else None
+        """The entry under the cursor."""
+        index = self.query_one(ChoiceList).cursor
+        return self.entries[index] if 0 <= index < len(self.entries) else None
 
     def select(self, ident: str) -> None:
-        """Highlight the entry with that id."""
+        """Put the cursor on the entry with that id."""
         for index, entry in enumerate(self.entries):
             if str(entry[self.key]) == ident:
-                self.query_one(ListView).index = index
-                self.query_one(ListView).focus()
+                self.query_one(ChoiceList).go_to(index)
+                self.query_one(ChoiceList).focus()
+                self._show(entry)
                 return
 
-    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
-        """Show the highlighted entry."""
+    def on_choice_list_moved(self, event: ChoiceList.Moved) -> None:
+        """Show the entry under the cursor."""
+        self._show(self.current())
+
+    def on_choice_list_chosen(self, event: ChoiceList.Chosen) -> None:
+        """Enter or a click: the entry's action, when it has one that applies."""
         entry = self.current()
+        if entry is not None and self.action and self.action[2](entry):
+            self.post_message(RunJob(self.action[0], str(entry[self.key])))
+
+    def _show(self, entry: dict[str, Any] | None) -> None:
         detail = self.query(".detail-text")
         if entry is not None and detail:
             detail.first(Static).update(self.detail_of(entry))
@@ -179,56 +228,71 @@ class EntryList(Horizontal):
             self.post_message(RunJob(self.action[0], str(entry[self.key])))
 
 
-def catalog_detail(entry: dict[str, Any]) -> Text:
+def _presence(entry: dict[str, Any]) -> tuple[str, str]:
+    """(installed, status) in words: an add-on the kit did not install is said so, not called unknown."""
+    market = str(entry.get("market") or "")
+    if market in ("system", "managed outside the kit", "already on this system"):
+        return "yes - installed outside the kit, not managed by exakit", "present (managed outside the kit)"
+    if market in ("unavailable", "not available on this machine"):
+        reason = entry.get("market_reason") or ""
+        return "no - not available on this machine", f"unavailable{': ' + reason if reason else ''}"
+    if market in ("available",):
+        return f"no (install with: exakit marketplace {entry['id']})", "available in the marketplace"
+    status = str(entry.get("status") or "")
+    return str(entry.get("installed") or "not installed"), status if status != "unknown" else ("installed" if market == "installed" else "not installed")
+
+
+def catalog_detail(entry: dict[str, Any]) -> Facts:
     """A component's or add-on's facts."""
-    text = Text()
-    text.append(f"{entry['title']}\n", style="bold")
+    text = Facts()
+    text.line(f"{entry['title']}\n", "bold")
     if entry.get("tagline"):
-        text.append(f"{entry['tagline']}\n\n", style="dim")
-    _kv(text, "Id", entry["id"])
-    _kv(text, "Kind", f"{entry['kind']}{' (add-on)' if entry.get('addon') else ''}")
-    _kv(text, "Installed", entry.get("installed"))
-    _kv(text, "Advertised", entry.get("advertised") or "-")
-    _kv(text, "Status", entry.get("status"))
+        text.line(f"{entry['tagline']}\n\n", "dim")
+    text.kv("Id", entry["id"])
+    text.kv("Kind", f"{entry['kind']}{' (add-on)' if entry.get('addon') else ''}")
+    installed, status = _presence(entry)
+    text.kv("Installed", installed)
+    text.kv("Advertised", entry.get("advertised") or "-")
+    text.kv("Status", status)
     if entry.get("note"):
-        _kv(text, "Note", entry["note"])
+        text.kv("Note", entry["note"])
     if entry.get("remedy"):
-        _kv(text, "Next", entry["remedy"])
+        text.kv("Next", entry["remedy"])
     if entry.get("platforms"):
-        _kv(text, "Platforms", ", ".join(entry["platforms"]))
+        text.kv("Platforms", ", ".join(entry["platforms"]))
     if entry.get("requires"):
-        _kv(text, "Requires", ", ".join(entry["requires"]))
+        text.kv("Requires", ", ".join(entry["requires"]))
     if entry.get("launcher"):
-        _kv(text, "Command", entry["launcher"])
+        text.kv("Command", entry["launcher"])
     if entry.get("role"):
-        text.append(f"\n{entry['role']}\n")
-    text.append(f"\nMore: exakit help {entry['id']}", style="dim")
+        text.line(f"\n{entry['role']}\n")
+    text.line(f"\nMore: exakit help {entry['id']}", "dim")
     return text
 
 
-def marketplace_detail(row: dict[str, Any]) -> Text:
+def marketplace_detail(row: dict[str, Any]) -> Facts:
     """An add-on's marketplace row."""
-    text = Text()
-    text.append(f"{row.get('title') or row['id']}\n", style="bold")
-    _kv(text, "Status", row.get("status"))
-    _kv(text, "Version", row.get("version") or "-")
+    text = Facts()
+    text.line(f"{row.get('title') or row['id']}\n", "bold")
+    text.kv("Status", row.get("status"))
+    text.kv("Version", row.get("version") or "-")
     if row.get("reason"):
-        text.append(f"\n{row['reason']}\n")
-    text.append(f"\nInstall from a shell: exakit marketplace {row['id']}", style="dim")
+        text.line(f"\n{row['reason']}\n")
+    text.line(f"\nInstall from a shell: exakit marketplace {row['id']}", "dim")
     return text
 
 
-def updates_detail(row: dict[str, Any]) -> Text:
+def updates_detail(row: dict[str, Any]) -> Facts:
     """A component's version row."""
-    text = Text()
-    text.append(f"{row['component']}\n", style="bold")
-    _kv(text, "Installed", row.get("installed_label") or row.get("installed") or "not installed")
-    _kv(text, "Advertised", row.get("advertised") or "-")
-    _kv(text, "Status", row.get("status"))
+    text = Facts()
+    text.line(f"{row['component']}\n", "bold")
+    text.kv("Installed", row.get("installed_label") or row.get("installed") or "not installed")
+    text.kv("Advertised", row.get("advertised") or "-")
+    text.kv("Status", row.get("status"))
     if row.get("note"):
-        _kv(text, "Note", row["note"])
+        text.kv("Note", row["note"])
     if row.get("remedy"):
-        _kv(text, "Next", row["remedy"])
+        text.kv("Next", row["remedy"])
     return text
 
 
@@ -256,10 +320,11 @@ class ComingSoonView(Static):
     """Virtual schemas: coming soon."""
 
     def __init__(self) -> None:
-        text = Text()
-        text.append("Virtual schemas\n", style="bold")
-        text.append("Coming soon. ", style=ACCENT)
-        text.append("Browse and query other databases and object stores from Exasol as if they were local schemas.")
+        text = Facts()
+        text.line("Virtual schemas\n", "bold")
+        text.line("Coming soon. ", ACCENT)
+        text.line("Browse and query other databases and object stores from Exasol as if they were local schemas.")
+        self.facts = text
         super().__init__(text, id="view")
 
 

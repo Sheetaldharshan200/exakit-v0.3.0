@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
 from rich.text import Text
@@ -10,19 +11,37 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.suggester import SuggestFromList
-from textual.widgets import Footer, Input, Label, ListItem, ListView, OptionList
-from textual.widgets.option_list import Option as ListOption
+from textual.suggester import Suggester
+from textual.widgets import Footer, Input
+
+from exakit.ui.widgets import Option
 
 from exakit.domain.errors import ExakitError
 from exakit.domain.plan import Plan, Step
 from exakit.ui.progress import ProgressState
 
+from .choices import ChoiceList
 from .palette import KitProvider
 from .panels import LogPane, ProgressRow, WordmarkHeader
 from .sections import SECTIONS, ComingSoonView, EntryList, JobView, MarketplaceView, RunJob, StatusView, catalog_detail
 
-LOADING = ("status", "versions", "catalog", "marketplace", "commands")
+LOADING = ("status", "versions", "catalog", "marketplace", "commands", "info")
+QUIET_LEVELS = {"INFO", "OK"}        # these lines came through the renderer already; the tail shows the rest (CMD, LAUNCHER, DATA, WARN...)
+
+
+class FirstMatch(Suggester):
+    """The ghost text in the search input: the first match's name, the very thing Tab fills in."""
+
+    def __init__(self, bar: SearchBar) -> None:
+        super().__init__(use_cache=False, case_sensitive=False)
+        self.bar = bar
+
+    async def get_suggestion(self, value: str) -> str | None:
+        """The first match when it begins with what was typed (ghost text can only extend the text)."""
+        found = self.bar.matches(value)
+        if found and found[0][1].lower().startswith(value.lower()):
+            return found[0][1]
+        return None
 
 
 class SearchBar(Vertical):
@@ -34,14 +53,17 @@ class SearchBar(Vertical):
 
     def compose(self) -> ComposeResult:
         """The input and the results list."""
-        yield Input(placeholder="Search commands and components   (Tab completes, Enter opens, / focuses)", id="search-input")
-        yield OptionList(id="results", classes="hidden")
+        yield Input(placeholder="Search commands and components   (Tab completes, Enter opens, / focuses)", id="search-input", suggester=FirstMatch(self))
+        yield ChoiceList([], single=True, widget_id="results", classes="hidden", marks=False)
+
+    @property
+    def results(self) -> ChoiceList:
+        """The results list."""
+        return self.query_one("#results", ChoiceList)
 
     def set_entries(self, entries: list[tuple[str, str, str]]) -> None:
         """The searchable entries; the inline completion knows their ids and labels."""
         self.entries = [e for e in entries if e[0] != "section"]
-        words = sorted({e[1] for e in self.entries} | {e[2] for e in self.entries})
-        self.query_one(Input).suggester = SuggestFromList(words, case_sensitive=False)
 
     def matches(self, query: str) -> list[tuple[str, str, str]]:
         """The entries whose id or label contains the text, ids first."""
@@ -54,30 +76,51 @@ class SearchBar(Vertical):
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Refresh the results list."""
-        results = self.query_one(OptionList)
         found = self.matches(event.value)
-        results.clear_options()
-        results.add_options([ListOption(Text.assemble((e[1], "bold"), f"  {e[2]}"), id=f"{e[0]}:{e[1]}") for e in found])
-        results.set_class(not found, "hidden")
+        self.results.set_options([Option(f"{e[0]}:{e[1]}", e[1], hint=e[2]) for e in found])
+        self.results.set_class(not found, "hidden")
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Enter opens the best match."""
-        found = self.matches(event.value)
-        if found:
-            self.app.call_later(self.app.open_entry, found[0][0], found[0][1])     # type: ignore[attr-defined]
-            self.query_one(Input).value = ""
-
-    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        """A chosen result opens."""
-        kind, ident = str(event.option.id).split(":", 1)
+    def _open(self, option_id: str) -> None:
+        kind, ident = option_id.split(":", 1)
         self.app.call_later(self.app.open_entry, kind, ident)     # type: ignore[attr-defined]
         self.query_one(Input).value = ""
+        self.results.set_class(True, "hidden")
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Enter in the input opens the best match."""
+        found = self.matches(event.value)
+        if found:
+            self._open(f"{found[0][0]}:{found[0][1]}")
+
+    def on_choice_list_chosen(self, event: ChoiceList.Chosen) -> None:
+        """A clicked result opens."""
+        option = self.results.options[event.index]
+        self._open(option.id)
+
+    def complete(self) -> None:
+        """Tab fills the input with the first match's name."""
+        field = self.query_one(Input)
+        found = self.matches(field.value)
+        if found:
+            field.value = found[0][1]
+            field.cursor_position = len(field.value)
 
     def on_key(self, event) -> None:
-        """Down from the input moves into the results."""
-        if event.key == "down" and self.query_one(Input).has_focus and not self.query_one(OptionList).has_class("hidden"):
-            self.query_one(OptionList).focus()
-            event.stop()
+        """Tab completes; Down moves from the input into the results; Enter in the results opens; Up at the top returns."""
+        field = self.query_one(Input)
+        listed = not self.results.has_class("hidden")
+        if event.key == "tab" and field.has_focus:
+            self.complete()
+        elif event.key == "down" and field.has_focus and listed:
+            self.results.focus()
+        elif event.key == "enter" and self.results.has_focus and self.results.current() is not None:
+            self._open(self.results.current().id)
+        elif event.key == "up" and self.results.has_focus and self.results.cursor == 0:
+            field.focus()
+        else:
+            return
+        event.stop()
+        event.prevent_default()
 
 
 class DashboardApp(App[None]):
@@ -96,6 +139,9 @@ class DashboardApp(App[None]):
         self.section = "status"
         self.job_running = False
         self.pending_open: tuple[str, str] | None = None
+        self._running_row = None
+        self._tail_at = 0
+        self._tail_timer = None
 
     # --- layout ------------------------------------------------------------------------------
 
@@ -104,13 +150,13 @@ class DashboardApp(App[None]):
         yield WordmarkHeader(self.title_text, "the dashboard")
         yield SearchBar()
         with Horizontal(id="body"):
-            yield ListView(*[ListItem(Label(label), name=key) for key, label in SECTIONS], id="sidebar")
+            yield ChoiceList([Option(key, label) for key, label in SECTIONS], single=True, widget_id="sidebar", marks=False)
             yield Vertical(id="content")
         yield Footer()
 
     async def on_mount(self) -> None:
         """Load the data in a worker and show the status."""
-        self.query_one("#sidebar", ListView).focus()
+        self.query_one("#sidebar", ChoiceList).focus()
         await self.show_section("status")
         self.run_worker(self._load, thread=True, exit_on_error=False, name="load")
 
@@ -157,26 +203,30 @@ class DashboardApp(App[None]):
         content = self.query_one("#content", Vertical)
         await content.remove_children()
         await content.mount(self._view(name))
-        sidebar = self.query_one("#sidebar", ListView)
+        sidebar = self.query_one("#sidebar", ChoiceList)
         index = [key for key, _ in SECTIONS].index(name)
-        if sidebar.index != index:
-            sidebar.index = index
+        if sidebar.cursor != index:
+            sidebar.cursor = index
+            sidebar.redraw()
 
-    async def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+    async def on_choice_list_moved(self, event: ChoiceList.Moved) -> None:
         """Arrows on the sidebar switch the view."""
-        if event.list_view.id == "sidebar" and event.item is not None and event.item.name and event.item.name != self.section and not self.job_running:
-            await self.show_section(event.item.name)
+        if getattr(event.control, "id", None) == "sidebar" and not self.job_running:
+            name = SECTIONS[event.index][0]
+            if name != self.section:
+                await self.show_section(name)
 
-    async def on_list_view_selected(self, event: ListView.Selected) -> None:
+    async def on_choice_list_chosen(self, event: ChoiceList.Chosen) -> None:
         """Enter or a click on the sidebar switches the view and moves into it."""
-        if event.list_view.id == "sidebar" and event.item is not None and event.item.name:
-            if self.job_running:
-                self.notify("An action is running - the view comes back when it finishes", timeout=3)
-                return
-            await self.show_section(event.item.name)
-            lists = self.query("#view ListView")
-            if lists:
-                lists.first().focus()
+        if getattr(event.control, "id", None) != "sidebar":
+            return
+        if self.job_running:
+            self.notify("An action is running - the view comes back when it finishes", timeout=3)
+            return
+        await self.show_section(SECTIONS[event.index][0])
+        lists = self.query("#view ChoiceList")
+        if lists:
+            lists.first().focus()
 
     async def open_entry(self, kind: str, ident: str) -> None:
         """Open a section, a command's page or a component's detail (the search, the palette)."""
@@ -201,7 +251,29 @@ class DashboardApp(App[None]):
         await content.remove_children()
         await content.mount(JobView(f"exakit {message.kind}{' ' + message.target if message.target else ''}"))
         job = self.data.job(message.kind, message.target)
+        self._running_row = await self.live_begin(ProgressState(f"exakit {message.kind} {message.target}".strip(), unit="spinner"))
+        self._start_tail()
         self.run_worker(lambda: self._job(job), thread=True, exit_on_error=False, name="job")
+
+    def _start_tail(self) -> None:
+        """Follow the kit's log while the action runs: the lines the renderer did not already show."""
+        path = self.data.log_path() if hasattr(self.data, "log_path") else None
+        self._tail_path = Path(path) if path else None
+        self._tail_at = self._tail_path.stat().st_size if self._tail_path and self._tail_path.exists() else 0
+        if self._tail_path:
+            self._tail_timer = self.set_interval(0.5, self._tail_once)
+
+    async def _tail_once(self) -> None:
+        if not self._tail_path or not self._tail_path.exists():
+            return
+        with self._tail_path.open("rb") as handle:
+            handle.seek(self._tail_at)
+            chunk = handle.read()
+        self._tail_at += len(chunk)
+        for raw in chunk.decode("utf-8", errors="replace").splitlines():
+            parts = raw.split(" ", 3)        # "YYYY-MM-DD HH:MM:SS LEVEL message"
+            if len(parts) == 4 and parts[2].isupper() and parts[2] not in QUIET_LEVELS:
+                await self.write(Text.assemble((f"{parts[2]:<9}", "dim"), (parts[3], "dim")))
 
     def _job(self, job) -> None:
         try:
@@ -214,6 +286,13 @@ class DashboardApp(App[None]):
         self.call_from_thread(self._job_done, summary)
 
     async def _job_done(self, summary: str) -> None:
+        if self._tail_timer is not None:
+            self._tail_timer.stop()
+            self._tail_timer = None
+            await self._tail_once()
+        if self._running_row is not None:
+            await self.live_end(self._running_row)
+            self._running_row = None
         await self.write(Text(""))
         await self.write(Text(summary, style="bold"))
         await self.write(Text("Press Esc for the sidebar; the views refresh now.", style="dim"))
@@ -282,7 +361,7 @@ class DashboardApp(App[None]):
         """Esc returns to the sidebar (and the section's view after a job)."""
         if not self.job_running and self.query(JobView):
             await self.show_section(self.section)
-        self.query_one("#sidebar", ListView).focus()
+        self.query_one("#sidebar", ChoiceList).focus()
 
     def action_copy_or_hint(self) -> None:
         """Ctrl-C copies the selected text, or says how to select and how to quit."""

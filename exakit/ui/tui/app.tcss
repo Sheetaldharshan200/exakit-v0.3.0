@@ -195,6 +195,7 @@ OptionList > .option-list--option-highlighted, ListView > ListItem.-highlight {
 #cards {
     layout: grid;
     grid-size: 2;
+    grid-rows: 11;
     grid-gutter: 1 2;
     height: auto;
     margin-top: 1;
@@ -202,10 +203,15 @@ OptionList > .option-list--option-highlighted, ListView > ListItem.-highlight {
 }
 
 .card {
-    height: auto;
+    height: 100%;
     border: round $foreground 30%;
     padding: 0 1;
     background: transparent;
+    overflow: hidden;
+}
+
+.card .card-actions {
+    dock: bottom;
 }
 
 .card-title, .card-text {
@@ -220,4 +226,44 @@ OptionList > .option-list--option-highlighted, ListView > ListItem.-highlight {
 
 .card-actions Button {
     margin-right: 1;
+}
+
+/* Buttons: a plain rounded box in the terminal's colours - no fill, no tall edge marks. */
+Button, Button.-default, Button.-primary, Button.-success {
+    border: round $foreground 40%;
+    background: transparent;
+    color: $foreground;
+    text-style: bold;
+    min-width: 10;
+}
+
+Button:hover, Button.-default:hover, Button.-primary:hover, Button.-success:hover {
+    background: $foreground 10%;
+    border: round $foreground 60%;
+}
+
+Button:focus, Button.-default:focus, Button.-primary:focus, Button.-success:focus {
+    border: round green;
+    background: transparent;
+    text-style: bold;
+}
+
+Button.-success, Button.-primary {
+    color: green;
+}
+
+Button:disabled {
+    color: $foreground 40%;
+    border: round $foreground 20%;
+}
+
+/* Scrollbars: thin and in the terminal's own colours. */
+* {
+    scrollbar-color: $foreground 30%;
+    scrollbar-color-hover: $foreground 50%;
+    scrollbar-color-active: $foreground 60%;
+    scrollbar-background: transparent;
+    scrollbar-background-hover: transparent;
+    scrollbar-background-active: transparent;
+    scrollbar-size: 1 1;
 }
