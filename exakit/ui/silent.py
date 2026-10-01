@@ -7,12 +7,13 @@ without ``--yes`` before any question would be asked.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 
 from exakit.domain.log import Log, NullLog
 from exakit.domain.plan import Plan, Step
 
+from .progress import ProgressState
 from .widgets import Option
 
 
@@ -98,12 +99,7 @@ class SilentRenderer:
         yield
 
     @contextmanager
-    def progress(self, label: str) -> Iterator[Callable[[int, int | None], None]]:
-        """Log the label; the bytes are not reported anywhere."""
+    def progress(self, label: str, *, unit: str = "bytes") -> Iterator[ProgressState]:
+        """Log the label; the progress is kept but drawn nowhere."""
         self.log.line("INFO", label)
-        yield _ignore
-
-
-def _ignore(_done: int, _total: int | None) -> None:
-    """The reporter under --json: the bytes go nowhere."""
-    return
+        yield ProgressState(label, unit=unit)

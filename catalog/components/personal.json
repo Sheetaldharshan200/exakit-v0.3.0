@@ -26,5 +26,78 @@
     "linux-x86_64",
     "linux-aarch64",
     "windows-x86_64"
-  ]
+  ],
+  "deploy_milestones": [
+    {
+      "match": "validating presets",
+      "pct": 5,
+      "ceiling": 10,
+      "seconds": 2,
+      "phase": "Preparing to deploy"
+    },
+    {
+      "match": "extracting preset files",
+      "pct": 10,
+      "ceiling": 20,
+      "seconds": 2,
+      "phase": "Preparing to deploy"
+    },
+    {
+      "match": "successfully initialized deployment",
+      "pct": 20,
+      "ceiling": 35,
+      "seconds": 5,
+      "phase": "Preparing to deploy"
+    },
+    {
+      "match": "fetching resource",
+      "pct": 35,
+      "ceiling": 65,
+      "seconds": 25,
+      "phase": "Getting Exasol ready"
+    },
+    {
+      "match": "found resource in cache",
+      "pct": 35,
+      "ceiling": 65,
+      "seconds": 25,
+      "phase": "Getting Exasol ready"
+    },
+    {
+      "match": "starting deployment",
+      "pct": 45,
+      "ceiling": 65,
+      "seconds": 15,
+      "phase": "Starting the database"
+    },
+    {
+      "match": "waiting for database to start",
+      "pct": 65,
+      "ceiling": 90,
+      "seconds": 10,
+      "phase": "Waiting for Exasol"
+    },
+    {
+      "match": "installing script language container",
+      "pct": 80,
+      "ceiling": 90,
+      "seconds": 15,
+      "phase": "Installing languages"
+    },
+    {
+      "match": "no installation steps defined",
+      "pct": 90,
+      "ceiling": 100,
+      "seconds": 4,
+      "phase": "Finishing up"
+    },
+    {
+      "match": "Completed deploying",
+      "pct": 100,
+      "ceiling": 100,
+      "seconds": 0,
+      "phase": "Deployed"
+    }
+  ],
+  "deploy_stall_seconds": 300
 }

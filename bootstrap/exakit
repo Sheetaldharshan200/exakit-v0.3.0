@@ -28,7 +28,7 @@ if [ ! -f "$EXAKIT_KIT_DIR/exakit/__main__.py" ]; then
 fi
 
 # Read-only queries never download a Python; they degrade to the documented answer.
-case " $1 " in
+case " ${1:-} " in
     " status "|" info "|" version "|" help "|" catalog "|" whats-new "|" skills "|" logs "|" mcp-status ")
         EXAKIT_READONLY_QUERY=1; export EXAKIT_READONLY_QUERY ;;
 esac

@@ -1,4 +1,4 @@
-"""The widgets of the kit's screens: the wordmark header, the plan panel, the status bar."""
+"""The widgets of the kit's screens: the wordmark header, the plan panel, the log with its live progress rows."""
 
 from __future__ import annotations
 
@@ -9,20 +9,15 @@ from textual.containers import VerticalScroll
 from textual.widgets import Static
 
 from exakit.domain.plan import Plan, Step, StepState
-from exakit.ui.console import SECTION_LABELS
-from exakit.ui.spinner import SPIN_FRAMES, elapsed_text
+from exakit.ui.console import step_label
+from exakit.ui.progress import ProgressState, elapsed_text, progress_parts
+from exakit.ui.spinner import SPIN_FRAMES
 from exakit.ui.widgets import WORDMARK_E, WORDMARK_REST, WORDMARK_X_LEFT, WORDMARK_X_RIGHT
 
-ACCENT = "#2fb34a"
+ACCENT = "green"
 WORDMARK_WIDTH = 70        # columns the wordmark needs; narrower terminals get the title alone
-GLYPHS = {StepState.DONE: ("✓", "green"), StepState.PENDING: ("·", "dim"), StepState.SKIPPED: ("-", "dim"), StepState.FAILED: ("✗", "red")}
-
-
-def step_label(step: Step | str) -> str:
-    """What the screens show for a step: its label, else section and id as the console shows them."""
-    if isinstance(step, str):
-        return step
-    return step.label or f"{SECTION_LABELS.get(step.section, step.section)}: {step.id}"
+GLYPHS = {StepState.DONE: ("✓", ACCENT), StepState.PENDING: ("·", "dim"), StepState.SKIPPED: ("-", "dim"), StepState.FAILED: ("✗", "red")}
+STYLES = {"accent": ACCENT, "dim": "dim", "bold": "bold", "": ""}
 
 
 def step_key(step: Step | str) -> str:
@@ -31,7 +26,7 @@ def step_key(step: Step | str) -> str:
 
 
 class WordmarkHeader(Static):
-    """The EXASOL wordmark with its green X, then the title and the subtitle."""
+    """The EXASOL wordmark with its green X, then the title, then the subtitle on its own line."""
 
     def __init__(self, title: str, subtitle: str = "") -> None:
         super().__init__(id="header")
@@ -59,7 +54,7 @@ class WordmarkHeader(Static):
                 text.append(e, style="bold").append(xl, style=f"bold {ACCENT}").append(xr + rest + "\n", style="bold")
         text.append(self.title_text, style="bold")
         if self.subtitle_text:
-            text.append("   " + self.subtitle_text, style="dim")
+            text.append("\n" + self.subtitle_text, style="dim")
         self.update(text)
 
 
@@ -91,14 +86,14 @@ class PlanPanel(VerticalScroll):
         return text
 
     def begin(self, step: Step | str) -> None:
-        """Mark a step as running (a spinner glyph) and start its clock."""
+        """Mark a step as running and start its clock."""
         self.started[step_key(step)] = time.monotonic()
         self._set(step, "▸", ACCENT, "running")
 
     def end(self, step: Step | str, *, ok: bool, detail: str) -> None:
         """Mark a step finished with its outcome and the time it took."""
         took = elapsed_text(time.monotonic() - self.started.pop(step_key(step), time.monotonic())) or "<1s"
-        self._set(step, "✓" if ok else "✗", "green" if ok else "red", detail or f"({took})")
+        self._set(step, "✓" if ok else "✗", ACCENT if ok else "red", detail or f"({took})")
 
     def _set(self, step: Step | str, glyph: str, style: str, detail: str) -> None:
         key = step_key(step)
@@ -112,49 +107,51 @@ class PlanPanel(VerticalScroll):
         row.scroll_visible()
 
 
-class StatusBar(Static):
-    """The live line: a spinner while something runs, the current download's bar, the time so far."""
+class ProgressRow(Static):
+    """A live line under the text that announced the job: the spinner, the phase, the bar, the percent, the time."""
 
-    def __init__(self) -> None:
-        super().__init__("", id="status")
-        self.label = ""
-        self.detail = ""
-        self.busy = False
-        self.final = ""
-        self._t0 = 0.0
+    def __init__(self, state: ProgressState) -> None:
+        super().__init__(classes="live")
+        self.state = state
         self._frame = 0
 
     def on_mount(self) -> None:
-        """Tick ten times a second while something runs."""
-        self.set_interval(0.1, self._tick)
+        """Tick ten times a second while the job runs."""
+        self.set_interval(0.1, self.tick)
+        self.tick()
 
-    def set_busy(self, label: str, detail: str = "") -> None:
-        """Show a running label (the clock restarts when the label changes)."""
-        if label != self.label or not self.busy:
-            self._t0 = time.monotonic()
-        self.label, self.detail, self.busy = label, detail, True
-        self._tick()
-
-    def clear(self) -> None:
-        """Nothing runs."""
-        self.busy, self.label, self.detail = False, "", ""
-        self._tick()
-
-    def set_final(self, text: str) -> None:
-        """The closing line once the command finished."""
-        self.final = text
-        self.clear()
-
-    def _tick(self) -> None:
-        if not self.busy:
-            self.update(Text(self.final, style="bold") if self.final else Text(""))
-            return
+    def tick(self) -> None:
+        """Redraw from the job's state."""
         self._frame += 1
-        frame = SPIN_FRAMES[self._frame % len(SPIN_FRAMES)]
-        text = Text.assemble((frame, ACCENT), " ", self.label)
-        if self.detail:
-            text.append(" " + self.detail)
-        elapsed = elapsed_text(time.monotonic() - self._t0)
-        if elapsed:
-            text.append("  " + elapsed, style="dim")
-        self.update(text)
+        parts = progress_parts(self.state, frame=SPIN_FRAMES[self._frame % len(SPIN_FRAMES)], cols=max(40, self.size.width or 80), fancy=True)
+        self.update(Text.assemble(*((text, STYLES[style]) for text, style in parts)))
+
+
+class LogPane(VerticalScroll):
+    """The lines of the run, in order; a running job gets a live row right under the line that announced it."""
+
+    def __init__(self) -> None:
+        super().__init__(id="log")
+        self.lines: list[Text] = []
+
+    def write(self, text: Text) -> None:
+        """Append a line, above any live rows, and keep the end in view."""
+        self.lines.append(text)
+        row = Static(text)
+        live = self.query(ProgressRow)
+        if live:
+            self.mount(row, before=live.first())
+        else:
+            self.mount(row)
+        self.scroll_end(animate=False)
+
+    def live_begin(self, state: ProgressState) -> ProgressRow:
+        """Start a live progress row at the end."""
+        row = ProgressRow(state)
+        self.mount(row)
+        self.scroll_end(animate=False)
+        return row
+
+    async def live_end(self, row: ProgressRow) -> None:
+        """The job finished: its live row goes."""
+        await row.remove()

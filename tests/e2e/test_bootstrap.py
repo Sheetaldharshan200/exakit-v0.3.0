@@ -77,6 +77,15 @@ class LauncherTest(unittest.TestCase):
             self.assertEqual(done.returncode, 0, done.stderr)
             self.assertEqual(json.loads(done.stdout)["status"], "none")
 
+    def test_a_bare_exakit_answers_the_help_page(self):
+        """``exakit`` with no arguments: the launcher must not trip over a missing $1 (set -u)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self._env(tmp, EXAKIT_PYTHON=sys.executable, EXAKIT_VERSIONS_TTL="999999")
+            done = _run([str(REPO / "bootstrap" / "exakit")], env)
+            self.assertNotIn("unbound variable", done.stderr)
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertIn("exakit", done.stdout.lower())
+
     def test_recorded_interpreter_is_reused(self):
         with tempfile.TemporaryDirectory() as tmp:
             record = Path(tmp) / "home" / "python" / "interpreter"

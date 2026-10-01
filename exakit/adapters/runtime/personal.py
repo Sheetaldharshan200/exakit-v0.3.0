@@ -30,6 +30,11 @@ from .protocol import PersonalRuntime, RuntimeStatus  # noqa: F401 - re-exported
 
 
 
+def _ignore_line(_line: str) -> None:
+    """The launcher's lines when nobody listens."""
+    return
+
+
 class PersonalLauncher:
     """The real runtime, over the ``exasol`` binary."""
 
@@ -292,9 +297,10 @@ class PersonalLauncher:
         self.log.line("CMD", f"{self.cli()} deploy -> {done.code}")
         return done.ok
 
-    def install_local(self) -> tuple[bool, str]:
-        """``exasol install local``: the deployment from nothing. Returns (ok, the tail of what the launcher said)."""
-        done = self._run("install", "local", *self.auto_approve("install"), timeout=3600)
+    def install_local(self, on_line: Callable[[str], None] | None = None) -> tuple[bool, str]:
+        """``exasol install local``: the deployment from nothing, each line handed to ``on_line``. Returns (ok, the tail of what it said)."""
+        cmd = [self.cli(), "install", "local", *self.auto_approve("install")]
+        done = self.runner.stream(cmd, on_line or _ignore_line, timeout=3600)
         text = (done.out + done.err)
         self.log.line("CMD", f"{self.cli()} install local -> {done.code}")
         for line in text.splitlines()[-200:]:

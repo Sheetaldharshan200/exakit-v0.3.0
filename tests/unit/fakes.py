@@ -78,6 +78,12 @@ class FakeRunner:
         self.calls.append(tuple(cmd))
         return self.run(cmd).code
 
+    def stream(self, cmd, on_line, *, env=None, timeout=None):
+        done = self.run(cmd, env=env, timeout=timeout)
+        for line in (done.out + done.err).splitlines():
+            on_line(line)
+        return done
+
     def spawn(self, cmd, *, log_path):
         self.calls.append(("spawn", *cmd))
         return 4242
@@ -212,8 +218,10 @@ class FakeRuntime:
         self.deployed_again = getattr(self, "deployed_again", 0) + 1
         return getattr(self, "deploy_again_ok", True)
 
-    def install_local(self):
+    def install_local(self, on_line=None):
         self.installed_local = getattr(self, "installed_local", 0) + 1
+        for line in getattr(self, "deploy_lines", ()):
+            on_line(line) if on_line else None
         ok = getattr(self, "install_ok", True)
         if ok:
             self._exists = True

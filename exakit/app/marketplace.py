@@ -185,29 +185,40 @@ def install_one(ctx: Context, addon: Addon) -> bool:
     if addon.directory is None:
         ctx.ui.warn(f"The {addon.id} module is not part of this kit copy - update the kit first: exakit update")
         return False
-    try:
-        lifecycle.install(lifecycle.target_version())
-    except ExakitError as err:
-        lifecycle.note_failure(err.message)
-        ctx.log.line("WARN", f"{addon.id} did not finish installing: {err.message}")
-        return False
-    try:
-        lifecycle.validate()
-    except ExakitError as err:
-        ctx.log.line("WARN", f"{addon.id} validation: {err.message}")
-    try:
-        skills.install_for_addon(ctx, addon.id)
-    except ExakitError as err:
-        ctx.log.line("WARN", f"{addon.id} skills: {err.message}")
-    hooks = lifecycle.service()
-    if hooks is not None:
-        if services.autostart_wanted(ctx):
-            services.register_autostart(ctx, services.Service(addon.id, hooks))
+    with ctx.ui.progress(f"Installing {addon.id}", unit="percent") as bar:
+        bar.stage(0, 65, 40, f"{addon.id} · installing")
         try:
-            hooks.start()
-        except ExakitError:
-            ctx.ui.warn(f"{addon.id} installed but did not start - start it with: exakit start")
+            lifecycle.install(lifecycle.target_version())
+        except ExakitError as err:
+            lifecycle.note_failure(err.message)
+            ctx.log.line("WARN", f"{addon.id} did not finish installing: {err.message}")
+            return False
+        bar.stage(65, 90, 8, f"{addon.id} · validating")
+        try:
+            lifecycle.validate()
+        except ExakitError as err:
+            ctx.log.line("WARN", f"{addon.id} validation: {err.message}")
+        try:
+            skills.install_for_addon(ctx, addon.id)
+        except ExakitError as err:
+            ctx.log.line("WARN", f"{addon.id} skills: {err.message}")
+        bar.stage(90, 100, 3, f"{addon.id} · starting")
+        _start_service(ctx, addon, lifecycle)
+        bar.stage(100, 100, 0, f"{addon.id} · installed")
     return True
+
+
+def _start_service(ctx: Context, addon: Addon, lifecycle) -> None:
+    """Register autostart when wanted and start the add-on's service, if it has one."""
+    hooks = lifecycle.service()
+    if hooks is None:
+        return
+    if services.autostart_wanted(ctx):
+        services.register_autostart(ctx, services.Service(addon.id, hooks))
+    try:
+        hooks.start()
+    except ExakitError:
+        ctx.ui.warn(f"{addon.id} installed but did not start - start it with: exakit start")
 
 
 def apply(ctx: Context, ids: list[str]) -> Result:

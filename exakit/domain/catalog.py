@@ -39,6 +39,8 @@ class Component:
     help: str | None
     manifest_key: str
     platforms: tuple[str, ...] = ()      # empty = every platform the kit runs on
+    deploy_milestones: tuple[dict[str, Any], ...] = ()    # the launcher lines that mean progress (Personal)
+    deploy_stall_seconds: int = 300                       # the launcher's silence that earns a notice
 
     @classmethod
     def from_doc(cls, doc: dict[str, Any]) -> Component:
@@ -49,6 +51,8 @@ class Component:
             fallback_version=doc.get("fallback_version"), requires=tuple(doc.get("requires") or ()),
             help=doc.get("help"), manifest_key=doc.get("manifest_key") or doc["id"].replace("-", "_"),
             platforms=tuple(doc.get("platforms") or ()),
+            deploy_milestones=tuple(dict(m) for m in doc.get("deploy_milestones") or ()),
+            deploy_stall_seconds=int(doc.get("deploy_stall_seconds", 300)),
         )
 
 
@@ -72,7 +76,27 @@ def validate_component(doc: Any, *, expected_id: str | None = None) -> Problems:
     if "requires" in doc:
         _check_id_list(doc, "requires", problems)
     _check_platforms(doc, problems)
+    _check_milestones(doc.get("deploy_milestones"), problems)
     return problems
+
+
+def _check_milestones(rows: Any, problems: Problems) -> None:
+    """``deploy_milestones``: each row a match text, pct and ceiling (0-100), seconds, and a phase."""
+    if rows is None:
+        return
+    if not isinstance(rows, list):
+        problems.append("deploy_milestones must be a list")
+        return
+    for index, row in enumerate(rows):
+        where = f"deploy_milestones[{index}]"
+        if not isinstance(row, dict) or not _is_str(row.get("match")) or not _is_str(row.get("phase")):
+            problems.append(f"{where} needs match and phase")
+            continue
+        for key in ("pct", "ceiling", "seconds"):
+            if not isinstance(row.get(key), (int, float)) or not 0 <= row[key] <= 3600:
+                problems.append(f"{where}.{key} must be a number")
+        if isinstance(row.get("pct"), (int, float)) and isinstance(row.get("ceiling"), (int, float)) and row["pct"] > row["ceiling"]:
+            problems.append(f"{where}.pct is above its ceiling")
 
 
 # --- add-ons ------------------------------------------------------------------------

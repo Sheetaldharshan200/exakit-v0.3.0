@@ -21,6 +21,7 @@ from exakit.ui.widgets import Option
 
 from . import Context, marketplace, services, whats_new
 from . import install_steps as steps
+from .install_steps import TITLES
 from .components_kit import kit_version_at
 from .legacy_crossing import crossing_before
 from .machine import all_datasets, kit_root
@@ -28,9 +29,6 @@ from .marketplace import rows as marketplace_rows
 from .requirements import check as check_requirements
 import contextlib
 
-TITLES = {"launcher": "Step 1/6  Exasol launcher", "runtime": "Step 2/6  Local database deployment", "exapump": "Step 3/6  exapump (data loading CLI)",
-          "mcp": "Step 4/6  AI bridge (MCP server, clients and skills)", "pyexasol": "Step 5/6  pyexasol (Exasol Python driver)",
-          "exakit_helper": "Step 6/6  exakit helper command"}
 
 
 # --- preparation ----------------------------------------------------------------------------
@@ -303,9 +301,9 @@ def run(ctx: Context) -> Result:
     """``exakit install``: the whole install, resumable; a dry run shows the plan."""
     answers = resolve_answers(ctx)      # an unknown persona stops here, dry run or not
     banner(ctx, kit_root(ctx))
+    the_plan = plan(ctx)
+    ctx.ui.plan(the_plan)
     if ctx.dry_run:
-        the_plan = plan(ctx)
-        ctx.ui.plan(the_plan)
         ctx.ui.info("Dry run: nothing was installed. Run the same command without the dry run to install.")
         return Result(True, "dry-run", data=the_plan.to_dict())
     prepare_home(ctx)

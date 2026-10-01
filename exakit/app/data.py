@@ -148,14 +148,23 @@ def load(ctx: Context, ds: Dataset, *, force: bool = False) -> Result:
         return Result(True, "already loaded", data={"dataset": ds.id})
     ctx.ui.info(f"Loading the '{ds.id}' dataset into schema {ds.schema}")
     started = time.monotonic()
-    _create_schema(ctx, pump, ds)
     csvs = sorted(p for p in (ds.directory / "data").glob("*.csv") if p.stat().st_size)
-    _upload_csvs(ctx, pump, ds, csvs)
     load_sql = ds.directory / "02_load_data.sql"
-    if load_sql.is_file() and load_sql.stat().st_size:
-        _sql_file(ctx, pump, load_sql, "load statements")
-    _verify(ctx, pump, ds)
-    tables, total = _count_and_record(ctx, pump, ds, csvs)
+    has_load_sql = load_sql.is_file() and bool(load_sql.stat().st_size)
+    with ctx.ui.progress(f"Loading {ds.id}", unit="percent") as bar:
+        stages = _LoadStages(bar, ds, csvs, has_load_sql)
+        stages.next(2, f"{ds.id} · creating schema {ds.schema}")
+        _create_schema(ctx, pump, ds)
+        stages.next(max(5, stages.bytes // 500_000), f"{ds.id} · loading {len(csvs)} data file{'s' if len(csvs) != 1 else ''}", weight=stages.bytes)
+        _upload_csvs(ctx, pump, ds, csvs, bar)
+        if has_load_sql:
+            stages.next(30, f"{ds.id} · running load statements")
+            _sql_file(ctx, pump, load_sql, "load statements")
+        stages.next(10, f"{ds.id} · verifying")
+        _verify(ctx, pump, ds)
+        stages.next(5, f"{ds.id} · counting rows")
+        tables, total = _count_and_record(ctx, pump, ds, csvs)
+        bar.stage(100, 100, 0, f"{ds.id} · loaded")
     took = int(time.monotonic() - started)
     rows_text = f"{total:,} rows" if total is not None else "rows counted in the log"
     ctx.ui.ok(f"Dataset '{ds.id}' loaded and verified - {len(tables)} table{'s' if len(tables) != 1 else ''}, {rows_text} ({took}s)")
@@ -177,10 +186,31 @@ def _create_schema(ctx: Context, pump: Exapump, ds: Dataset) -> None:
         raise Failed(f"Schema {ds.schema} does not exist after running {schema_sql.name}.", remedy="exakit logs setup")
 
 
-def _upload_csvs(ctx: Context, pump: Exapump, ds: Dataset, csvs: list[Path]) -> None:
+class _LoadStages:
+    """The dataset load's stages as positions on one bar: the files by their size, everything else a nominal share."""
+
+    def __init__(self, bar, ds: Dataset, csvs: list[Path], has_load_sql: bool) -> None:
+        self.bar = bar
+        self.bytes = sum(p.stat().st_size for p in csvs)
+        self.nominal = max(self.bytes // 8, 1)
+        self.total = self.bytes + self.nominal * (3 + (1 if has_load_sql else 0))
+        self.done = 0
+
+    def next(self, seconds: float, phase: str, *, weight: int | None = None) -> None:
+        """The load reached a stage: where it is and where the stage ends, in percent of the whole."""
+        weight = self.nominal if weight is None else weight
+        pct = min(100, self.done * 100 // self.total)
+        ceiling = min(100, (self.done + weight) * 100 // self.total)
+        self.bar.stage(pct, ceiling, seconds, phase)
+        self.done += weight
+
+
+def _upload_csvs(ctx: Context, pump: Exapump, ds: Dataset, csvs: list[Path], bar=None) -> None:
     failed: list[str] = []
-    for csv in csvs:
+    for index, csv in enumerate(csvs, 1):
         table = f"{ds.schema}.{csv.stem.upper()}"
+        if bar is not None:
+            bar.set_phase(f"{ds.id} · {csv.name} ({index}/{len(csvs)})")
         if not upload_with_recovery(ctx, pump, csv, table):
             failed.append(f"{csv.name} -> {table}")
     if failed:

@@ -78,19 +78,21 @@ class Lifecycle(ComponentBase):
     # --- validate -----------------------------------------------------------------------------
 
     def _handshake_with_retries(self, spec: str, env: dict[str, str]):
-        """Three attempts; after an import error the uvx environment is rebuilt once (a first run can leave it half built)."""
+        """Up to four attempts. An import error means the uvx environment is half built - a client that was already
+        configured may be installing the same server at the same moment - so it is rebuilt once and then given time."""
         outcome = None
-        for attempt in (1, 2, 3):
+        for attempt in (1, 2, 3, 4):
             outcome = stdio_handshake(self.uvx(), spec, env)
             self.ctx.log.line("MCP", outcome.detail)
-            if outcome.ok or attempt == 3:
+            if outcome.ok or attempt == 4:
                 break
-            if attempt == 1 and ("ImportError" in outcome.detail or "ModuleNotFoundError" in outcome.detail):
-                self.ctx.ui.warn("The server's Python environment is incomplete - rebuilding it once")
+            incomplete = "ImportError" in outcome.detail or "ModuleNotFoundError" in outcome.detail
+            if attempt == 1 and incomplete:
+                self.ctx.ui.warn("The server's Python environment is incomplete (another client may be installing it right now) - rebuilding it once")
                 self.ctx.runner.run([self.uvx(), "--reinstall", spec, "--help"], timeout=900)
             else:
-                self.ctx.ui.warn(f"Handshake attempt {attempt} failed - retrying")
-                time.sleep(5)
+                self.ctx.ui.warn(f"Handshake attempt {attempt} failed - trying again in {10 * attempt}s")
+                time.sleep(10 * attempt)
         return outcome
 
     def validate(self) -> None:

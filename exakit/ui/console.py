@@ -10,18 +10,26 @@ from __future__ import annotations
 
 import sys
 import time
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from typing import IO
 
 from exakit.domain.log import Log, NullLog
 from exakit.domain.plan import Plan, Step, StepState
 
+from .progress import ProgressState
 from .spinner import Milestones, Spinner
-from .widgets import FANCY, PLAIN, Option, Palette, progress_bar, term_cols, visible_len, wrap, wordmark_lines
+from .widgets import FANCY, PLAIN, Option, Palette, term_cols, visible_len, wrap, wordmark_lines
 
 SECTION_LABELS = {"datasets": "Sample data", "mcp_clients": "AI clients", "addons": "Add-ons",
                   "skills": "AI skills", "components": "Components"}
+
+
+def step_label(step: Step | str) -> str:
+    """What a step is called on screen: its label, else section and id."""
+    if isinstance(step, str):
+        return step
+    return step.label or f"{SECTION_LABELS.get(step.section, step.section)}: {step.id}"
 
 
 class ConsoleRenderer:
@@ -39,6 +47,7 @@ class ConsoleRenderer:
         self.home = home
         self._spin: Spinner | None = None
         self._step_t0 = 0.0
+        self._steps_t0: dict[str, float] = {}       # the install steps' clocks, by id
 
     @property
     def fancy(self) -> bool:
@@ -175,7 +184,7 @@ class ConsoleRenderer:
         """A spinner with the label and the time it has taken while a slow call runs; a log line elsewhere."""
         self.log.line("INFO", label)
         if self.fancy and self.interactive and self._spin is None:
-            self._spin = Spinner(self.out, self._spinner_template(label))
+            self._spin = Spinner(self.out, self._spinner_template(label), self.p)
             self._spin.start()
             try:
                 yield
@@ -186,45 +195,52 @@ class ConsoleRenderer:
         yield
 
     @contextmanager
-    def progress(self, label: str) -> Iterator[Callable[[int, int | None], None]]:
-        """A live bar (bytes so far of the total) on the spinner while a download runs; quarter milestones as lines elsewhere."""
+    def progress(self, label: str, *, unit: str = "bytes") -> Iterator[ProgressState]:
+        """The job's progress line while it runs (bytes, items or stages with the creep between them); plain lines elsewhere."""
         self.log.line("INFO", label)
+        state = ProgressState(label, unit=unit)
         if not (self.fancy and self.interactive):
-            yield Milestones(self, label).report
+            Milestones(self, state)
+            yield state
             return
         own = self._spin is None
-        spinner = self._spin = self._spin or Spinner(self.out, self._spinner_template(""))
+        spinner = self._spin = self._spin or Spinner(self.out, self._spinner_template(""), self.p)
         if own:
             spinner.start()
-        spinner.detail = f" {label}"
+        spinner.states.append(state)
         try:
-            yield lambda done, total: setattr(spinner, "detail", f" {label} {progress_bar(done, total)}")
+            yield state
         finally:
-            spinner.detail = ""
+            spinner.states.remove(state)
             if own:
                 spinner.stop()
                 self._spin = None
 
     def step_begin(self, step: Step | str) -> None:
-        """Announce a plan step as it starts."""
-        label = step if isinstance(step, str) else f"{SECTION_LABELS.get(step.section, step.section)}: {step.id}"
+        """Announce a plan step as it starts: an install step as its heading, any other with a spinner."""
+        if isinstance(step, Step) and step.section == "install":
+            self._steps_t0[step.id] = time.monotonic()
+            self.heading(step_label(step))
+            return
+        label = step_label(step)
         self._step_t0 = time.monotonic()
         if self.fancy and self.interactive:
-            self._spin = Spinner(self.out, self._spinner_template(label))
+            self._spin = Spinner(self.out, self._spinner_template(label), self.p)
             self._spin.start()
         else:
             self._w(f"  {self.p.arrow} {label}...")
 
     def step_end(self, step: Step | str, *, ok: bool = True, detail: str = "") -> None:
-        """Close a plan step with its outcome."""
-        label = step if isinstance(step, str) else f"{SECTION_LABELS.get(step.section, step.section)}: {step.id}"
+        """Close a plan step with its outcome and the time it took."""
+        label = step_label(step)
         if isinstance(step, Step):
-            ok = step.state is not StepState.FAILED
+            ok = ok and step.state is not StepState.FAILED
             detail = detail or step.reason
-        if self._spin:
+        if self._spin and not (isinstance(step, Step) and step.section == "install"):
             self._spin.stop()
             self._spin = None
-        elapsed = time.monotonic() - self._step_t0
+        t0 = self._steps_t0.pop(step.id, None) if isinstance(step, Step) else None
+        elapsed = time.monotonic() - (self._step_t0 if t0 is None else t0)
         took = "<1s" if elapsed < 1 else f"{int(elapsed)}s"
         glyph = f"{self.p.ok}{self.p.tick}" if ok else f"{self.p.err}{self.p.cross}"
         extra = f" {self.p.dim}{detail}{self.p.reset}" if detail else ""

@@ -10,6 +10,7 @@ from exakit.adapters.fs.notes import clear_failure_note, read_failure_note
 from exakit.components import for_component
 from exakit.domain.errors import ExakitError, Failed
 from exakit.domain.persona import Answers
+from exakit.domain.plan import Step, StepState
 from exakit.domain.versions import is_newer
 
 from . import Context, data, mcp, skills
@@ -19,6 +20,9 @@ from .machine import installed_version, kit_root
 from .runtime_ops import runtime
 
 STEP_IDS = ("launcher", "runtime", "exapump", "mcp", "pyexasol", "exakit_helper")
+TITLES = {"launcher": "Step 1/6  Exasol launcher", "runtime": "Step 2/6  Local database deployment", "exapump": "Step 3/6  exapump (data loading CLI)",
+          "mcp": "Step 4/6  AI bridge (MCP server, clients and skills)", "pyexasol": "Step 5/6  pyexasol (Exasol Python driver)",
+          "exakit_helper": "Step 6/6  exakit helper command"}
 DRIFT_COMPONENT = {"launcher": "personal", "exapump": "exapump", "mcp": "mcp", "pyexasol": "pyexasol"}
 
 
@@ -116,19 +120,25 @@ def begin(session: Session, step: str, title: str) -> bool:
         elif artifact_missing(session, step):
             reason = "what it installed is missing - running it again"
         else:
-            ctx.ui.ok(f"{title} - already done, skipping")
+            ctx.ui.step_end(plan_step(step, title, StepState.DONE), detail="already done, skipping")
             return False
-        ctx.ui.heading(title)
+        ctx.ui.step_begin(plan_step(step, title))
         ctx.ui.info(f"Recorded as done, but {reason}")
         return True
-    ctx.ui.heading(title)
+    ctx.ui.step_begin(plan_step(step, title))
     ctx.log.line("STEP", title)
     return True
 
 
+def plan_step(step: str, title: str, state: StepState = StepState.PENDING) -> Step:
+    """The install step as the plan shows it."""
+    return Step("install", step, state, label=title)
+
+
 def mark(session: Session, step: str) -> None:
-    """Tick a step in the record."""
+    """Tick a step in the record and close it on screen."""
     session.ctx.manifest_store.update(lambda m: m.mark_step(step))
+    session.ctx.ui.step_end(plan_step(step, TITLES.get(step, step), StepState.DONE))
 
 
 # --- the steps ---------------------------------------------------------------------------------

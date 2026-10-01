@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import time
 
 from exakit.adapters.process.ports import port_in_use
@@ -120,6 +122,22 @@ def _replace_or_refuse(ctx: Context) -> bool:
     return True
 
 
+def _milestone_reader(ctx: Context, bar) -> Callable[[str], None]:
+    """Turn the launcher's lines into the bar's stages (the Personal component's ``deploy_milestones``); monotonic, like the legacy kit."""
+    table = ctx.catalog.component("personal").deploy_milestones
+    notice = ("End User License Agreement", "terms-and-conditions")
+
+    def on_line(line: str) -> None:
+        ctx.log.line("LAUNCHER", line)
+        if any(word in line for word in notice):
+            ctx.ui.info(line.strip())
+        for row in table:
+            if str(row["match"]) in line:
+                bar.stage(int(row["pct"]), int(row["ceiling"]), float(row["seconds"]), str(row["phase"]))
+                return
+    return on_line
+
+
 def _deploy_fresh(ctx: Context) -> bool:
     rt = runtime(ctx)
     if port_in_use(rt.db_port()) and not rt.reap_orphan(rt.db_port(), ctx.ui.info):
@@ -130,8 +148,8 @@ def _deploy_fresh(ctx: Context) -> bool:
     ctx.ui.info("Exasol Personal is free to use and ships under Exasol's own licence terms, not the kit's MIT licence. The launcher shows them below.")
     ctx.ui.info("Deploying Exasol Personal locally - about 2 minutes")
     started = time.monotonic()
-    with ctx.ui.busy("Deploying the local database"):
-        ok, tail = rt.install_local()
+    with ctx.ui.progress("Deploying the local database", unit="percent") as bar:
+        ok, tail = rt.install_local(_milestone_reader(ctx, bar))
     if not ok and not (rt.deployment_exists() and rt.recover_slow_first_boot(ctx.ui.info)):
         for line in tail.splitlines():
             ctx.ui.text(f"      | {line}")

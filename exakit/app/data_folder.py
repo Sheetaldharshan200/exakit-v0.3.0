@@ -99,7 +99,12 @@ def load_folder(ctx: Context, folder: Path) -> Result:
     decisions = {e.path: _decide(e, schema, tables, receipts, inflight) for e in loadable}
     clashes = [e for e in loadable if decisions[e.path][0] == "clash"]
     on_existing = _clash_answer(ctx, schema, clashes, decisions)
-    outcomes = [_load_entry(ctx, pump, entry, schema, decisions[entry.path], on_existing, receipts, inflight) for entry in loadable]
+    outcomes = []
+    with ctx.ui.progress(f"Loading {len(loadable)} file{'s' if len(loadable) != 1 else ''} into {schema}", unit="items") as bar:
+        for index, entry in enumerate(loadable, 1):
+            bar.set_phase(f"{entry.path.name}")
+            outcomes.append(_load_entry(ctx, pump, entry, schema, decisions[entry.path], on_existing, receipts, inflight))
+            bar.update(index, len(loadable))
     after = table_listing(pump.sql(profile_name(ctx), LISTING_SQL)) or {}
     settled = _settle(outcomes, schema, after, receipts)
     _print_outcomes(ctx, schema, settled)

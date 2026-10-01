@@ -614,6 +614,37 @@ spinner, the current download's bar and elapsed time; modal screens for
 and `prompt`. Keys match the console menus: Up/Down, Space, Enter, digits,
 Esc. Styling lives in `app.tcss`; nothing is drawn by hand.
 
+Look: the terminal's own colours (`ansi_color`), no painted background
+anywhere, borders in a faint foreground; the questions are a `ChoiceList`
+(a pointer row, a green tick for what is chosen, the mouse ticks and chooses
+as well as the keys); text can be selected with the mouse and copied with
+Ctrl-C (Option-drag selects through the terminal itself on a Mac); Ctrl-Q
+quits. A running job's progress is a live row right under the line that
+announced it, in the log, never in a footer.
+
+### 6.2 Progress (`ui/progress.py`)
+
+One `ProgressState` for every long job, drawn as the legacy kit drew it: a
+braille head, the phase in a cell of its own, a bar in eighths (`█▏▎▍▌▋▊▉░`),
+the percent, the elapsed time; the cells are laid out across the terminal's
+width (30 / 40 / 10 / 10 percent, floored) so nothing shuffles as the words
+change. Three units: `bytes` (a download, the count in the phase), `items`
+(files, `n/m`), `percent` (stages: `stage(pct, ceiling, seconds, phase)` says
+where the job is, where the next stage sits and how long this one usually
+takes; the bar creeps toward the ceiling at that pace and stops one point
+short, never claiming a stage not reached, never walking backwards). The
+console renderer keeps a stack: a download inside an add-on install draws
+its own line and hands back. Plain mode (a pipe, `NO_COLOR`) prints one line
+per phase and one per quarter. The jobs that carry a bar: every verified
+download, the local deployment (the launcher's lines are streamed through
+`Runner.stream` and matched against `deploy_milestones` on the Personal
+component, 3.1), each dataset load (the files weighted by size, the schema,
+statements, verification and counts a nominal share), a folder of files,
+each add-on install (installing 0-65, validating 65-90, starting 90-100).
+The six install steps are `Step`s of section `install`: the console prints
+the heading and closes each with a tick and its time; the screens show them
+in the plan panel.
+
 Tests: `tests/unit/ui/test_tui.py` runs the app headless through Textual's
 `run_test` pilot (skipped where Textual is not installed; the CI test job
 installs the pinned version); `tests/unit/adapters/test_tui_env.py` proves
@@ -624,6 +655,10 @@ only.
 ---
 
 ## 7. Adapter protocols (each in its own file, each with a fake in `tests/unit/fakes/`)
+
+`Runner` also has `stream(cmd, on_line, *, env, timeout)`: a long command whose
+lines are handed over as they are printed (the deploy bar reads the launcher
+through it); the lines are the `Completed.out` as well.
 
 | Protocol | Methods | Implementations |
 |---|---|---|
@@ -778,6 +813,7 @@ deletes `setup/`.
 | D33 | The Log protocol lives in `domain/log.py`; the UI imports nothing from `adapters/`. Daemons start through `Runner.spawn`, HTTP probes through `adapters.net.http.http_status`. | The layer rule of section 9, held by the checker. The one exception, the terminal device in `ui/__init__.py`, is named in the checker. |
 | D34 | Every default is data: `catalog/kit.json` for the kit (repository, installer URLs, fetch URLs and cache budgets, endpoint templates, the managed Python, the machine requirements, the runtime's port and budgets, the MCP and data defaults), the `source` and `config` blocks of the catalog for each component and add-on (tags, asset names per platform, pins, mirrors, service users). The code reads them through `ctx.catalog`; an environment variable overrides where documented. A test holds the literals out of `exakit/`. | The fallback order (GitHub, cache, ours) is only as good as the "ours" it ends in; a value that lives in a module cannot be changed by a kit update without a code change, and the same value lived in three places. |
 | D36 | The kit is a bundler, not the maintainer of the add-ons: an add-on's binaries come from the add-on's own GitHub release first (`exasol-labs/exasol-scheduler`, `exasol-labs/exasol-json-tables`: the upstream archives, verified by the digests upstream publishes, the binary extracted), and the kit's mirror release answers only when that download cannot complete, or for a platform upstream does not publish (the JSON Tables linux-aarch64 engine). The sites are catalog data (`source.releases`); `versions.json` pins the mirror's digests and names the mirror release. | The mirror pinned a release tag that did not exist in this repository and digests of another build; the installs failed on a download the source repository was answering all along. The upstream release is the authority on what the add-on is; the mirror is a fallback and must never be the only path. |
+| D38 | One progress line for every long job (6.2), the legacy kit's design kept: milestones are the truth and the creep between them is honest; the launcher's deploy lines are data on the Personal component (`deploy_milestones`), streamed through `Runner.stream`. | A spinner that says nothing for two minutes, or a bar that jumps from 5% to done, is what the shell kit had already solved; its users expect the same line for the deploy, the datasets and the add-ons. |
 | D37 | The interactive screens are Textual, in a venv of their own (architecture A3, revised): the core stays standard-library, the console renderer stays the fallback, the Textual app owns the main thread and the command runs in a worker whose renderer hands every call to the app; the transcript is printed when the app closes. | A hand-rolled full-screen UI (arrow menus, spinners, bars drawn with escape codes) is the second UI toolkit to maintain; Textual gives layout, widgets, modals and a test pilot for the price of one pinned package that the installer can live without. |
 | D35 | The platforms the local database runs on are data: `platforms` on the Personal component (`catalog/components/personal.json`: Apple silicon Macs, Linux x86_64/arm64, Windows x86_64). The Python gate and `exakit preflight` read it and refuse in words before step 1; `install.sh` holds the same rule for Intel Macs because it runs before Python exists. An unsupported machine installs nothing: no download, no record, no command. | The launcher itself refuses Intel Macs (`local deployments are only supported on macOS Apple Silicon, Linux amd64/arm64, and Windows amd64`); the kit must say so first, not after installing half of itself. |
 

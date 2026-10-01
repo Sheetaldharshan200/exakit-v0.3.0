@@ -1,4 +1,4 @@
-"""The Textual screens, headless: the renderer's calls reach the app from a worker thread, the keys answer the modal questions.
+"""The Textual screens, headless: the renderer's calls reach the app from a worker thread, the keys and the mouse answer the questions.
 
 Skipped where Textual is not installed; the CI test job installs the pinned version.
 """
@@ -26,11 +26,12 @@ def _mirror():
 
 @unittest.skipUnless(HAVE_TEXTUAL, "textual is not installed here")
 class ScreensTest(unittest.IsolatedAsyncioTestCase):
-    async def _run(self, job, keys=(), size=(120, 40)):
-        """Run ``job`` inside the app from its worker thread; press ``keys`` once a question is up; return (app, transcript)."""
+    async def _run(self, job, keys=(), size=(120, 40), clicks=()):
+        """Run ``job`` inside the app from its worker thread; press ``keys`` (or click) once a question is up; return what the app showed."""
         from exakit.ui.tui.app import KitApp
+        from exakit.ui.tui.choices import ChoiceList
+        from exakit.ui.tui.panels import LogPane, PlanPanel
         from exakit.ui.tui.renderer import TuiRenderer
-        from exakit.ui.tui.panels import PlanPanel, StatusBar
         mirror, buffer = _mirror()
         app = KitApp(title="Exasol Personal Local Starter Kit", subtitle="test")
         renderer = TuiRenderer(app, mirror)
@@ -38,10 +39,13 @@ class ScreensTest(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=size) as pilot:
             for _ in range(100):
                 await pilot.pause(0.02)
-                if keys and len(app.screen_stack) > 1:
+                if (keys or clicks) and len(app.screen_stack) > 1:
                     break
                 if app.done:
                     break
+            for offset in clicks:
+                await pilot.click(ChoiceList, offset=offset)
+                await pilot.pause(0.02)
             for key in keys:
                 await pilot.press(key)
                 await pilot.pause(0.02)
@@ -50,34 +54,38 @@ class ScreensTest(unittest.IsolatedAsyncioTestCase):
                     break
                 await pilot.pause(0.02)
             self.assertTrue(app.done, "the command never finished")
-            final = app.query_one(StatusBar).final
             rows = {key: text.plain for key, text in app.query_one(PlanPanel).texts.items()}
+            log = [text.plain for text in app.query_one(LogPane).lines]
             await pilot.press("enter")
-        return app, buffer.getvalue(), final, rows
+        return app, buffer.getvalue(), rows, log
 
-    async def test_lines_and_steps_reach_the_app_and_the_transcript(self):
+    async def test_lines_steps_and_live_rows_reach_the_app_and_the_transcript(self):
+        from exakit.ui.tui.panels import ProgressRow
+        seen = {}
+
         def job(ui):
             ui.banner("Exasol Personal Local Starter Kit", "Platform: macos (arm64)")
             ui.info("hello")
             ui.ok("done")
-            plan = Plan("Install", [Step("components", "exapump", StepState.PENDING, label="exapump"), Step("datasets", "tpch", StepState.DONE)])
+            plan = Plan("Install", [Step("install", "launcher", StepState.PENDING, label="Step 1/6  Exasol launcher"), Step("install", "runtime", StepState.DONE)])
             ui.plan(plan)
             ui.step_begin(plan.steps[0])
-            with ui.busy("Downloading"):
-                pass
             with ui.progress("Downloading exapump") as report:
                 report(50, 100)
-            ui.step_end(plan.steps[0], ok=True)
+                seen["live"] = ui.app.call_from_thread(lambda: len(ui.app.query(ProgressRow)))
+            seen["after"] = ui.app.call_from_thread(lambda: len(ui.app.query(ProgressRow)))
+            ui.step_end(Step("install", "launcher", StepState.DONE, label="Step 1/6  Exasol launcher"))
             return Result(True, "ok")
 
-        app, transcript, final, rows = await self._run(job)
+        app, transcript, rows, log = await self._run(job)
         self.assertEqual(app.outcome().status, "ok")
         self.assertIn("- hello", transcript)
         self.assertIn("[ok] done", transcript)
-        self.assertIn("exapump", transcript)
-        self.assertEqual(final, "Finished - press Enter to close")
-        self.assertEqual(set(rows), {"components/exapump", "datasets/tpch"})
-        self.assertIn("✓ exapump", rows["components/exapump"])
+        self.assertEqual(seen, {"live": 1, "after": 0})
+        self.assertEqual(app.final, "Finished - press Enter to close")
+        self.assertEqual(set(rows), {"install/launcher", "install/runtime"})
+        self.assertIn("✓ Step 1/6  Exasol launcher", rows["install/launcher"])
+        self.assertIn("Step 1/6  Exasol launcher", log)
 
     async def test_select_answers_with_the_arrow_keys(self):
         answers = []
@@ -86,11 +94,11 @@ class ScreensTest(unittest.IsolatedAsyncioTestCase):
             answers.append(ui.select("Pick one", [Option("a", "A"), Option("b", "B"), Option("c", "C")], default=1))
             return Result(True, "ok")
 
-        _app, transcript, _final, _rows = await self._run(job, keys=("down", "enter"))
+        _app, transcript, _rows, _log = await self._run(job, keys=("down", "enter"))
         self.assertEqual(answers, ["b"])
         self.assertIn("? Pick one b", transcript)
 
-    async def test_select_takes_a_digit_and_escape_backs_out(self):
+    async def test_select_takes_a_digit_a_click_and_escape_backs_out(self):
         answers = []
 
         def job(ui):
@@ -100,6 +108,24 @@ class ScreensTest(unittest.IsolatedAsyncioTestCase):
 
         await self._run(job, keys=("3", "escape"))
         self.assertEqual(answers, ["c", None])
+
+    async def test_a_click_chooses_a_row_and_a_click_ticks_a_box(self):
+        answers = []
+
+        def job(ui):
+            answers.append(ui.select("Click one", [Option("a", "A"), Option("b", "B")], default=1))
+            return Result(True, "ok")
+
+        await self._run(job, clicks=((4, 1),))
+        self.assertEqual(answers, ["b"])
+        answers.clear()
+
+        def job2(ui):
+            answers.append(ui.checkboxes("Datasets", [Option("tpch", "TPC-H"), Option("energy", "Energy")], defaults=["tpch"]))
+            return Result(True, "ok")
+
+        await self._run(job2, clicks=((4, 1),), keys=("enter",))
+        self.assertEqual(answers, [["tpch", "energy"]])
 
     async def test_checkboxes_tick_with_space_and_continue_with_enter(self):
         answers = []
@@ -139,12 +165,20 @@ class ScreensTest(unittest.IsolatedAsyncioTestCase):
             ui.error("Setup failed")
             raise Failed("the step did not finish", remedy="exakit install")
 
-        app, transcript, final, _rows = await self._run(job)
+        app, transcript, _rows, _log = await self._run(job)
         self.assertIn("[x] Setup failed", transcript)
-        self.assertTrue(final.startswith("Stopped"))
+        self.assertTrue(app.final.startswith("Stopped"))
         with self.assertRaises(Failed) as caught:
             app.outcome()
         self.assertEqual(caught.exception.remedy, "exakit install")
+
+    async def test_the_app_keeps_the_terminals_colours(self):
+        from exakit.ui.tui.app import KitApp
+        app = KitApp(title="t")
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.02)
+            self.assertTrue(app.ansi_color)
+            self.assertEqual(app.screen.styles.background.a, 0, "the screen paints no background of its own")
 
 
 class WantedTest(unittest.TestCase):
@@ -176,4 +210,3 @@ class WantedTest(unittest.TestCase):
             self.skipTest("textual is importable here, so load() cannot fail")
         with tempfile.TemporaryDirectory() as tmp:
             self.assertFalse(tui.load(Path(tmp)))
-

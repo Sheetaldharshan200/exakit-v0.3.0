@@ -1,4 +1,4 @@
-"""The kit's full-screen app: the command runs in a worker thread, the screens draw on the main thread."""
+"""The kit's full-screen app: the command runs in a worker thread, the screens draw on the main thread, in the terminal's own colours."""
 
 from __future__ import annotations
 
@@ -9,43 +9,41 @@ from typing import Any
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal
 from textual.screen import ModalScreen
-from textual.widgets import Footer, RichLog
 
 from exakit.domain.errors import ExakitError
 from exakit.domain.plan import Plan, Step
 from exakit.domain.result import Result
+from exakit.ui.progress import ProgressState
 
-from .panels import PlanPanel, StatusBar, WordmarkHeader
+from .panels import LogPane, PlanPanel, ProgressRow, WordmarkHeader
 
 
 class KitApp(App[None]):
-    """Header, plan, log, status bar; ``job`` runs in a thread once the app is mounted."""
+    """Header, plan, log; ``job`` runs in a thread once the app is mounted."""
 
     CSS_PATH = "app.tcss"
-    BINDINGS = [Binding("ctrl+c", "request_quit", "Quit", priority=True), Binding("ctrl+q", "request_quit", "Quit", show=False),
+    BINDINGS = [Binding("ctrl+q", "request_quit", "Quit"), Binding("ctrl+c", "copy_or_hint", "Copy", show=False, priority=True),
                 Binding("enter", "close", "Close when finished", show=False), Binding("q", "close", "Close", show=False)]
 
     def __init__(self, *, title: str, subtitle: str = "", job: Callable[[], Result] | None = None) -> None:
-        super().__init__()
+        super().__init__(ansi_color=True)
         self.title_text = title
         self.subtitle_text = subtitle
         self.job = job
         self.done = False
+        self.final = ""
         self._outcome: tuple[str, Any] | None = None
 
     # --- layout ---------------------------------------------------------------------
 
     def compose(self) -> ComposeResult:
-        """The wordmark header, the plan beside the log, the status bar, the footer."""
+        """The wordmark header, then the plan beside the log."""
         yield WordmarkHeader(self.title_text, self.subtitle_text)
         with Horizontal(id="body"):
             yield PlanPanel()
-            with Vertical():
-                yield RichLog(id="log", wrap=True, markup=False, highlight=False)
-        yield StatusBar()
-        yield Footer()
+            yield LogPane()
 
     def on_mount(self) -> None:
         """Start the command in a worker thread."""
@@ -64,18 +62,15 @@ class KitApp(App[None]):
     def _finished(self) -> None:
         self.done = True
         kind = self._outcome[0] if self._outcome else "crash"
-        self.status.set_final("Finished - press Enter to close" if kind == "result" else "Stopped - press Enter to close (the details follow)")
+        self.final = "Finished - press Enter to close" if kind == "result" else "Stopped - press Enter to close (the details follow)"
+        self.write(Text(""))
+        self.write(Text(self.final, style="bold"))
 
     # --- what the worker asks for (every call arrives through call_from_thread) ----------------
 
-    @property
-    def status(self) -> StatusBar:
-        """The status bar."""
-        return self.query_one(StatusBar)
-
     def write(self, text: Text) -> None:
-        """Append a line to the log pane."""
-        self.query_one(RichLog).write(text)
+        """Append a line to the log."""
+        self.query_one(LogPane).write(text)
 
     def set_title(self, title: str, subtitle: str = "") -> None:
         """Replace the header's title and subtitle."""
@@ -93,13 +88,13 @@ class KitApp(App[None]):
         """A step finished."""
         self.query_one(PlanPanel).end(step, ok=ok, detail=detail)
 
-    def set_busy(self, label: str, detail: str = "") -> None:
-        """The status bar shows something running."""
-        self.status.set_busy(label, detail)
+    def live_begin(self, state: ProgressState) -> ProgressRow:
+        """A job started: its live row under the text."""
+        return self.query_one(LogPane).live_begin(state)
 
-    def clear_busy(self) -> None:
-        """The status bar shows nothing running."""
-        self.status.clear()
+    async def live_end(self, row: ProgressRow) -> None:
+        """The job finished: the live row goes."""
+        await self.query_one(LogPane).live_end(row)
 
     async def ask(self, screen: ModalScreen) -> Any:
         """Show a modal question and wait for its answer."""
@@ -107,7 +102,16 @@ class KitApp(App[None]):
         self.push_screen(screen, callback=future.set_result)
         return await future
 
-    # --- closing ---------------------------------------------------------------------------
+    # --- keys ---------------------------------------------------------------------------------
+
+    def action_copy_or_hint(self) -> None:
+        """Ctrl-C copies the selected text; without a selection it says how to quit and how to select."""
+        selected = self.screen.get_selected_text()
+        if selected:
+            self.copy_to_clipboard(selected)
+            self.notify("Copied", timeout=2)
+            return
+        self.notify("Ctrl-Q quits. Drag to select text (hold Option on a Mac terminal), then Ctrl-C copies.", timeout=4)
 
     def action_close(self) -> None:
         """Enter or q close the app once the command finished."""
@@ -115,7 +119,7 @@ class KitApp(App[None]):
             self.exit()
 
     def action_request_quit(self) -> None:
-        """Ctrl-C: leave now; the process exits 130 as it did without the screens."""
+        """Ctrl-Q: leave now; the process exits 130 as it did without the screens."""
         if not self.done:
             self._outcome = ("interrupt", None)
         self.exit()

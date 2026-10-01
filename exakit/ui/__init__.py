@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager
 from typing import IO, Protocol
 
@@ -19,6 +19,7 @@ from exakit.domain.plan import Plan, Step
 from .console import ConsoleRenderer
 from .silent import SilentRenderer
 from .keys import key_reader
+from .progress import ProgressState
 from .widgets import FANCY, PLAIN, Option
 
 
@@ -43,7 +44,7 @@ class Renderer(Protocol):
     def select(self, title: str, options: Sequence[Option], default: int = 1) -> str | None: ...
     def checkboxes(self, title: str, options: Sequence[Option], defaults: Sequence[str]) -> list[str]: ...
     def busy(self, label: str) -> AbstractContextManager[None]: ...
-    def progress(self, label: str) -> AbstractContextManager[Callable[[int, int | None], None]]: ...
+    def progress(self, label: str, *, unit: str = "bytes") -> AbstractContextManager[ProgressState]: ...
 
 
 def wants_fancy(env: Mapping[str, str], out: IO[str]) -> bool:

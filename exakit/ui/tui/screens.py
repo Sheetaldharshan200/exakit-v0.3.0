@@ -1,37 +1,28 @@
 """The modal questions of the kit's screens: a single choice, a tick list, a yes/no, a line of text.
 
 The keys match the console menus: Up/Down move, Space ticks, Enter continues, a digit picks,
-``a``/``n`` take all or none, Esc backs out with the default.
+``a``/``n`` take all or none, Esc backs out with the default. The mouse ticks and chooses too.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 
-from rich.text import Text
-from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, OptionList, SelectionList
-from textual.widgets.option_list import Option as ListOption
-from textual.widgets.selection_list import Selection
+from textual.widgets import Button, Input, Label
 
 from exakit.ui.widgets import Option
 
-
-def _row(option: Option) -> Text:
-    text = Text(option.label)
-    if option.hint:
-        text.append(f"  {option.hint}", style="dim")
-    return text
+from .choices import ChoiceList
 
 
 class SelectScreen(ModalScreen[str | None]):
     """One choice out of a list; the answer is the option's id, None when backed out."""
 
-    BINDINGS = [Binding("escape", "cancel", "Back")]
+    BINDINGS = [Binding("enter", "done", "Choose", priority=True), Binding("escape", "cancel", "Back")]
 
     def __init__(self, title: str, options: Sequence[Option], default: int) -> None:
         super().__init__()
@@ -43,27 +34,24 @@ class SelectScreen(ModalScreen[str | None]):
         """The title, the list, the key hint."""
         with Vertical(id="dialog"):
             yield Label(self.title_text, id="title")
-            yield OptionList(*[ListOption(_row(o), id=o.id, disabled=o.disabled) for o in self.options], id="choices")
-            yield Label("Up/Down move   Enter chooses   a digit picks   Esc backs out", id="hint")
+            cursor = self.default - 1 if 1 <= self.default <= len(self.options) else 0
+            yield ChoiceList(self.options, chosen=[self.options[cursor].id] if self.options else [], cursor=cursor, single=True)
+            yield Label("Up/Down or the mouse   Enter chooses   a digit picks   Esc backs out", id="hint")
 
     def on_mount(self) -> None:
-        """Highlight the default."""
-        choices = self.query_one(OptionList)
-        if 1 <= self.default <= len(self.options):
-            choices.highlighted = self.default - 1
-        choices.focus()
+        """Focus the list."""
+        self.query_one(ChoiceList).focus()
 
-    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        """Enter on a row answers with it."""
-        self.dismiss(event.option.id)
+    def on_choice_list_chosen(self, event: ChoiceList.Chosen) -> None:
+        """A click or a digit answers at once."""
+        self.dismiss(self.options[event.index].id)
 
-    def on_key(self, event: events.Key) -> None:
-        """A digit picks that row."""
-        if event.character and event.character.isdigit():
-            index = int(event.character) - 1
-            if 0 <= index < len(self.options) and not self.options[index].disabled:
-                event.stop()
-                self.dismiss(self.options[index].id)
+    def action_done(self) -> None:
+        """Enter answers with the cursor's row."""
+        choices = self.query_one(ChoiceList)
+        option = choices.options[choices.cursor]
+        if not option.disabled:
+            self.dismiss(option.id)
 
     def action_cancel(self) -> None:
         """Esc: no answer."""
@@ -86,25 +74,25 @@ class CheckboxScreen(ModalScreen[list[str]]):
         """The title, the tick list, the key hint."""
         with Vertical(id="dialog"):
             yield Label(self.title_text, id="title")
-            yield SelectionList[str](*[Selection(_row(o), o.id, o.id in self.defaults, disabled=o.disabled) for o in self.options], id="choices")
-            yield Label("Up/Down move   Space ticks   Enter continues   a all   n none   Esc backs out", id="hint")
+            yield ChoiceList(self.options, chosen=self.defaults)
+            yield Label("Up/Down or the mouse   Space or a click ticks   Enter continues   a all   n none   Esc backs out", id="hint")
 
     def on_mount(self) -> None:
         """Focus the list."""
-        self.query_one(SelectionList).focus()
+        self.query_one(ChoiceList).focus()
 
     def action_done(self) -> None:
         """Enter: the ticked ids, in the list's order."""
-        ticked = set(self.query_one(SelectionList).selected)
+        ticked = self.query_one(ChoiceList).chosen
         self.dismiss([o.id for o in self.options if o.id in ticked])
 
     def action_all(self) -> None:
         """Tick everything that can be ticked."""
-        self.query_one(SelectionList).select_all()
+        self.query_one(ChoiceList).all(True)
 
     def action_none(self) -> None:
         """Untick everything."""
-        self.query_one(SelectionList).deselect_all()
+        self.query_one(ChoiceList).all(False)
 
     def action_cancel(self) -> None:
         """Esc: the defaults."""

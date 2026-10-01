@@ -2,12 +2,26 @@
 
 ## Unreleased
 
+**The progress line is back, for everything that takes time.** The local
+deployment, every download, each dataset load, a folder of files and every
+add-on install draw the line the shell kit drew: the phase, a bar that creeps
+honestly between the launcher's milestones, the percent and the time. In the
+screens the line sits right under the text that announced the job; in a pipe
+it is one line per phase.
+
+**`exakit` with no arguments works again** (the launcher tripped over its
+missing first argument), and the MCP handshake waits for an environment
+another AI client may be installing at the same moment instead of giving up
+after seven seconds.
+
 **The interactive screens run on Textual.** In a terminal, the install,
 the marketplace, an update, an uninstall and the other interactive flows
 draw a full-screen app: the plan with each step's state and time, the log,
 a status bar with the spinner and the download bar, and proper menus. The
 toolkit is installed by uv into its own folder under the kit home on the
-first interactive run; the kit itself stays standard-library. Pipes,
+first interactive run; the kit itself stays standard-library. The screens
+keep the terminal's own colours, the questions take the mouse as well as the
+keys, text can be selected and copied. Pipes,
 `--json`, scripted runs, `EXAKIT_TUI=0` and any machine where that install
 fails keep the console output, and the console transcript is printed when
 the app closes so the scrollback keeps everything.

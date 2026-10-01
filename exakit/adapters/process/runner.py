@@ -5,7 +5,8 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from collections.abc import Mapping, Sequence
+import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -29,6 +30,8 @@ class Runner(Protocol):
     def which(self, name: str) -> str | None: ...
     def interactive(self, cmd: Sequence[str], *, env: Mapping[str, str] | None = None) -> int: ...
     def spawn(self, cmd: Sequence[str], *, log_path: Path) -> int: ...
+    def stream(self, cmd: Sequence[str], on_line: Callable[[str], None], *, env: Mapping[str, str] | None = None,
+               timeout: float | None = None) -> Completed: ...
 
 
 class SubprocessRunner:
@@ -54,6 +57,32 @@ class SubprocessRunner:
     def which(self, name: str) -> str | None:
         """The path of a command on PATH, or None."""
         return shutil.which(name)
+
+    def stream(self, cmd: Sequence[str], on_line: Callable[[str], None], *, env: Mapping[str, str] | None = None,
+               timeout: float | None = None) -> Completed:
+        """Run a long command, handing every line of its merged output to ``on_line`` as it arrives; the lines are also the answer."""
+        full_env = dict(os.environ)
+        if env:
+            full_env.update(env)
+        try:
+            child = subprocess.Popen(list(cmd), env=full_env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                     stderr=subprocess.STDOUT, text=True, errors="replace")
+        except FileNotFoundError:
+            return Completed(127, "", f"{cmd[0]}: not found")
+        except OSError as err:
+            return Completed(126, "", str(err))
+        lines: list[str] = []
+        deadline = time.monotonic() + timeout if timeout else None
+        for raw in child.stdout or []:
+            line = raw.rstrip("\n")
+            lines.append(line)
+            on_line(line)
+            if deadline and time.monotonic() > deadline:
+                child.kill()
+                lines.append(f"{cmd[0]}: timed out after {timeout}s")
+                break
+        code = child.wait()
+        return Completed(code, "\n".join(lines), "")
 
     def spawn(self, cmd: Sequence[str], *, log_path: Path) -> int:
         """Start a daemon in its own session, both streams appended to ``log_path``; the pid is the answer."""

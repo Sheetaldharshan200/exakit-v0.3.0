@@ -9,7 +9,8 @@ from rich.text import Text
 
 from exakit.domain.plan import Plan, Step, StepState
 from exakit.ui.console import ConsoleRenderer
-from exakit.ui.widgets import Option, progress_bar
+from exakit.ui.progress import ProgressState
+from exakit.ui.widgets import Option
 
 from .app import KitApp
 from .screens import CheckboxScreen, ConfirmScreen, PromptScreen, SelectScreen
@@ -26,7 +27,6 @@ class TuiRenderer:
     def __init__(self, app: KitApp, mirror: ConsoleRenderer) -> None:
         self.app = app
         self.mirror = mirror        # the plain transcript (and the log): what the console would have printed
-        self._busy = 0
 
     def _call(self, fn: Callable, *args, **kwargs):
         return self.app.call_from_thread(fn, *args, **kwargs)
@@ -48,8 +48,9 @@ class TuiRenderer:
         self._call(self.app.set_title, title, subtitle)
 
     def heading(self, text: str) -> None:
-        """A bold line."""
+        """A bold line, with a blank line before it."""
         self.mirror.heading(text)
+        self._call(self.app.write, Text(""))
         self._call(self.app.write, Text(text, style="bold"))
 
     def info(self, text: str) -> None:
@@ -84,7 +85,7 @@ class TuiRenderer:
     def rule(self) -> None:
         """A separator."""
         self.mirror.rule()
-        self._call(self.app.write, Text("─" * 72, style="dim"))
+        self._call(self.app.write, Text("─" * 60, style="dim"))
 
     def panel(self, title: str, lines: Sequence[str]) -> None:
         """A titled block of lines."""
@@ -101,15 +102,18 @@ class TuiRenderer:
         self._call(self.app.set_plan, plan)
 
     def step_begin(self, step: Step | str) -> None:
-        """A step starts."""
+        """A step starts: the plan row runs, and an install step's heading goes into the log."""
         self.mirror.step_begin(step)
+        if isinstance(step, Step) and step.section == "install":
+            self._call(self.app.write, Text(""))
+            self._call(self.app.write, Text(step.label or step.id, style="bold"))
         self._call(self.app.step_begin, step)
 
     def step_end(self, step: Step | str, *, ok: bool = True, detail: str = "") -> None:
         """A step ends."""
         self.mirror.step_end(step, ok=ok, detail=detail)
         if isinstance(step, Step):
-            ok, detail = step.state is not StepState.FAILED, detail or step.reason
+            ok, detail = ok and step.state is not StepState.FAILED, detail or step.reason
         self._call(self.app.step_end, step, ok=ok, detail=detail)
 
     # --- questions ------------------------------------------------------------------------------
@@ -138,38 +142,20 @@ class TuiRenderer:
         self.mirror.text(f"? {title} {', '.join(answer) or 'none'}")
         return answer
 
-    # --- the live line ----------------------------------------------------------------------------
+    # --- the live rows ----------------------------------------------------------------------------
 
     @contextmanager
     def busy(self, label: str) -> Iterator[None]:
-        """The status bar shows the label with a spinner and the time so far."""
-        with self.mirror.busy(label):
-            self._busy += 1
-            self._call(self.app.set_busy, label)
-            try:
-                yield
-            finally:
-                self._busy -= 1
-                if not self._busy:
-                    self._call(self.app.clear_busy)
+        """A live row with the label and the time so far, right under the text, while a slow call runs."""
+        with self.progress(label, unit="percent"):
+            yield
 
     @contextmanager
-    def progress(self, label: str) -> Iterator[Callable[[int, int | None], None]]:
-        """The status bar shows the download's bar; the plain transcript gets its quarter lines."""
-        shown = [-1]
-
-        def report(done: int, total: int | None) -> None:
-            percent = done * 100 // total if total else -2
-            if percent != shown[0]:
-                shown[0] = percent
-                self._call(self.app.set_busy, label, progress_bar(done, total))
-
-        with self.mirror.progress(label) as mirror_report:
-            self._busy += 1
-            self._call(self.app.set_busy, label)
+    def progress(self, label: str, *, unit: str = "bytes") -> Iterator[ProgressState]:
+        """A live progress row under the text that announced the job; the transcript gets the plain lines."""
+        with self.mirror.progress(label, unit=unit) as state:
+            row = self._call(self.app.live_begin, state)
             try:
-                yield lambda done, total: (mirror_report(done, total), report(done, total))[-1]
+                yield state
             finally:
-                self._busy -= 1
-                if not self._busy:
-                    self._call(self.app.clear_busy)
+                self._call(self.app.live_end, row)
