@@ -329,6 +329,12 @@ class DashboardApp(App[None]):
         """A command's banner: a bold line in the job log."""
         await self.write(Text(title, style="bold"))
 
+    async def set_aside(self, title: str, lines: list[str]) -> None:
+        """What the screens show beside the log: in the dashboard, into the job log."""
+        await self.write(Text(title, style="bold"))
+        for line in lines:
+            await self.write(Text(line))
+
     async def set_plan(self, plan: Plan) -> None:
         """A plan: its steps as lines."""
         for step in plan.steps:

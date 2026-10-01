@@ -16,6 +16,15 @@ The 0.2.0 self-update insisted on five library files this tree no longer
 has, so they ship as empty stubs; a workflow installs the real 0.2.0 kit
 on scratch machines and proves both routes.
 
+**The uninstall says goodbye on screen.** While the kit is removed, the left
+panel shows a small drawing, the feedback address and the command to install
+again, instead of an empty plan.
+
+**The uninstall menu is add-ons plus Everything.** The kit's own parts
+(the database, exapump, the MCP configs, the AI skills, pyexasol) are no
+longer offered one by one; ticking Everything ticks every row, and unticking
+any row unticks it. The same rule holds in the screens and the console.
+
 **The scheduler's card says what it does.** The dashboard reads the
 scheduler's own tables: how many tasks, how many enabled, the last run and
 its outcome, the failures of the last day; a stopped scheduler offers Repair

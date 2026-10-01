@@ -81,6 +81,10 @@ class KitApp(App[None]):
         """Show a plan in the plan panel."""
         self.query_one(PlanPanel).set_plan(plan)
 
+    def set_aside(self, title: str, lines: list[str]) -> None:
+        """Show free text in the left panel instead of a plan."""
+        self.query_one(PlanPanel).set_aside(title, lines)
+
     def step_begin(self, step: Step | str) -> None:
         """A step started."""
         self.query_one(PlanPanel).begin(step)

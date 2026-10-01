@@ -85,6 +85,17 @@ class PlanPanel(VerticalScroll):
             text.append(f"  {detail}", style="dim")
         return text
 
+    def set_aside(self, title: str, lines: list[str]) -> None:
+        """Replace the rows with free text under a title (a goodbye during an uninstall)."""
+        self.border_title = title
+        self.remove_children()
+        self.rows.clear()
+        self.texts.clear()
+        text = Text()
+        for line in lines:
+            text.append(line + "\n", style="green" if "@" in line else ("dim" if line.startswith("  ") else ""))
+        self.mount(Static(text))
+
     def begin(self, step: Step | str) -> None:
         """Mark a step as running and start its clock."""
         self.started[step_key(step)] = time.monotonic()

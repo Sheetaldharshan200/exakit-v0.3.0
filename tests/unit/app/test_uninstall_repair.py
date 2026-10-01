@@ -101,6 +101,8 @@ class FullUninstallTest(unittest.TestCase):
             self.assertFalse((box.ctx.paths.bin_dir / "exakit").exists())
             self.assertFalse((box.ctx.paths.bin_dir / "exasol").exists())
             self.assertIn("Uninstall complete", box.screen())
+            self.assertIn("Goodbye", box.screen(), "the goodbye panel shows while the kit is removed")
+            self.assertIn("Install again any time", box.screen())
             self.assertIn("Thank you for trying the Exasol Personal Local Starter Kit", box.screen())
             self.assertIn(box.ctx.catalog.kit.feedback_email, box.screen())
             self.assertIn("collects no telemetry", box.screen())
@@ -129,10 +131,13 @@ class FullUninstallTest(unittest.TestCase):
             box.close()
         box = installed_box(interactive=True)
         try:
-            box.ctx.ui.checkboxes = lambda title, options, defaults: ["pyexasol"]
+            offered: dict[str, list[str]] = {}
+            box.ctx.ui.checkboxes = lambda title, options, defaults: (offered.setdefault("ids", [o.id for o in options]) and ["pyexasol"])
             box.ctx.ui.prompt = lambda question, default="": "nope"
             result = uninstall.run(box.ctx, [])
             self.assertEqual(result.status, "cancelled")
+            self.assertEqual(offered["ids"][-1], "everything", "the menu ends with Everything")
+            self.assertFalse({"database", "exapump", "mcp_configs", "skills", "pyexasol"} & set(offered["ids"]), "only add-ons are offered one by one")
             self.assertTrue(box.ctx.manifest_store.exists())
             box.ctx.ui.prompt = lambda question, default="": "UNINSTALL"
             with mock.patch("exakit.app.kit.uninstall.for_component") as comp:

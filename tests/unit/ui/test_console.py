@@ -39,6 +39,12 @@ class ConsoleTest(unittest.TestCase):
         r.ok("done")
         self.assertEqual(out.getvalue(), "  > Step\n    - action\n      [ok] done\n")
 
+    def test_an_aside_is_a_panel_in_the_console(self):
+        r, out = _plain()
+        r.aside("Goodbye", ["Thank you.", "  feedback@example.test"])
+        self.assertIn("Goodbye", out.getvalue())
+        self.assertIn("feedback@example.test", out.getvalue())
+
     def test_panel_boxes_its_lines(self):
         r, out = _plain()
         r.panel("Title", ["alpha", "a longer line"])
@@ -116,8 +122,21 @@ class ArrowMenuTest(unittest.TestCase):
         r, _ = self._renderer(["space", "esc"])
         self.assertEqual(r.checkboxes("Pick", opts, ["b"]), ["b"], "escape keeps the defaults")
 
+    def test_an_everything_row_ticks_every_row(self):
+        from exakit.ui.menu_rules import tick
+        rows = [Option("a", "A"), Option("b", "B"), Option("everything", "Everything", everything=True)]
+        chosen: set[str] = set()
+        tick(rows, chosen, 2)
+        self.assertEqual(chosen, {"a", "b", "everything"})
+        tick(rows, chosen, 0)                       # unticking one row unticks Everything too
+        self.assertEqual(chosen, {"b"})
+        tick(rows, chosen, 0)                       # every row ticked by hand ticks Everything
+        self.assertEqual(chosen, {"a", "b", "everything"})
+        tick(rows, chosen, 2)                       # unticking Everything clears all
+        self.assertEqual(chosen, set())
+
     def test_an_exclusive_row_in_the_console_menu(self):
-        from exakit.ui.menu import tick
+        from exakit.ui.menu_rules import tick
         rows = [Option("tpch", "TPC-H"), Option("energy", "Energy"), Option("skip", "Skip", exclusive=True)]
         chosen = {"tpch", "energy"}
         tick(rows, chosen, 2)

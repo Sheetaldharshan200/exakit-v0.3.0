@@ -181,13 +181,10 @@ def remove_component(ctx: Context, key: str) -> None:
 
 def _menu(ctx: Context) -> Result:
     manifest = ctx.manifest_or_none()
-    options = [Option("database", "Database - the local Exasol deployment and ALL its data"),
-               Option("mcp_configs", "MCP configs - the kit's entry in each AI client"),
-               Option("skills", "AI skills - the kit's skills in the agents' folders"),
-               Option("exapump", "exapump - the CLI and its profiles"), Option("pyexasol", "pyexasol - the managed venv")]
     addons = [a.id for a in ctx.catalog.addons() if manifest and addon_installed_version(ctx, a, manifest)[1]]
-    options += [Option(aid, f"Add-on: {aid}") for aid in addons]
-    options.append(Option("everything", "EVERYTHING - keeps: nothing"))
+    options = [Option(aid, f"Add-on: {aid}") for aid in addons]
+    options.append(Option("everything", "EVERYTHING - the whole kit: the database and ALL its data, exapump, the MCP configs, the AI skills, pyexasol, every add-on",
+                          everything=True))
     if not ctx.ui.interactive:
         raise Failed("uninstall needs an interactive terminal to confirm; use --yes for the scripted full uninstall.")
     picked = ctx.ui.checkboxes("Select what to uninstall", options, defaults=[])
@@ -196,7 +193,8 @@ def _menu(ctx: Context) -> Result:
         return Result(True, "nothing")
     if "everything" in picked:
         picked = ["everything"]
-    lines = [{o.id: o.label for o in options}[key] for key in picked]
+    labels = {o.id: o.label for o in options}
+    lines = [labels.get(key, key) for key in picked]
     if "database" in picked or "everything" in picked:
         lines += ["", "Database: the local Exasol Personal deployment", "The deployment IS the database - removing it cannot be undone."]
     ctx.ui.text("")
@@ -205,6 +203,7 @@ def _menu(ctx: Context) -> Result:
     if ctx.ui.prompt("Type UNINSTALL to remove the items above (anything else cancels)", "") != "UNINSTALL":
         ctx.ui.info("Uninstall cancelled - nothing was removed.")
         return Result(True, "cancelled")
+    farewell_aside(ctx)
     for key in picked:
         remove_component(ctx, key)
     if "everything" in picked:
@@ -248,7 +247,7 @@ def run(ctx: Context, args: list[str]) -> Result:
         gone = remove_everything(ctx, dry=True)
         ctx.ui.text("")
         ctx.ui.info("Not touched: uv/uvx (shared tool), any PATH line in your shell profile, and anything the kit did not install.")
-        ctx.ui.info("Dry run only - nothing was removed. Pick individual pieces interactively with: exakit uninstall")
+        ctx.ui.info("Dry run only - nothing was removed. Pick add-ons one by one, or everything, interactively with: exakit uninstall")
         return Result(True, "dry-run", data={"would_remove": gone})
     if yes:
         return _full(ctx)
@@ -266,12 +265,32 @@ def _full(ctx: Context) -> Result:
     ctx.ui.info(f"  exapump sql -p {ctx.env.get('EXAKIT_EXAPUMP_PROFILE') or 'starter-kit'} -f csv 'SELECT * FROM <SCHEMA>.<TABLE>' > <TABLE>.csv")
     ctx.ui.info("  ...which exakit data-load <TABLE>.csv loads back into a new install (the file name becomes the table name).")
     ctx.ui.text("")
+    farewell_aside(ctx)
     gone = remove_everything(ctx, dry=False)
     ctx.ui.text("")
     ctx.ui.ok("Uninstall complete - the Exasol Personal Local Starter Kit has been removed.")
     ctx.ui.info(f"If a PATH entry for {ctx.paths.bin_dir} remains in your shell profile (~/.zshrc, ~/.bashrc, ~/.profile), remove it manually if you no longer need it.")
     farewell(ctx)
     return Result(True, "removed", data={"removed": gone})
+
+
+GOODBYE = (
+    "",
+    "      ╭───────────╮",
+    "      │  ( ^_^ )/  │   thank you",
+    "      ╰─────┬─────╯",
+    "            │",
+    "       ─────┴─────",
+    "",
+)
+
+
+def farewell_aside(ctx: Context) -> None:
+    """The goodbye beside the log while the kit is removed: a drawing, the feedback address, the way back in."""
+    lines = [*GOODBYE, "Thank you for trying the Exasol Personal Local Starter Kit.", "", ctx.catalog.kit.feedback_note, "",
+             f"  {ctx.catalog.kit.feedback_email}", "", "Nothing is sent on your behalf - this kit has no telemetry.", "",
+             "Install again any time:", f"  {ctx.install_command()}"]
+    ctx.ui.aside("Goodbye", lines)
 
 
 def farewell(ctx: Context) -> None:

@@ -9,6 +9,7 @@ from textual import events
 from textual.message import Message
 from textual.widgets import Static
 
+from exakit.ui.menu_rules import tick
 from exakit.ui.widgets import Option
 
 ACCENT = "green"
@@ -113,15 +114,10 @@ class ChoiceList(Static, can_focus=True):
             return
         if self.single:
             self.chosen = {option.id}
-        elif option.id in self.chosen:
-            self.chosen.discard(option.id)
         else:
-            self.chosen = {option.id} if option.exclusive else {o for o in self.chosen if not self._exclusive(o)} | {option.id}
+            tick(self.options, self.chosen, index)
         self.cursor = index
         self.redraw()
-
-    def _exclusive(self, option_id: str) -> bool:
-        return any(o.exclusive for o in self.options if o.id == option_id)
 
     def all(self, on: bool) -> None:
         """Tick everything that can be ticked, or nothing."""

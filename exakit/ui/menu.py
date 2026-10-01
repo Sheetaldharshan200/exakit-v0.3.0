@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import IO
 
+from .menu_rules import tick
 from .widgets import Option, Palette
 
 
@@ -46,15 +47,3 @@ def draw_menu(out: IO[str], p: Palette, options: Sequence[Option], chosen: set[s
     out.write(f"\r\x1b[2K      {p.dim}{hint}{p.reset}\n")
     out.flush()
 
-
-def tick(options: Sequence[Option], chosen: set[str], index: int) -> None:
-    """Tick or untick a row; an exclusive row (a "Skip") clears the others, and any other row clears the exclusive ones."""
-    option = options[index]
-    if option.id in chosen:
-        chosen.discard(option.id)
-        return
-    if option.exclusive:
-        chosen.clear()
-    else:
-        chosen.difference_update({o.id for o in options if o.exclusive})
-    chosen.add(option.id)

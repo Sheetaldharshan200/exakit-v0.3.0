@@ -111,6 +111,11 @@ class TuiRenderer:
         for line in lines:
             self._write(Text(f"  {line}"))
 
+    def aside(self, title: str, lines: Sequence[str]) -> None:
+        """The left panel's content (a goodbye during an uninstall); the transcript keeps it as a panel."""
+        self.mirror.panel(title, lines)
+        self._call(self.app.set_aside, title, list(lines))
+
     # --- the plan and its steps --------------------------------------------------------------
 
     def plan(self, plan: Plan) -> None:

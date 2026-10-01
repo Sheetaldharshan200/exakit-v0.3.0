@@ -625,6 +625,11 @@ reaches a program, so there Option-drag selects through the terminal and
 Cmd-C copies natively; Ctrl-Q quits. A running job's progress is a live row right under the line that
 announced it, in the log, never in a footer.
 
+`aside(title, lines)` is what the screens show beside the log instead of a
+plan: during an uninstall, a goodbye with a small drawing, the feedback
+address from kit.json and the install command, from the moment removal
+starts; the console prints it as a panel.
+
 `working(text)` announces work in progress as a live line (a spinner, the
 text, the time so far) that the next line replaces, so "Downloading…",
 "Installing…", "Loading…" never remain on screen once the outcome is there;
@@ -678,7 +683,11 @@ gives, a long value wrapping under itself in its column, never under its
 key. The search bar's results are the same pointer list as the menus; Tab
 fills the input with the first match's name, which is also the ghost text.
 Every list is that pointer list (the sidebar, the entries, the results);
-`Option.exclusive` marks a "Skip" row that clears the other ticks. The
+`Option.exclusive` marks a "Skip" row that clears the other ticks and
+`Option.everything` an "Everything" row that ticks every row (one rule,
+`ui/menu_rules.tick`, for the console menu and the screens). The uninstall
+menu offers the installed add-ons and Everything; the kit's own parts are
+not removed one by one. The
 Updates tab updates one component from its row and everything from its
 header; Start buttons are green only while something is stopped, Stop
 buttons always red. During an install the screens keep the plan sidebar (6.1): the

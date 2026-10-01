@@ -176,6 +176,10 @@ class ConsoleRenderer:
             self._w(f"  {p.accent}{p.vb}{p.reset} {line}{' ' * pad} {p.accent}{p.vb}{p.reset}")
         self._w(f"  {p.accent}{p.bl}{p.hr * width}{p.br}{p.reset}")
 
+    def aside(self, title: str, lines: Sequence[str]) -> None:
+        """What the screens show beside the log (a goodbye during an uninstall): a panel in the console."""
+        self.panel(title, lines)
+
     def plan(self, plan: Plan) -> None:
         """The plan as a panel: one block per section, each item with its state and reason."""
         p = self.p

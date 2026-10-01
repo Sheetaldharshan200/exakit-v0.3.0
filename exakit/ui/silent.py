@@ -68,6 +68,10 @@ class SilentRenderer:
         """Log the panel's title."""
         self.log.line("INFO", title)
 
+    def aside(self, title: str, lines: Sequence[str]) -> None:
+        """Log the title; nothing is drawn."""
+        self.log.line("INFO", title)
+
     def plan(self, plan: Plan) -> None:
         """Log the plan's title and pending count."""
         self.log.line("INFO", f"{plan.title}: {len(plan.pending())} pending")

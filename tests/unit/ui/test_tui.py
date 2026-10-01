@@ -104,6 +104,20 @@ class ScreensTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("✓ exapump v0.13.0 installed", log)
         self.assertIn("- Downloading exapump v0.13.0", transcript)          # the plain transcript keeps the record
 
+    async def test_an_aside_fills_the_left_panel_instead_of_the_plan(self):
+        from exakit.ui.tui.panels import PlanPanel
+        seen = {}
+
+        def job(ui):
+            ui.aside("Goodbye", ["Thank you.", "", "  feedback@example.test", "Install again any time:", "  curl ... | sh"])
+            seen["title"] = ui.app.call_from_thread(lambda: ui.app.query_one(PlanPanel).border_title)
+            seen["rows"] = ui.app.call_from_thread(lambda: len(ui.app.query_one(PlanPanel).rows))
+            return Result(True, "ok")
+
+        _app, transcript, _rows, _log = await self._run(job)
+        self.assertEqual(seen, {"title": "Goodbye", "rows": 0})
+        self.assertIn("feedback@example.test", transcript)
+
     async def test_select_answers_with_the_arrow_keys(self):
         answers = []
 
@@ -165,6 +179,17 @@ class ScreensTest(unittest.IsolatedAsyncioTestCase):
 
         await self._run(job, keys=("down", "down", "space", "enter", "space", "enter"))
         self.assertEqual(answers, [["skip"], ["tpch"]])
+
+    async def test_an_everything_row_ticks_every_row_on_the_screen(self):
+        answers = []
+
+        def job(ui):
+            rows = [Option("dash-server", "Add-on: dash-server"), Option("json-tables", "Add-on: json-tables"), Option("everything", "EVERYTHING", everything=True)]
+            answers.append(ui.checkboxes("Select what to uninstall", rows, defaults=[]))
+            return Result(True, "ok")
+
+        await self._run(job, keys=("down", "down", "space", "enter"))
+        self.assertEqual(answers, [["dash-server", "json-tables", "everything"]])
 
     async def test_checkboxes_a_and_n_take_all_and_none(self):
         answers = []
