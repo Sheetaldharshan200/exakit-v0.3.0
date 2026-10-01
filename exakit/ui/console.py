@@ -29,10 +29,11 @@ class ConsoleRenderer:
     """Draws to ``out``; reads from ``ask`` when there is a terminal to ask."""
 
     def __init__(self, *, palette: Palette, out: IO[str], interactive: bool, log: Log | None = None,
-                 reader=None, home: str = "", err: IO[str] | None = None) -> None:
+                 reader=None, home: str = "", err: IO[str] | None = None, keys=None) -> None:
         self.p = palette
         self.out = out
         self.err = err or sys.stderr
+        self._key = keys            # a key reader (up/down/space/enter...) when the terminal gives one; else the numbered prompts
         self.interactive = interactive
         self.log = log or NullLog()
         self._read = reader or (lambda: sys.stdin.readline())
@@ -224,7 +225,11 @@ class ConsoleRenderer:
         return answer or default
 
     def select(self, title: str, options: Sequence[Option], default: int = 1) -> str | None:
-        """A numbered single choice. Returns the chosen option id, or None when the reader backs out."""
+        """A single choice: arrow keys and Enter in a terminal, else a numbered prompt. None when the reader backs out."""
+        if self.interactive and self._key is not None:
+            self.heading(title)
+            picked = self._menu(options, {options[default - 1].id} if 1 <= default <= len(options) else set(), single=True)
+            return next(iter(picked), None) if picked is not None else None
         self.heading(title)
         for number, option in enumerate(options, start=1):
             hint = f"  {self.p.dim}{option.hint}{self.p.reset}" if option.hint else ""
@@ -239,9 +244,12 @@ class ConsoleRenderer:
         return options[int(answer) - 1].id
 
     def checkboxes(self, title: str, options: Sequence[Option], defaults: Sequence[str]) -> list[str]:
-        """A multiple choice by numbers (``1,3``), ``a`` for all, empty for the defaults."""
+        """A multiple choice: arrows move, Space toggles, Enter continues in a terminal; else numbers (``1,3``), ``a`` for all."""
         self.heading(title)
         chosen = set(defaults)
+        if self.interactive and self._key is not None:
+            picked = self._menu(options, {o.id for o in options if o.id in chosen and not o.disabled}, single=False)
+            return [o.id for o in options if o.id in (picked if picked is not None else chosen) and not o.disabled]
         for number, option in enumerate(options, start=1):
             box = "[x]" if option.id in chosen else "[ ]"
             if option.disabled:
@@ -257,6 +265,67 @@ class ConsoleRenderer:
             picked = {int(t) for t in answer.replace(" ", "").split(",") if t.isdigit()}
             return [o.id for n, o in enumerate(options, start=1) if n in picked and not o.disabled]
         return [o.id for o in options if o.id in chosen and not o.disabled]
+
+
+    # --- the arrow-key menu ----------------------------------------------------------
+
+    def _menu(self, options: Sequence[Option], chosen: set[str], *, single: bool) -> set[str] | None:
+        """Draw the options with a cursor and redraw on every key; the chosen ids on Enter, None on Esc."""
+        cursor = next((i for i, o in enumerate(options) if o.id in chosen), 0)
+        hint = "Up/Down move, Enter chooses, Esc backs out" if single else "Up/Down move, Space toggles, Enter continues, a all, n none"
+        self.out.write("\x1b[?25l")
+        try:
+            self._draw_menu(options, chosen, cursor, hint, single, first=True)
+            while True:
+                action, cursor = self._menu_key(self._key(), options, chosen, cursor, single)
+                if action == "enter":
+                    if single and not options[cursor].disabled:
+                        return {options[cursor].id}
+                    return chosen
+                if action == "esc":
+                    return None
+                self._draw_menu(options, chosen, cursor, hint, single, first=False)
+        finally:
+            self.out.write("\x1b[?25h")
+            self.out.flush()
+
+    def _menu_key(self, key: str, options: Sequence[Option], chosen: set[str], cursor: int, single: bool) -> tuple[str, int]:
+        """Apply one key to the menu state: (``move``/``enter``/``esc``, the cursor)."""
+        if key == "enter":
+            return "enter", cursor
+        if key in ("esc", "q"):
+            return "esc", cursor
+        if key in ("up", "k"):
+            return "move", (cursor - 1) % len(options)
+        if key in ("down", "j"):
+            return "move", (cursor + 1) % len(options)
+        if key == "a" and not single:
+            chosen.update(o.id for o in options if not o.disabled)
+        elif key == "n" and not single:
+            chosen.clear()
+        elif key == "space" or (key.isdigit() and 1 <= int(key) <= len(options)):
+            index = cursor if key == "space" else int(key) - 1
+            if single:
+                return ("enter" if key.isdigit() else "move"), index
+            if not options[index].disabled:
+                chosen.symmetric_difference_update({options[index].id})
+            return "move", index
+        return "move", cursor
+
+    def _draw_menu(self, options: Sequence[Option], chosen: set[str], cursor: int, hint: str, single: bool, *, first: bool) -> None:
+        p = self.p
+        if not first:
+            self.out.write(f"\x1b[{len(options) + 1}A")
+        for i, option in enumerate(options):
+            box = ("(*)" if i == cursor else "( )") if single else ("[x]" if option.id in chosen else "[ ]")
+            if option.disabled:
+                box = f"{p.dim}[-]"
+            pointer = f"{p.accent}{p.arrow}{p.reset}" if i == cursor else " "
+            label = f"{p.bold}{option.label}{p.reset}" if i == cursor else option.label
+            extra = f"  {p.dim}{option.hint}{p.reset}" if option.hint else ""
+            self.out.write(f"\r\x1b[2K    {pointer} {box} {label}{extra}{p.reset}\n")
+        self.out.write(f"\r\x1b[2K      {p.dim}{hint}{p.reset}\n")
+        self.out.flush()
 
 
 class _Spinner:

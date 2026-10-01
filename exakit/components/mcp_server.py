@@ -77,6 +77,22 @@ class Lifecycle(ComponentBase):
 
     # --- validate -----------------------------------------------------------------------------
 
+    def _handshake_with_retries(self, spec: str, env: dict[str, str]):
+        """Three attempts; after an import error the uvx environment is rebuilt once (a first run can leave it half built)."""
+        outcome = None
+        for attempt in (1, 2, 3):
+            outcome = stdio_handshake(self.uvx(), spec, env)
+            self.ctx.log.line("MCP", outcome.detail)
+            if outcome.ok or attempt == 3:
+                break
+            if attempt == 1 and ("ImportError" in outcome.detail or "ModuleNotFoundError" in outcome.detail):
+                self.ctx.ui.warn("The server's Python environment is incomplete - rebuilding it once")
+                self.ctx.runner.run([self.uvx(), "--reinstall", spec, "--help"], timeout=900)
+            else:
+                self.ctx.ui.warn(f"Handshake attempt {attempt} failed - retrying")
+                time.sleep(5)
+        return outcome
+
     def validate(self) -> None:
         """The server answers the stdio handshake; records validated."""
         self.ctx.ui.info("Validating the MCP server (stdio handshake)")
@@ -85,15 +101,7 @@ class Lifecycle(ComponentBase):
         env = {**dict(self.ctx.env), "EXA_DSN": f"{host}:{port}", "EXA_USER": user or "", "EXA_PASSWORD": self.password(pw_file) or "",
                "EXA_SSL_CERT_VALIDATION": self.ssl_cert_validation()}
         spec = f"{self.package}@{self.installed_version() or self.target_version()}"
-        outcome = None
-        for attempt in (1, 2):
-            outcome = stdio_handshake(self.uvx(), spec, env)
-            self.ctx.log.line("MCP", outcome.detail)
-            if outcome.ok:
-                break
-            if attempt == 1:
-                self.ctx.ui.warn("Handshake attempt 1 failed - retrying")
-                time.sleep(5)
+        outcome = self._handshake_with_retries(spec, env)
         if outcome and not outcome.ok and self.ctx.platform.arch == "aarch64" and self.ctx.platform.os == "linux":
             self.ctx.ui.warn("Handshake failed on a guest that may advertise SVE its host CPU cannot execute - retrying with OPENSSL_armcap=0")
             outcome = stdio_handshake(self.uvx(), spec, {**env, "OPENSSL_armcap": "0"})

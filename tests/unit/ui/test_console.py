@@ -92,6 +92,46 @@ class ConsoleTest(unittest.TestCase):
         self.assertEqual(r.checkboxes("Pick", opts, []), ["a", "b"])
 
 
+class ArrowMenuTest(unittest.TestCase):
+    """The menus a terminal gets: arrows move, Space toggles, Enter continues, a/n all/none, Esc backs out, digits pick."""
+
+    def _renderer(self, keys: list[str]) -> tuple[ConsoleRenderer, io.StringIO]:
+        out = io.StringIO()
+        it = iter(keys)
+        return ConsoleRenderer(palette=PLAIN, out=out, interactive=True, reader=lambda: "", keys=lambda: next(it)), out
+
+    def test_checkboxes_toggle_with_space_and_continue_with_enter(self):
+        opts = [Option("a", "A"), Option("b", "B"), Option("c", "C", disabled=True)]
+        r, out = self._renderer(["down", "space", "up", "space", "enter"])
+        self.assertEqual(r.checkboxes("Pick", opts, ["a"]), ["b"])
+        self.assertIn("[x] B", out.getvalue())
+        self.assertIn("Space toggles", out.getvalue())
+
+    def test_checkboxes_all_none_digits_and_escape(self):
+        opts = [Option("a", "A"), Option("b", "B")]
+        r, _ = self._renderer(["n", "a", "enter"])
+        self.assertEqual(r.checkboxes("Pick", opts, []), ["a", "b"])
+        r, _ = self._renderer(["a", "2", "enter"])
+        self.assertEqual(r.checkboxes("Pick", opts, []), ["a"])
+        r, _ = self._renderer(["space", "esc"])
+        self.assertEqual(r.checkboxes("Pick", opts, ["b"]), ["b"], "escape keeps the defaults")
+
+    def test_select_moves_and_chooses(self):
+        opts = [Option("a", "A"), Option("b", "B"), Option("c", "C")]
+        r, out = self._renderer(["down", "down", "enter"])
+        self.assertEqual(r.select("Pick", opts), "c")
+        self.assertIn("(*) C", out.getvalue())
+        r, _ = self._renderer(["2"])
+        self.assertEqual(r.select("Pick", opts), "b")
+        r, _ = self._renderer(["up", "esc"])
+        self.assertIsNone(r.select("Pick", opts))
+
+    def test_without_a_key_reader_the_numbered_prompts_remain(self):
+        it = iter(["2"])
+        r = ConsoleRenderer(palette=PLAIN, out=io.StringIO(), interactive=True, reader=lambda: next(it))
+        self.assertEqual(r.select("Pick", [Option("a", "A"), Option("b", "B")]), "b")
+
+
 class BannerTest(unittest.TestCase):
     def test_the_fancy_banner_draws_the_wordmark_with_the_green_x(self):
         out = io.StringIO()

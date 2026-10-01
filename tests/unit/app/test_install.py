@@ -58,6 +58,7 @@ def box_with(manifest=None, **kw) -> tuple[Sandbox, Calls, list]:
         mock.patch("exakit.app.install_steps.crossing_after", lambda ctx, runtime_failed: None),
         mock.patch("exakit.app.install.crossing_before", lambda ctx: None),
         mock.patch("exakit.app.install.process_start_time", lambda pid, runner: "now"),
+        mock.patch("exakit.app.deploy.port_in_use", lambda port: False),        # never the machine's own port 8563
     ]
     return box, calls, patches
 

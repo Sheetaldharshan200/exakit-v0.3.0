@@ -18,6 +18,7 @@ from exakit.domain.plan import Plan, Step
 
 from .console import ConsoleRenderer
 from .silent import SilentRenderer
+from .keys import key_reader
 from .widgets import FANCY, PLAIN, Option
 
 
@@ -100,5 +101,6 @@ def make_renderer(*, json: bool, env: Mapping[str, str], out: IO[str] | None = N
     if json:
         return SilentRenderer(log)
     palette = FANCY if wants_fancy(env, out) else PLAIN
-    return ConsoleRenderer(palette=palette, out=out, interactive=has_terminal(out), log=log,
-                           reader=_tty_reader(), home=home)
+    interactive = has_terminal(out)
+    return ConsoleRenderer(palette=palette, out=out, interactive=interactive, log=log,
+                           reader=_tty_reader(), home=home, keys=key_reader() if interactive else None)

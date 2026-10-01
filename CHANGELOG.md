@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+**The menus take the arrow keys.** Up and Down move, Space ticks and unticks,
+Enter continues, `a` and `n` take all or none, a digit picks, Esc backs out;
+the numbered prompts remain where no terminal can give keys.
+
 **The install screen is back, and the dry run shows the plan.** The EXASOL
 wordmark heads the install in a terminal, the plan names its six steps, and
 `EXAKIT_DRY_RUN=1` now draws that screen and plan through the kit (with any
