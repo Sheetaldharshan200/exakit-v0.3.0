@@ -33,3 +33,20 @@ same commit as the tag.
 3. Copy `reports/qa-report.md`, `reports/test-report.md` and `reports/release-check.md` to `docs/reports/` and commit them with the tag.
 4. `gh workflow run real-install.yml --ref main`, wait for ubuntu-latest to pass, attach its artifact to the release notes.
 5. Tag, push the tag, publish the release; `versions.yml` then re-verifies the pins.
+
+## 4. Where this work lives, and how it moves
+
+`Sheetaldharshan200/exakit-v0.3.0` is the working copy with the full CI. It
+carries the whole update-path history, so it merges with update-path by
+ancestry, but GitHub treats it as a standalone repository (a repository
+cannot be turned into a fork after the fact). The branch that pull requests
+and merges go through is therefore on the real fork:
+
+| Remote (in this checkout) | Repository | Role |
+|---|---|---|
+| `origin` | `Sheetaldharshan200/exakit-v0.3.0` | the working copy; `main` is what the CI runs |
+| `fork-update-path` | `Sheetaldharshan200/update-path` | the fork of upstream; branch `python-kit` mirrors `origin/main`; the PR is `main <- python-kit` there |
+| `upstream-update-path` | `krishna-exasol/update-path` | upstream, fetched only; never the target of a pull request |
+
+- **Take upstream's changes:** `git fetch upstream-update-path && git merge upstream-update-path/main`. The shell files upstream still edits are gone here; a conflict on one of them is resolved by `git rm` and by carrying the change into the Python kit (the changelog says where).
+- **Publish:** `git push origin main && git push fork-update-path main:python-kit`; the draft PR on the fork updates itself.
