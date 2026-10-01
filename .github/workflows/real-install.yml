@@ -132,6 +132,21 @@ jobs:
           echo "re-run took $(( $(date +%s) - start ))s"
           grep -c "already done, skipping" rerun.log
 
+      - name: the add-ons install from their source releases (D36)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          set -e
+          exakit marketplace exasol-scheduler json-tables --yes
+          exakit marketplace --list --json | python3 -c '
+          import json, sys
+          rows = {r["id"]: r for r in json.load(sys.stdin)["addons"]}
+          for aid in ("exasol-scheduler", "json-tables"):
+              assert rows[aid]["installed"], (aid, rows[aid])
+              print("installed:", aid, rows[aid]["version"])'
+          # the log names the release each asset came from: the exasol-labs source, not the mirror
+          grep -h "from exasol-labs/" ~/.exasol-starter-kit/logs/*.log | tail -5
+          test "$(grep -h "from exasol-labs/" ~/.exasol-starter-kit/logs/*.log | wc -l)" -ge 3
+
       - name: stop, start, update, data-load --force
         if: matrix.os != 'macos-latest'
         run: |
