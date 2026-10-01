@@ -59,7 +59,7 @@ class ExapumpTest(unittest.TestCase):
                 self.old = True
             def run(self, cmd, **kw):
                 self.calls.append(tuple(cmd))
-                if cmd[-1] == "--version" and cmd[0].endswith("/exapump") and self.old:
+                if cmd[-1] == "--version" and str(cmd[0]).replace("\\", "/").endswith("/exapump") and self.old:
                     self.old = False
                     return Completed(1, "", "exapump: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.38' not found")
                 if cmd[:2] == ["ldd", "--version"]:
