@@ -11,8 +11,8 @@ name: real install
 # Apple's Virtualization framework and ships with 7 GB, so the launcher cannot
 # deploy there; that job proves everything around the database (the bootstrap,
 # the launcher download, the persona's add-ons and skills, status with no
-# database, the uninstall) under the documented EXAKIT_FORCE hatch and is
-# allowed to fail at "status must be running". The Intel Mac job proves the
+# database, the uninstall) under the documented EXAKIT_FORCE hatch, asserts
+# exactly that, and skips the steps that need a database. The Intel Mac job proves the
 # other half of the contract: the local database does not run on Intel Macs
 # (the launcher itself says so), so the kit refuses before anything is
 # downloaded or written.
@@ -33,7 +33,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-    continue-on-error: ${{ matrix.os == 'macos-latest' }}
     env:
       EXAKIT_LOCAL_KIT: ${{ github.workspace }}
       EXAKIT_KIT_REPO: ${{ github.repository }}
@@ -77,15 +76,38 @@ jobs:
           echo "install took $(( $(date +%s) - start ))s"
 
       - name: status must be running
+        if: matrix.os != 'macos-latest'
         run: |
           for i in $(seq 1 60); do
             if exakit status --json > status.json; then break; fi
+            # Nothing in progress and no runtime at all: waiting cannot change that.
+            if python3 -c 'import json,sys; d=json.load(open("status.json")); sys.exit(0 if (not d.get("installing") and d["runtime"]["status"] == "not installed") else 1)'; then
+              echo "no deployment and nothing in progress: not waiting"; break
+            fi
             sleep 10
           done
           cat status.json
           python3 -c 'import json; d=json.load(open("status.json")); assert d["running"] and d["status"]=="running", d["status"]; assert "tpch" in d["datasets_loaded"], d["datasets_loaded"]; print("persona:", d["persona"])'
 
+      - name: everything but the database is in place (Apple silicon runner, no virtualisation)
+        if: matrix.os == 'macos-latest'
+        run: |
+          exakit status --json > status.json || true
+          cat status.json
+          python3 - <<'PY'
+          import json
+          d = json.load(open("status.json"))
+          assert d["installed"] is True, d
+          assert d["persona"] == "analyst", d["persona"]
+          assert d["runtime"]["status"] == "not installed", d["runtime"]
+          assert d["services"].get("dash-server") == "running", d["services"]
+          assert {"launcher", "exakit_helper"} <= set(d["steps_completed"]), d["steps_completed"]
+          assert d["remedy"].startswith("curl "), d["remedy"]
+          print("proven: launcher, kit command, persona, dash-server; the database cannot deploy in this VM, and status says so with its remedy")
+          PY
+
       - name: the commands an agent runs
+        if: matrix.os != 'macos-latest'
         run: |
           set -e
           exakit version --json | tee version.json | python3 -c 'import json,sys; d=json.load(sys.stdin); print({r["component"]: r["status"] for r in d["components"]})'
@@ -103,6 +125,7 @@ jobs:
           exakit help mcp >/dev/null && exakit guide >/dev/null
 
       - name: a second run skips every done step
+        if: matrix.os != 'macos-latest'
         run: |
           start=$(date +%s)
           sh install.sh | tee rerun.log
@@ -110,6 +133,7 @@ jobs:
           grep -c "already done, skipping" rerun.log
 
       - name: stop, start, update, data-load --force
+        if: matrix.os != 'macos-latest'
         run: |
           set -e
           exakit stop
