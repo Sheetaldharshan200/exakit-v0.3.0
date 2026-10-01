@@ -154,6 +154,18 @@ class ScreensTest(unittest.IsolatedAsyncioTestCase):
         await self._run(job, keys=("down", "space", "enter"))
         self.assertEqual(answers, [["tpch", "energy"]])
 
+    async def test_an_exclusive_row_clears_the_others_and_is_cleared_by_them(self):
+        answers = []
+
+        def job(ui):
+            rows = [Option("tpch", "TPC-H"), Option("energy", "Energy"), Option("skip", "Skip", exclusive=True)]
+            answers.append(ui.checkboxes("Datasets", rows, defaults=["tpch", "energy"]))
+            answers.append(ui.checkboxes("Datasets", rows, defaults=["skip"]))
+            return Result(True, "ok")
+
+        await self._run(job, keys=("down", "down", "space", "enter", "space", "enter"))
+        self.assertEqual(answers, [["skip"], ["tpch"]])
+
     async def test_checkboxes_a_and_n_take_all_and_none(self):
         answers = []
 

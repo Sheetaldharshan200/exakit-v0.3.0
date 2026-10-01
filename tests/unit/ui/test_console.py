@@ -116,6 +116,17 @@ class ArrowMenuTest(unittest.TestCase):
         r, _ = self._renderer(["space", "esc"])
         self.assertEqual(r.checkboxes("Pick", opts, ["b"]), ["b"], "escape keeps the defaults")
 
+    def test_an_exclusive_row_in_the_console_menu(self):
+        from exakit.ui.menu import tick
+        rows = [Option("tpch", "TPC-H"), Option("energy", "Energy"), Option("skip", "Skip", exclusive=True)]
+        chosen = {"tpch", "energy"}
+        tick(rows, chosen, 2)
+        self.assertEqual(chosen, {"skip"})
+        tick(rows, chosen, 0)
+        self.assertEqual(chosen, {"tpch"})
+        tick(rows, chosen, 0)
+        self.assertEqual(chosen, set())
+
     def test_select_moves_and_chooses(self):
         opts = [Option("a", "A"), Option("b", "B"), Option("c", "C")]
         r, out = self._renderer(["down", "down", "enter"])

@@ -671,7 +671,12 @@ are plain rounded boxes in the terminal's colours. Every block of facts is a
 `Facts` (`ui/tui/facts.py`): key/value rows rendered at the width Rich
 gives, a long value wrapping under itself in its column, never under its
 key. The search bar's results are the same pointer list as the menus; Tab
-fills the input with the first match's name. During an install the screens keep the plan sidebar (6.1): the
+fills the input with the first match's name, which is also the ghost text.
+Every list is that pointer list (the sidebar, the entries, the results);
+`Option.exclusive` marks a "Skip" row that clears the other ticks. The
+Updates tab updates one component from its row and everything from its
+header; Start buttons are green only while something is stopped, Stop
+buttons always red. During an install the screens keep the plan sidebar (6.1): the
 dashboard is for afterwards.
 
 ### 6.2 Progress (`ui/progress.py`)

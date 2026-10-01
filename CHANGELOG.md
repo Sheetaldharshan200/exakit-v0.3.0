@@ -16,6 +16,11 @@ The 0.2.0 self-update insisted on five library files this tree no longer
 has, so they ship as empty stubs; a workflow installs the real 0.2.0 kit
 on scratch machines and proves both routes.
 
+**Updates, one or all.** The dashboard's Updates tab updates the selected
+component from its row and everything from one button in the header; Start
+is green only while something is stopped, Stop is always red. A "Skip" row
+in a tick list clears the other ticks, and any other tick clears it.
+
 **The dashboard's facts keep their columns** (a long value wraps under
 itself), its search completes on Tab and lists matches with the same
 pointer list as the menus, and scrollbars are thin and uncoloured.

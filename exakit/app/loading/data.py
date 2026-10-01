@@ -333,7 +333,7 @@ def menu(ctx: Context) -> Result:
     todo = pending(ctx)
     options = [Option(d.id, re.sub(r" *\([^()]*\)$", "", d.label)) for d in todo]
     options.append(Option("local", "A local CSV / Parquet / JSON file, or a folder of them"))
-    options.append(Option("skip", "Skip"))
+    options.append(Option("skip", "Skip", exclusive=True))
     defaults = [d.id for d in todo] or ["local"]
     chosen = defaults if not ctx.ui.interactive else ctx.ui.checkboxes("Datasets to load", options, defaults=defaults)
     if not chosen or "skip" in chosen:

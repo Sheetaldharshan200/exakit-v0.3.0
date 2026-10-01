@@ -49,12 +49,19 @@ class Card(Vertical):
         if self.actions:
             with Horizontal(classes="card-actions"):
                 for label, kind, target in self.actions:
-                    yield Button(label, name=f"{kind}|{target}", variant="success" if kind.endswith("start") else "default", compact=True)
+                    yield Button(label, name=f"{kind}|{target}", variant=_variant(kind), compact=True)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """An action on this card."""
         kind, target = str(event.button.name).split("|", 1)
         self.post_message(RunJob(kind, target))
+
+
+def _variant(kind: str) -> str:
+    """Start is green, stop is red, everything else plain."""
+    if kind.endswith("stop"):
+        return "error"
+    return "success" if kind.endswith("start") else "default"
 
 
 def _service_card(name: str, state: str, url: str | None, title: str, row: dict[str, Any]) -> Card:
@@ -109,9 +116,10 @@ class StatusView(VerticalScroll):
                 text.kv("Next", doc["remedy"])
             yield Static(text, id="status-text")
             return
+        all_running = bool(doc.get("running")) and all(str(s).startswith("running") for s in (doc.get("services") or {}).values())
         with Horizontal(id="actions"):
-            yield Button("Start everything", name="start|", variant="success", compact=True)
-            yield Button("Stop everything", name="stop|", compact=True)
+            yield Button("Start everything", name="start|", variant="default" if all_running else "success", compact=True)
+            yield Button("Stop everything", name="stop|", variant="error", compact=True)
         with Vertical(id="cards"):
             yield from self.cards(doc)
 
@@ -312,8 +320,18 @@ class MarketplaceView(Vertical):
                 yield EntryList(rows, label=lambda r: f"{r['id']:<18} {r.get('status', '')}", detail=marketplace_detail, key="id",
                                 action=("marketplace", "Install", lambda r: r.get("status") == "available"), view_id="addons-list")
             with TabPane("Updates", id="updates"):
+                pending = sum(1 for r in versions if r.get("status") == "update_available")
+                with Horizontal(id="updates-header"):
+                    yield Static(Text(f"{pending} update{'s' if pending != 1 else ''} pending" if pending else "Everything is current", style="dim"), id="updates-note")
+                    yield Button("Update everything", name="update|", disabled=not pending, compact=True)
                 yield EntryList(versions, label=lambda r: f"{r['component']:<18} {r.get('status', '')}", detail=updates_detail, key="component",
-                                action=("update", "Update everything", lambda _r: True), view_id="updates-list")
+                                action=("update", "Update this one", lambda r: r.get("status") == "update_available"), view_id="updates-list")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Update everything, from the header (the rows answer their own button)."""
+        if event.button.name == "update|":
+            self.post_message(RunJob("update", ""))
+            event.stop()
 
 
 class ComingSoonView(Static):

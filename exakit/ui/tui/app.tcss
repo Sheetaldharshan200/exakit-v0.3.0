@@ -267,3 +267,23 @@ Button:disabled {
     scrollbar-background-active: transparent;
     scrollbar-size: 1 1;
 }
+
+Button.-error {
+    color: red;
+}
+
+Button.-error:hover {
+    background: $foreground 10%;
+}
+
+#updates-header {
+    height: auto;
+    padding: 0 1;
+    margin-bottom: 1;
+}
+
+#updates-note {
+    width: 1fr;
+    height: auto;
+    padding: 1 0 0 0;
+}

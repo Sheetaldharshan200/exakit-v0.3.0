@@ -113,6 +113,11 @@ class DashboardTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(cards["dash-server (AI dashboard host)"].actions, [("Stop", "service-stop", "dash-server")])
             self.assertIn("Sample data", cards)
             self.assertIn("Autostart", cards)
+            from textual.widgets import Button
+            top = {str(b.label): b for b in app.query("#actions Button")}
+            self.assertEqual(top["Start everything"].variant, "default", "everything runs: Start is plain")
+            self.assertEqual(top["Stop everything"].variant, "error", "Stop is always red")
+            self.assertEqual(cards["Exasol Personal"].query_one(Button).variant, "error")
             await pilot.press("down")
             await pilot.pause(0.05)
             self.assertEqual(app.section, "catalog")
@@ -122,6 +127,10 @@ class DashboardTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.section, "marketplace")
             tabs = app.query_one(MarketplaceView)
             self.assertEqual([pane.id for pane in tabs.query("TabPane")], ["addons", "updates"])
+            from textual.widgets import Button
+            everything = [b for b in tabs.query(Button) if str(b.label) == "Update everything"]
+            self.assertEqual(len(everything), 1, "one Update everything, in the header")
+            self.assertEqual([str(b.label) for b in tabs.query("#updates-list Button")], ["Update this one"])
             await pilot.press("down")
             await pilot.pause(0.05)
             self.assertTrue(app.query(ComingSoonView))

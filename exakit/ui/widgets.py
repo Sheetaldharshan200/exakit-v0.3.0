@@ -141,6 +141,7 @@ class Option:
     label: str
     hint: str = ""
     disabled: bool = False
+    exclusive: bool = False      # ticking it unticks the others, and ticking any other unticks it (a "Skip" row)
 
 
 def progress_bar(done: int, total: int | None, width: int = 20) -> str:
