@@ -58,6 +58,13 @@ class WordmarkHeader(Static):
         self.update(text)
 
 
+def _aside_style(line: str) -> str:
+    """An address and a command stand out; indented notes are dim."""
+    if "@" in line or line.lstrip().startswith(("curl ", "irm ")):
+        return f"bold {ACCENT}"
+    return "dim" if line.startswith("  ") else ""
+
+
 class PlanPanel(VerticalScroll):
     """One row per step: the state glyph, the label, the detail or the time it took."""
 
@@ -86,14 +93,14 @@ class PlanPanel(VerticalScroll):
         return text
 
     def set_aside(self, title: str, lines: list[str]) -> None:
-        """Replace the rows with free text under a title (a goodbye during an uninstall)."""
+        """Replace the rows with free text under a title (the sign-off during an uninstall)."""
         self.border_title = title
         self.remove_children()
         self.rows.clear()
         self.texts.clear()
         text = Text()
         for line in lines:
-            text.append(line + "\n", style="green" if "@" in line else ("dim" if line.startswith("  ") else ""))
+            text.append(line + "\n", style=_aside_style(line))
         self.mount(Static(text))
 
     def begin(self, step: Step | str) -> None:

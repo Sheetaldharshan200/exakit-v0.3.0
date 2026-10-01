@@ -626,7 +626,7 @@ Cmd-C copies natively; Ctrl-Q quits. A running job's progress is a live row righ
 announced it, in the log, never in a footer.
 
 `aside(title, lines)` is what the screens show beside the log instead of a
-plan: during an uninstall, a goodbye with a small drawing, the feedback
+plan: during an uninstall, a sign-off with a small drawing, the feedback
 address from kit.json and the install command, from the moment removal
 starts; the console prints it as a panel.
 

@@ -177,7 +177,7 @@ class ConsoleRenderer:
         self._w(f"  {p.accent}{p.bl}{p.hr * width}{p.br}{p.reset}")
 
     def aside(self, title: str, lines: Sequence[str]) -> None:
-        """What the screens show beside the log (a goodbye during an uninstall): a panel in the console."""
+        """What the screens show beside the log (the sign-off during an uninstall): a panel in the console."""
         self.panel(title, lines)
 
     def plan(self, plan: Plan) -> None:

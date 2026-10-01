@@ -274,29 +274,31 @@ def _full(ctx: Context) -> Result:
     return Result(True, "removed", data={"removed": gone})
 
 
-GOODBYE = (
+SIGN_OFF = (
     "",
-    "      ╭───────────╮",
-    "      │  ( ^_^ )/  │   thank you",
-    "      ╰─────┬─────╯",
-    "            │",
-    "       ─────┴─────",
+    "      ╭─────────────────╮",
+    "      │    ╭─╮   ╭─╮    │",
+    "      │    ╰─╯   ╰─╯    │",
+    "      │                 │",
+    "      │    ╭───────╮    │",
+    "      ╰─────────────────╯",
     "",
 )
 
 
 def farewell_aside(ctx: Context) -> None:
-    """The goodbye beside the log while the kit is removed: a drawing, the feedback address, the way back in."""
-    lines = [*GOODBYE, "Thank you for trying the Exasol Personal Local Starter Kit.", "", ctx.catalog.kit.feedback_note, "",
-             f"  {ctx.catalog.kit.feedback_email}", "", "Nothing is sent on your behalf - this kit has no telemetry.", "",
-             "Install again any time:", f"  {ctx.install_command()}"]
-    ctx.ui.aside("Goodbye", lines)
+    """Beside the log while the kit is removed: the sign-off, the feedback address, the way back in."""
+    lines = [*SIGN_OFF, "Thank you for trying out the Exasol Personal Local Starter Kit.", "",
+             ctx.catalog.kit.feedback_note, "", f"  {ctx.catalog.kit.feedback_email}", "",
+             "Nothing is sent on your behalf: this kit has no telemetry.", "",
+             "To install again:", f"  {ctx.install_command()}"]
+    ctx.ui.aside("Signing off", lines)
 
 
 def farewell(ctx: Context) -> None:
     """Thank the person and name the feedback address (kit.json ``feedback``); nothing is sent - the kit has no telemetry."""
     ctx.ui.text("")
-    ctx.ui.text("  Thank you for trying the Exasol Personal Local Starter Kit.")
+    ctx.ui.text("  Thank you for trying out the Exasol Personal Local Starter Kit.")
     ctx.ui.text(f"  {ctx.catalog.kit.feedback_note}")
     ctx.ui.text(f"    {ctx.catalog.kit.feedback_email}")
     ctx.ui.text("  Nothing is sent on your behalf: this kit collects no telemetry, and the address is for you to write to.")

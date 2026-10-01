@@ -16,7 +16,7 @@ The 0.2.0 self-update insisted on five library files this tree no longer
 has, so they ship as empty stubs; a workflow installs the real 0.2.0 kit
 on scratch machines and proves both routes.
 
-**The uninstall says goodbye on screen.** While the kit is removed, the left
+**The uninstall signs off on screen.** While the kit is removed, the left
 panel shows a small drawing, the feedback address and the command to install
 again, instead of an empty plan.
 
@@ -69,7 +69,7 @@ and every `--json` answer is unchanged.
 and give way to the outcome, so a finished install reads as what was done,
 not as a log of what was being done.
 
-**The uninstall says goodbye properly.** It thanks you and names the
+**The uninstall signs off properly.** It thanks you and names the
 address to write to with feedback (`feedback.email` in `catalog/kit.json`).
 Nothing is sent: the kit has no telemetry, and it says so.
 
