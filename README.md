@@ -208,7 +208,7 @@ exakit version    # installed, recommended and status, one row per component
 exakit update     # apply what is pending (asks before it stops the database)
 ```
 
-An install keeps following the repository it came from, so a kit installed from a fork takes that fork's updates; `EXAKIT_KIT_REPO=owner/name` points one command elsewhere.
+An install keeps following the repository it came from, so a kit installed from a fork takes that fork's updates; `EXAKIT_KIT_REPO=owner/name` points one command elsewhere. A kit installed from a branch is refreshed when that branch moved, even at the same version; `exakit update --force` refetches it regardless.
 
 `exakit update` refreshes the kit scripts, exapump, the MCP server, pyexasol, the agent skills and installed add-ons in seconds, without downtime. While an update is pending, other commands print one dim line to say so. A database runtime update stops the database for a minute or two, so the kit asks first and does not run it unattended unless you pass `exakit update --yes`. Updates never touch your data, credentials or MCP configs. The kit keeps the previous copy of itself and never downgrades a component.
 

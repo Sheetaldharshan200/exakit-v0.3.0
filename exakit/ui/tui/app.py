@@ -25,6 +25,7 @@ class KitApp(App[None]):
 
     CSS_PATH = "app.tcss"
     BINDINGS = [Binding("ctrl+q", "request_quit", "Quit"), Binding("ctrl+c", "copy_or_hint", "Copy", show=False, priority=True),
+                Binding("super+c", "copy_or_hint", "Copy", show=False, priority=True),
                 Binding("enter", "close", "Close when finished", show=False), Binding("q", "close", "Close", show=False)]
 
     def __init__(self, *, title: str, subtitle: str = "", job: Callable[[], Result] | None = None) -> None:
@@ -111,7 +112,7 @@ class KitApp(App[None]):
             self.copy_to_clipboard(selected)
             self.notify("Copied", timeout=2)
             return
-        self.notify("Ctrl-Q quits. Drag to select text (hold Option on a Mac terminal), then Ctrl-C copies.", timeout=4)
+        self.notify("Ctrl-Q quits. Drag to select text, then Ctrl-C copies (Cmd-C where the terminal passes it on; Option-drag and Cmd-C copy through the terminal itself).", timeout=5)
 
     def action_close(self) -> None:
         """Enter or q close the app once the command finished."""

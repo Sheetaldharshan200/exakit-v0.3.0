@@ -131,7 +131,8 @@ class DashboardApp(App[None]):
     CSS_PATH = "app.tcss"
     COMMANDS = App.COMMANDS | {KitProvider}
     BINDINGS = [Binding("ctrl+q", "quit", "Quit"), Binding("slash", "focus_search", "Search"), Binding("r", "reload", "Refresh"),
-                Binding("escape", "to_sidebar", "Sidebar", show=False), Binding("ctrl+c", "copy_or_hint", "Copy", show=False, priority=True)]
+                Binding("escape", "to_sidebar", "Sidebar", show=False), Binding("ctrl+c", "copy_or_hint", "Copy", show=False, priority=True),
+                Binding("super+c", "copy_or_hint", "Copy", show=False, priority=True)]
 
     def __init__(self, data, *, title: str) -> None:
         super().__init__(ansi_color=True)
@@ -379,4 +380,4 @@ class DashboardApp(App[None]):
             self.copy_to_clipboard(selected)
             self.notify("Copied", timeout=2)
             return
-        self.notify("Ctrl-Q quits. Drag to select text (hold Option on a Mac terminal), then Ctrl-C copies.", timeout=4)
+        self.notify("Ctrl-Q quits. Drag to select text, then Ctrl-C copies (Cmd-C where the terminal passes it on; Option-drag and Cmd-C copy through the terminal itself).", timeout=5)

@@ -115,18 +115,63 @@ class Lifecycle(ComponentBase):
         marker.unlink(missing_ok=True)
         return staged, backup if had_kit else None
 
-    def update(self, options: list[str] | None = None) -> None:
-        """Download, stage and swap the kit copy, reinstall the launcher, re-place the skills."""
-        from exakit.app.addons import skills
-        from exakit.app.kit import whats_new
+    def branch_source(self) -> tuple[str, str] | None:
+        """(repository, branch) when the record says this copy came from a branch (``owner/name@main``), not a tag or a checkout."""
+        manifest = self.ctx.manifest_or_none()
+        source = str(manifest.get("kit.source") or "") if manifest else ""
+        if "@" not in source or source.startswith(("checkout:", "local:")):
+            return None
+        repo, ref = source.split("@", 1)
+        if repo.count("/") != 1 or not ref or (ref[0] == "v" and ref[1:2].isdigit()) or ref[:1].isdigit():
+            return None
+        return repo, ref
+
+    def remote_head(self, repo: str, ref: str) -> str | None:
+        """The branch's head commit, from the API; None when it cannot be asked."""
+        try:
+            text = self.ctx.net.text(self.ctx.catalog.kit.endpoints.url("branch_head", repo=repo, ref=ref), token=self.ctx.env.get("GITHUB_TOKEN"))
+            sha = json.loads(text).get("sha")
+        except Exception:
+            return None
+        return str(sha) if isinstance(sha, str) and sha else None
+
+    def branch_moved(self) -> str | None:
+        """The branch's head when it is not the commit this copy came from (or the copy never recorded one); None otherwise."""
+        source = self.branch_source()
+        if source is None:
+            return None
+        head = self.remote_head(*source)
+        manifest = self.ctx.manifest_or_none()
+        recorded = manifest.get("kit.commit") if manifest else None
+        return head if head and head != recorded else None
+
+    def _refresh_reason(self, latest: str, current: str | None) -> str | None | bool:
+        """False when there is nothing to do (and it was said); else the moved branch's head, or None for a plain version step."""
         from exakit.app.machine import kit_root
-        latest = self.target_version()
-        current = self.installed_version()
+        head: str | None = None
         if latest == current:
-            self.ctx.ui.ok(f"exakit is already current ({current})")
-            return
+            head = self.branch_moved()
+            if head is None and not self.force():
+                self.ctx.ui.ok(f"exakit is already current ({current})")
+                return False
         if kit_root(self.ctx) != self.ctx.paths.kit:
             self.ctx.ui.info("This kit runs from a source checkout; update it with git, not exakit update.")
+            return False
+        if head:
+            self.ctx.ui.info(f"The branch this kit follows moved (now at {head[:7]}) - refreshing the copy at {current}")
+        return head
+
+    def update(self, options: list[str] | None = None) -> None:
+        """Download, stage and swap the kit copy, reinstall the launcher, re-place the skills.
+
+        At the same version the copy is refreshed when the branch it tracks moved, or with --force (EXAKIT_FORCE_COMPONENT_INSTALL=1).
+        """
+        from exakit.app.addons import skills
+        from exakit.app.kit import whats_new
+        latest = self.target_version()
+        current = self.installed_version()
+        head = self._refresh_reason(latest, current)
+        if head is False:
             return
         self.ctx.ui.working(f"Updating starter kit {current or 'unknown'} -> {latest}")
         self.ctx.paths.home.mkdir(parents=True, exist_ok=True)
@@ -138,7 +183,9 @@ class Lifecycle(ComponentBase):
                 shutil.rmtree(stage, ignore_errors=True)
                 raise Failed(f"Downloaded starter kit is incomplete (missing {required}); existing kit copy was left untouched.")
         staged, _ = self._swap(stage, latest)
-        self.ctx.manifest_store.update(lambda m: (m.set("kit.source", f"{self.ctx.kit_repo}@{ref}"), m.set("kit.version", staged)))
+        commit = head or (self.remote_head(self.ctx.kit_repo, ref) if ref == "main" else None)
+        self.ctx.manifest_store.update(lambda m: (m.set("kit.source", f"{self.ctx.kit_repo}@{ref}"), m.set("kit.version", staged),
+                                                  m.set("kit.commit", commit) if commit else None))
         self.ctx.ui.ok(f"exakit updated to {staged}. Database data, credentials, and MCP state were not changed.")
         if any((self.ctx.paths.kit / "skills").glob("*/SKILL.md")):
             try:

@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from datetime import datetime, UTC
 from typing import Any
 
+from exakit.components import for_component
+from exakit.domain.errors import ExakitError
 from exakit.domain.ids import env_var
 from exakit.domain.persona import ADDON_AVAILABLE, ADDON_INSTALLED
 from exakit.domain.result import Result
@@ -138,7 +140,22 @@ def rows(ctx: Context, *, refresh: bool) -> list[Row]:
     """Every row, after refreshing the manifest when asked."""
     if refresh and ctx.policy is VersionPolicy.MANIFEST and not ctx.readonly:
         ctx.versions.refresh(force=True)
-    return [build_row(ctx, cid) for cid in targets(ctx)]
+    table = [build_row(ctx, cid) for cid in targets(ctx)]
+    if refresh and not ctx.readonly:
+        table = [_branch_row(ctx, row) if row.component == "exakit" and row.status == "current" else row for row in table]
+    return table
+
+
+def _branch_row(ctx: Context, row: Row) -> Row:
+    """The kit's own row: a branch-tracked copy whose branch moved has an update, at the same version."""
+    try:
+        head = for_component(ctx, "exakit").branch_moved()
+    except ExakitError:
+        return row
+    if not head:
+        return row
+    return Row(row.component, row.addon, row.installed, row.installed_label, row.advertised, "update_available", "exakit update exakit",
+               row.severity, f"the branch this copy follows moved (now at {head[:7]})", row.platform_note)
 
 
 def pending_count(table: list[Row]) -> int:

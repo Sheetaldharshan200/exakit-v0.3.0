@@ -16,6 +16,15 @@ The 0.2.0 self-update insisted on five library files this tree no longer
 has, so they ship as empty stubs; a workflow installs the real 0.2.0 kit
 on scratch machines and proves both routes.
 
+**Cmd-C copies in the screens** where the terminal passes the key on; in
+Terminal.app and iTerm2, Option-drag and Cmd-C copy through the terminal
+itself, and the hint says so.
+
+**A branch-tracked kit sees the branch move.** `exakit version` and
+`exakit update` compare the commit the copy came from with the branch's
+head, so a fix pushed to `main` reaches an install at the same version;
+`exakit update --force` refetches the copy regardless.
+
 **A refresh shows itself.** A spinner beside the search box says "Refreshing…" while the dashboard reloads.
 
 **Updates, one or all.** The dashboard's Updates tab updates the selected

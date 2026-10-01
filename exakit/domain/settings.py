@@ -28,6 +28,7 @@ FIELDS: tuple[tuple[str, str, type], ...] = (
     ("endpoints", "github_api", str), ("endpoints", "github_web", str), ("endpoints", "release_asset", str),
     ("endpoints", "release_by_tag", str), ("endpoints", "latest_release", str), ("endpoints", "archive_tag", str),
     ("endpoints", "archive_branch", str), ("endpoints", "archive_ref", str), ("endpoints", "pypi_json", str),
+    ("endpoints", "branch_head", str),
     ("python", "managed_version", str),
     ("requirements", "min_ram_gb", int), ("requirements", "min_disk_gb", int),
     ("requirements", "comfort_ram_gb", int), ("requirements", "comfort_disk_gb", int),
@@ -56,6 +57,7 @@ class Endpoints:
     archive_branch: str
     archive_ref: str
     pypi_json: str
+    branch_head: str
 
     def url(self, template: str, **names: str) -> str:
         """The template of that name, filled: ``url("release_asset", repo=..., tag=..., name=...)``."""

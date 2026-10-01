@@ -366,6 +366,31 @@ class KitSelfUpdateTest(unittest.TestCase):
         finally:
             box.close()
 
+    def test_a_branch_tracked_copy_at_the_same_version_refreshes_when_the_branch_moved(self):
+        """D42: kit.source owner/name@main with a recorded kit.commit; the API's head differs -> the copy is refetched and the commit recorded."""
+        box = Sandbox(manifest={**MANIFEST, "kit": {**MANIFEST.get("kit", {}), "version": "0.3.0", "source": "exasol-labs/exasol-personal-local-starterkit@main", "commit": "old0000"}})
+        try:
+            kit = box.ctx.paths.kit
+            (kit / "exakit").mkdir(parents=True, exist_ok=True)
+            (kit / "setup").mkdir(exist_ok=True)
+            (kit / "setup" / "exakit").write_text("old launcher")
+            new_tree = {"setup/exakit": "new launcher", "setup/exakit.ps1": "ps1", "setup/exakit.cmd": "cmd", "catalog/kit.json": "{}",
+                        "versions.json": json.dumps({"schema_version": 1, "kit": {"version": "0.3.0"}, "components": {}}), "exakit/__main__.py": "", "bootstrap/exakit": "", "help/exakit.json": "{}"}
+            box.downloader.pages["https://api.github.com/repos/exasol-labs/exasol-personal-local-starterkit/commits/main"] = json.dumps({"sha": "new1111"})
+            box.downloader.pages["https://github.com/exasol-labs/exasol-personal-local-starterkit/archive/refs/heads/main.tar.gz"] = tarball(new_tree)
+            with mock.patch("exakit.app.addons.skills.install", lambda ctx: 0):
+                for_component(box.ctx, "exakit").update()
+            self.assertEqual((kit / "setup" / "exakit").read_text(), "new launcher")
+            self.assertEqual(box.manifest().get("kit.commit"), "new1111")
+            self.assertIn("moved", box.screen())
+            # the same head again: nothing to do
+            box.downloader.calls.clear()
+            for_component(box.ctx, "exakit").update()
+            self.assertIn("already current", box.screen())
+            self.assertFalse(any("archive" in url for url in box.downloader.calls))
+        finally:
+            box.close()
+
     def test_an_incomplete_download_leaves_the_kit_untouched(self):
         box = Sandbox(manifest={**MANIFEST, "kit": {"version": "0.2.0"}})
         try:

@@ -85,10 +85,24 @@ def release_lock(ctx: Context) -> None:
         ctx.manifest_store.update(lambda m: m.delete("install.current_step"))
 
 
+def _branch_commit(ctx: Context, source: str) -> str | None:
+    """The head commit of the branch a ``owner/name@branch`` source names, so a later update sees the branch move; None otherwise."""
+    if "@" not in source or source.startswith(("checkout:", "local:")):
+        return None
+    repo, ref = source.split("@", 1)
+    if repo.count("/") != 1 or not ref or ref[:1].isdigit() or (ref[:1] == "v" and ref[1:2].isdigit()):
+        return None
+    with contextlib.suppress(ExakitError):
+        return for_component(ctx, "exakit").remote_head(repo, ref)
+    return None
+
+
 def record_kit(ctx: Context, root: Path) -> None:
     """Where this kit came from, what version it is, and (once) the version the next what's-new box starts from."""
     source = ctx.env.get("EXAKIT_KIT_SOURCE") or f"checkout:{root}"
     version = kit_version_at(root)
+    commit = _branch_commit(ctx, source)
+
     def change(m: Manifest) -> None:
         previous = m.get("kit.source")
         if previous and "@" in str(previous) and str(previous).split("@")[0] != source.split("@")[0]:
@@ -106,6 +120,8 @@ def record_kit(ctx: Context, root: Path) -> None:
                 m.set("kit.whats_new_from", was)
         if version:
             m.set("kit.version", version)
+        if commit:
+            m.set("kit.commit", commit)
         for cid in ("personal", "exapump", "mcp", "pyexasol"):
             with contextlib.suppress(ExakitError):
                 m.set(f"desired.{cid}", for_component(ctx, cid).target_version())

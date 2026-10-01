@@ -60,11 +60,11 @@ def parse_args(args: list[str]) -> tuple[str, list[str], bool]:
     for arg in args:
         if arg in ("-y", "--yes"):
             yes = True
-        else:
+        elif arg != "--force":      # --force is run()'s: the kit copy is refetched even at the same version
             rest.append(arg)
     target = rest[0] if rest else "all"
     if target.startswith("-"):
-        raise BadInput(f"Unknown option '{target}' for update (supported: --yes; a component name selects what to update).")
+        raise BadInput(f"Unknown option '{target}' for update (supported: --yes, --force; a component name selects what to update).")
     options = rest[1:]
     if options and target not in RUNTIME_WORDS | {"personal"}:
         raise Failed("Update options are only supported for Personal runtime updates.")
@@ -211,6 +211,8 @@ def _offer_heavy(ctx: Context, name: str, current: str | None, advertised: str |
 def run(ctx: Context, args: list[str]) -> Result:
     """``exakit update``: apply the advertised versions, offering the runtime change."""
     target, options, yes = parse_args(args)
+    if "--force" in args:
+        ctx.env = {**dict(ctx.env), "EXAKIT_FORCE_COMPONENT_INSTALL": "1"}
     ctx.manifest()
     plan = targets(ctx, target)
     if ctx.policy is VersionPolicy.MANIFEST:

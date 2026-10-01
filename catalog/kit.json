@@ -27,7 +27,8 @@
     "archive_tag": "{github_web}/{repo}/archive/refs/tags/{ref}.tar.gz",
     "archive_branch": "{github_web}/{repo}/archive/refs/heads/{ref}.tar.gz",
     "pypi_json": "https://pypi.org/pypi/{package}/json",
-    "archive_ref": "{github_web}/{repo}/archive/{ref}.tar.gz"
+    "archive_ref": "{github_web}/{repo}/archive/{ref}.tar.gz",
+    "branch_head": "{github_api}/repos/{repo}/commits/{ref}"
   },
   "python": {
     "managed_version": "3.12"
