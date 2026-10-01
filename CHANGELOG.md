@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+**`exakit ui`: the kit has a dashboard.** A bare `exakit` in a terminal
+(or `exakit ui`) opens it: Status, Catalog, Marketplace (add-ons and
+updates), Virtual schemas (coming soon) and Commands in a sidebar, each
+entry's details on the right, a search bar that completes as you type, the
+command palette on Ctrl-P, and the actions - install an add-on, update,
+start, stop - run right there. In a pipe `exakit` is still the help page
+and every `--json` answer is unchanged.
+
 **Nothing stale stays on screen.** "Downloading…", "Installing…",
 "Loading…" and their kind are live lines now: they show the time they take
 and give way to the outcome, so a finished install reads as what was done,

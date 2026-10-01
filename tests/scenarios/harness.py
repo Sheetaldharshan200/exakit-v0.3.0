@@ -58,7 +58,7 @@ COMMANDS: dict[str, list[str]] = {
     "install-with-argument": ["install", "extra"], "uninstall-dry-run": ["uninstall", "--dry-run"],
     "uninstall-addon-dry-run": ["uninstall", "dash-server", "--dry-run"], "repair-runtime-no-yes": ["repair-runtime"],
     "migrate-no-args": ["migrate"], "autostart-with-argument": ["autostart", "on"],
-    "status-bad-option": ["status", "--nope"], "unknown-command": ["bogus"],
+    "status-bad-option": ["status", "--nope"], "unknown-command": ["bogus"], "ui-no-terminal": ["ui"],
     "start-fresh-only": ["start"], "stop-fresh-only": ["stop"], "mcp-setup-fresh-only": ["mcp-setup"],
 }
 # The three mutating commands above run only where they cannot act: without an install record.

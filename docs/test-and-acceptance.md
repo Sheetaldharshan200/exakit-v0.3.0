@@ -21,7 +21,7 @@ The suites, each provable on its own with `python3 -m unittest discover -s <dir>
 
 | Suite | Directory | Proves | Machine state |
 |---|---|---|---|
-| unit | `tests/unit` | every rule and adapter over fakes; the four upstream fallback orders (the versions manifest, About, release digests, the add-on release sites of D36); the Textual screens headless through Textual's pilot (`tests/unit/ui/test_tui.py`, skipped where Textual is not installed; the CI test job installs the pin) | none |
+| unit | `tests/unit` | every rule and adapter over fakes; the four upstream fallback orders (the versions manifest, About, release digests, the add-on release sites of D36); the Textual screens and the dashboard headless through Textual's pilot (`tests/unit/ui/test_tui.py`, `test_dashboard.py` over a fake facade; skipped where Textual is not installed, the CI test job installs the pin); the dashboard's facade over the sandbox (`tests/unit/cli/test_dashboard_data.py`) | none |
 | contract | `tests/contract` | the frozen `--json` shapes and exit codes against the real CLI | a hermetic sandbox (`tests/support.py`: throwaway kit home and user home, bare PATH, no `EXAKIT_*` inherited) |
 | scenarios | `tests/scenarios` | every command x every machine state x both output modes; the refusal paths of the mutating commands; the password never printed; a read never changes the record; the edge cases | the same sandbox, seven states (`harness.STATES`) |
 | e2e | `tests/e2e` | the installer dry run, the launcher answers; the real uv + CPython bootstrap with `EXAKIT_E2E_NETWORK=1` | none (network opt-in) |

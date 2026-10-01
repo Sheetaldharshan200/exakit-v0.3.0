@@ -38,7 +38,7 @@ FRESH: dict[str, Code] = {
     "mcp-remove-no-client": 2, "sql-no-statement": 4, "sql-select": 4, "sql-write-rejected": 4, "data-load-bad-option": 2,
     "update-dry-run": 4, "update-unknown-target": 4, "install-dry-run": 0, "install-with-argument": 2, "uninstall-dry-run": 0,
     "uninstall-addon-dry-run": 4, "repair-runtime-no-yes": 4, "migrate-no-args": 2, "autostart-with-argument": 2,
-    "status-bad-option": 2, "unknown-command": 2, "start-fresh-only": 4, "stop-fresh-only": 4, "mcp-setup-fresh-only": 4,
+    "status-bad-option": 2, "unknown-command": 2, "ui-no-terminal": 2, "start-fresh-only": 4, "stop-fresh-only": 4, "mcp-setup-fresh-only": 4,
 }
 INSTALLED: dict[str, Code] = {
     **FRESH, "status": 3, "info": 3, "version": 0, "guide": 0, "persona-apply-no-yes": 0, "marketplace-list": 0,

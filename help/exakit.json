@@ -11,6 +11,7 @@
     {
       "title": "Everyday",
       "commands": [
+        "ui",
         "status",
         "info",
         "start",
@@ -78,6 +79,20 @@
       "examples": [
         "exakit install --dry-run",
         "EXAKIT_PERSONA=analyst exakit install"
+      ]
+    },
+    {
+      "command": "ui",
+      "options": "",
+      "summary": "The dashboard: status, catalog, marketplace, updates and commands, searchable, in the terminal.",
+      "description": "Opens the kit's screens with a sidebar - Status, Catalog, Marketplace (add-ons and updates), Virtual schemas (coming soon), Commands - and a search bar that completes commands and components as you type. Actions such as installing an add-on or updating run inside it. A bare `exakit` in a terminal opens the same dashboard once the kit is installed. It needs an interactive terminal: in a pipe or from an agent use exakit status --json and exakit catalog --json instead.",
+      "exit_codes": {
+        "0": "closed",
+        "2": "no interactive terminal"
+      },
+      "examples": [
+        "exakit ui",
+        "exakit"
       ]
     },
     {

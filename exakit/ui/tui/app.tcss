@@ -98,3 +98,96 @@ ModalScreen {
 Toast {
     background: transparent;
 }
+
+/* --- the dashboard --- */
+
+#search {
+    height: auto;
+    padding: 0 1;
+    background: transparent;
+}
+
+#search-input {
+    background: transparent;
+    border: round $foreground 30%;
+}
+
+#search-input:focus {
+    border: round $foreground 60%;
+}
+
+#results {
+    height: auto;
+    max-height: 10;
+    border: round $foreground 30%;
+    background: transparent;
+}
+
+.hidden {
+    display: none;
+}
+
+#sidebar {
+    width: 24;
+    border: round $foreground 30%;
+    background: transparent;
+    padding: 0 1;
+}
+
+#sidebar ListItem, .entries ListItem {
+    background: transparent;
+    padding: 0 1;
+}
+
+#content {
+    height: 1fr;
+    border: round $foreground 30%;
+    padding: 0 1;
+    background: transparent;
+}
+
+#view {
+    height: 1fr;
+    background: transparent;
+}
+
+.entries {
+    width: 36%;
+    min-width: 24;
+    max-width: 44;
+    border-right: solid $foreground 20%;
+    background: transparent;
+}
+
+.detail {
+    height: 1fr;
+    padding: 0 2;
+    background: transparent;
+}
+
+.detail-text {
+    height: auto;
+}
+
+#actions {
+    height: auto;
+    margin-top: 1;
+}
+
+#actions Button, .detail Button {
+    margin-right: 2;
+    margin-top: 1;
+}
+
+TabbedContent, TabPane, Tabs, ContentSwitcher {
+    background: transparent;
+}
+
+Footer {
+    background: transparent;
+}
+
+OptionList > .option-list--option-highlighted, ListView > ListItem.-highlight {
+    background: $foreground 15%;
+    text-style: bold;
+}

@@ -24,13 +24,18 @@ TUI_COMMANDS = frozenset({"install", "marketplace", "update", "uninstall", "mcp-
                           "repair-runtime", "skills-install", "persona"})
 
 
-def wanted(env: Mapping[str, str], out: IO[str], *, command: str, args: list[str], json: bool, dry_run: bool) -> bool:
-    """True when this run draws the screens: an interactive flow, a UTF-8 terminal, not --json, not a dry run, EXAKIT_TUI not 0."""
+def terminal_ok(env: Mapping[str, str], out: IO[str], *, json: bool, dry_run: bool) -> bool:
+    """True when the screens may draw here: a UTF-8 terminal, not --json, not a dry run, EXAKIT_TUI not 0."""
     if json or dry_run or env.get("EXAKIT_DRY_RUN") == "1" or env.get("EXAKIT_TUI") == "0":
         return False
+    return has_terminal(out) and wants_fancy(env, out)
+
+
+def wanted(env: Mapping[str, str], out: IO[str], *, command: str, args: list[str], json: bool, dry_run: bool) -> bool:
+    """True when this run draws the screens around the command: an interactive flow (``ui`` draws its own app) on a terminal that allows it."""
     if command not in TUI_COMMANDS or (command == "persona" and "apply" not in args):
         return False
-    return has_terminal(out) and wants_fancy(env, out)
+    return terminal_ok(env, out, json=json, dry_run=dry_run)
 
 
 def load(site_dir: Path) -> bool:
@@ -42,6 +47,20 @@ def load(site_dir: Path) -> bool:
     except Exception:
         return False
     return True
+
+
+def run_dashboard(ctx, data, *, title: str) -> None:
+    """Open the dashboard over ``data`` (a ``DashboardData``); actions run the ordinary commands with the screens as ``ctx.ui``."""
+    from .dashboard import DashboardApp
+    from .renderer import TuiRenderer
+    console = ctx.ui
+    app = DashboardApp(data, title=title)
+    mirror = ConsoleRenderer(palette=PLAIN, out=io.StringIO(), interactive=False, log=ctx.log)
+    ctx.ui = TuiRenderer(app, mirror)
+    try:
+        app.run()
+    finally:
+        ctx.ui = console
 
 
 def run(ctx, job: Callable[[], Result], *, title: str, subtitle: str = "", out: IO[str] | None = None) -> Result:

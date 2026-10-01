@@ -10,7 +10,7 @@ import sys
 
 from exakit.app import Context, data as data_app, guide as guide_app, help as help_app, info as info_app, install as install_app, migrate as migrate_app, repair as repair_app, requirements as requirements_app, uninstall as uninstall_app, runtime as runtime_app, status as status_app, update as update_app, logs as logs_app, marketplace as marketplace_app, mcp as mcp_app, persona as persona_app, skills as skills_app, sql as sql_app, version as version_app, whats_new
 from exakit.app.machine import kit_root
-from exakit.domain.errors import BadInput
+from exakit.domain.errors import BadInput, Failed
 from exakit.domain.result import Result
 from exakit.ui.widgets import term_cols
 
@@ -97,6 +97,22 @@ def whats_new_command(args: list[str], ctx: Context) -> Result:
 
 
 # --- version --------------------------------------------------------------------------
+
+
+def ui_command(args: list[str], ctx: Context) -> Result:
+    """``exakit ui``: the dashboard, in an interactive terminal; a refusal naming the --json commands elsewhere."""
+    _split(args, JSON_FLAGS, "ui")
+    from exakit.ui import tui
+    from . import _context
+    from .dashboard_data import DashboardData
+    if not tui.terminal_ok(ctx.env, sys.stdout, json=ctx.json, dry_run=ctx.dry_run):
+        raise BadInput("exakit ui needs an interactive terminal (and EXAKIT_TUI not set to 0). In a pipe or from an agent, read the same "
+                       "with: exakit status --json, exakit version --json, exakit catalog --json", remedy="exakit status --json")
+    site = _context.tui_site(ctx)
+    if site is None or not tui.load(site):
+        raise Failed("The dashboard's toolkit could not be prepared here (see the log); the commands work as before.", remedy="exakit status")
+    tui.run_dashboard(ctx, DashboardData(ctx), title="Exasol Personal Local Starter Kit")
+    return Result(True, "closed")
 
 
 def version_command(args: list[str], ctx: Context) -> Result:

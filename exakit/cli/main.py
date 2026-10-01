@@ -28,6 +28,7 @@ HANDLERS: dict[str, Callable[[list[str], Context], Result]] = {
     "help": commands.help_command, "-h": commands.help_command, "--help": commands.help_command,
     "catalog": commands.catalog_command, "whats-new": commands.whats_new_command,
     "version": commands.version_command, "--version": commands.version_command, "-v": commands.version_command,
+    "ui": commands.ui_command,
     "persona": commands.persona_command,
     "skills": commands.skills_command, "skills-install": commands.skills_install_command,
     "mcp-setup": commands.mcp_setup_command, "mcp-status": commands.mcp_status_command,
@@ -84,6 +85,8 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     command, rest, flags = _parse(argv)
     command = ALIASES.get(command, command)
+    if not argv and _context.dashboard_wanted():
+        command = "ui"
     ctx: Context | None = None
     try:
         # `exakit sql --help` is a query, not a help request; every other command answers its page.

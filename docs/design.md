@@ -629,6 +629,40 @@ text, the time so far) that the next line replaces, so "Downloading…",
 "Installing…", "Loading…" never remain on screen once the outcome is there;
 in a pipe it is an ordinary line, so the transcript keeps the record.
 
+### 6.1a The dashboard (`exakit ui`, `ui/tui/dashboard.py`)
+
+`exakit ui`, and a bare `exakit` in a terminal once the kit is installed,
+open the dashboard: the same toolkit and venv as the screens, a different
+app. Without a terminal (`exakit ui` in a pipe, from an agent) it refuses
+with exit 2 and names `exakit status --json` and `exakit catalog --json`.
+
+Layout: the header (wordmark, title), a search bar, a sidebar on the left,
+the content on the right, the footer with the command palette (Ctrl-P:
+Textual's own commands such as the theme, plus the kit's entries). The
+sidebar is a list (arrows, Enter, the mouse): **Status** (the database, the
+runtime, datasets, services, autostart, persona, the last failure; Start and
+Stop as actions), **Catalog** (every component and add-on in a second list;
+the selected one's title, kind, tagline, role, installed and advertised
+versions, status, platforms, requirements, launcher and its help page),
+**Marketplace** with two tabs, *Add-ons* (the marketplace rows; Install as
+an action on an available one) and *Updates* (`exakit version`'s rows;
+Update everything as an action), **Virtual schemas** (coming soon),
+**Commands** (every command with its summary; the selected one's help page).
+The search bar completes inline (Tab accepts, the toolkit's suggester) and
+lists the matching commands and catalog entries as you type; Enter opens
+the best match, Down moves into the list. The palette's kit provider
+searches the same entries.
+
+Data and actions come through `cli/dashboard_data.DashboardData`, a facade
+over the app layer (status, version rows, catalog entries, marketplace rows,
+the help documents) that reads with a silent copy of the Context in a worker
+thread, so the ui layer imports nothing from app. An action (install an
+add-on, update everything, start, stop) is the ordinary command run in a
+worker with `TuiRenderer` writing into a job view (the log pane with its
+live rows, the modal questions), one at a time; the views refresh when it
+ends. During an install the screens keep the plan sidebar (6.1): the
+dashboard is for afterwards.
+
 ### 6.2 Progress (`ui/progress.py`)
 
 One `ProgressState` for every long job, drawn as the legacy kit drew it: a
@@ -820,6 +854,7 @@ deletes `setup/`.
 | D33 | The Log protocol lives in `domain/log.py`; the UI imports nothing from `adapters/`. Daemons start through `Runner.spawn`, HTTP probes through `adapters.net.http.http_status`. | The layer rule of section 9, held by the checker. The one exception, the terminal device in `ui/__init__.py`, is named in the checker. |
 | D34 | Every default is data: `catalog/kit.json` for the kit (repository, installer URLs, fetch URLs and cache budgets, endpoint templates, the managed Python, the machine requirements, the runtime's port and budgets, the MCP and data defaults), the `source` and `config` blocks of the catalog for each component and add-on (tags, asset names per platform, pins, mirrors, service users). The code reads them through `ctx.catalog`; an environment variable overrides where documented. A test holds the literals out of `exakit/`. | The fallback order (GitHub, cache, ours) is only as good as the "ours" it ends in; a value that lives in a module cannot be changed by a kit update without a code change, and the same value lived in three places. |
 | D36 | The kit is a bundler, not the maintainer of the add-ons: an add-on's binaries come from the add-on's own GitHub release first (`exasol-labs/exasol-scheduler`, `exasol-labs/exasol-json-tables`: the upstream archives, verified by the digests upstream publishes, the binary extracted), and the kit's mirror release answers only when that download cannot complete, or for a platform upstream does not publish (the JSON Tables linux-aarch64 engine). The sites are catalog data (`source.releases`); `versions.json` pins the mirror's digests and names the mirror release. | The mirror pinned a release tag that did not exist in this repository and digests of another build; the installs failed on a download the source repository was answering all along. The upstream release is the authority on what the add-on is; the mirror is a fallback and must never be the only path. |
+| D39 | `exakit ui` is the dashboard (6.1a): the kit's state, catalog, marketplace and updates browsed with the keys, the mouse and a search bar, actions run as the ordinary commands inside it; a bare `exakit` in a terminal opens it once the kit is installed, everywhere else `exakit` stays the help page and every `--json` contract is untouched. | A listing is not a way to find things; the screens already exist and the kit's data is one facade away. |
 | D38 | One progress line for every long job (6.2), the legacy kit's design kept: milestones are the truth and the creep between them is honest; the launcher's deploy lines are data on the Personal component (`deploy_milestones`), streamed through `Runner.stream`. | A spinner that says nothing for two minutes, or a bar that jumps from 5% to done, is what the shell kit had already solved; its users expect the same line for the deploy, the datasets and the add-ons. |
 | D37 | The interactive screens are Textual, in a venv of their own (architecture A3, revised): the core stays standard-library, the console renderer stays the fallback, the Textual app owns the main thread and the command runs in a worker whose renderer hands every call to the app; the transcript is printed when the app closes. | A hand-rolled full-screen UI (arrow menus, spinners, bars drawn with escape codes) is the second UI toolkit to maintain; Textual gives layout, widgets, modals and a test pilot for the price of one pinned package that the installer can live without. |
 | D35 | The platforms the local database runs on are data: `platforms` on the Personal component (`catalog/components/personal.json`: Apple silicon Macs, Linux x86_64/arm64, Windows x86_64). The Python gate and `exakit preflight` read it and refuse in words before step 1; `install.sh` holds the same rule for Intel Macs because it runs before Python exists. An unsupported machine installs nothing: no download, no record, no command. | The launcher itself refuses Intel Macs (`local deployments are only supported on macOS Apple Silicon, Linux amd64/arm64, and Windows amd64`); the kit must say so first, not after installing half of itself. |

@@ -47,6 +47,16 @@ def build(*, json: bool, yes: bool, dry_run: bool, readonly: bool, mutating: boo
     )
 
 
+def dashboard_wanted() -> bool:
+    """A bare ``exakit`` opens the dashboard in a terminal once the kit is installed; the help page everywhere else."""
+    import sys
+    from exakit.ui import tui
+    env = dict(os.environ)
+    if not tui.terminal_ok(env, sys.stdout, json=False, dry_run=False):
+        return False
+    return Paths.from_env(env, Path.home()).manifest.exists()
+
+
 def tui_site(ctx: Context) -> Path | None:
     """The screens' site-packages (architecture A3): ready, or prepared now by uv from the pin; None keeps the console."""
     from exakit.adapters import tui_env

@@ -2,6 +2,9 @@
 
 This repo installs a complete local analytics stack with one command: an Exasol database on the user's machine, the `exapump` data/SQL CLI, an MCP server with a dedicated read-only database user, and the `pyexasol` Python driver. If a user asks you to "install this repo", this file is your runbook.
 
+
+> `exakit` with no arguments opens the dashboard (`exakit ui`) when it runs in an interactive terminal on an installed kit. An agent never sees it: without a terminal `exakit` is the help page and `exakit ui` refuses with exit 2, naming `exakit status --json` and `exakit catalog --json`.
+
 ## The contract in 20 lines
 
 Everything below expands on this. If you read nothing else, this is enough to install, verify and recover.

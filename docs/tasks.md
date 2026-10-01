@@ -79,6 +79,11 @@ Update this file in the same commit as the work. Design sections are in
 - [ ] E8 Five commits in the pushed history carry an attribution trailer (before the rule); the release gate warns until the history is rewritten, which is the owner's call
 - [x] E9 Every public function and method in `exakit/` carries a docstring (the rule counts module-level functions and methods, not closures); `tools/check_standard.py` reports 0
 
+## Phase H: the dashboard (2026-10-01)
+
+- [x] H1 `exakit ui` (help page, HANDLERS, the scenario matrix's refusal without a terminal) and a bare `exakit` in a terminal once installed; `cli/dashboard_data.DashboardData`, the facade the ui layer reads through
+- [x] H2 `ui/tui/dashboard.py` + `sections.py`: the sidebar (Status, Catalog, Marketplace with Add-ons and Updates tabs, Virtual schemas coming soon, Commands), the content views, the job view for actions (install an add-on, update everything, start, stop) through `TuiRenderer`, the search bar with inline completion and a results list, the palette provider; headless tests over a fake facade
+
 ## Phase G: the Textual screens (2026-10-01)
 
 - [x] G1 `catalog/kit.json` `ui` block, `versions.json` `tools.textual`, `adapters/tui_env.py` (the venv under the kit home: created once by uv, reinstalled on a pin change, absent uv or network means no screens), `cli/_context.tui_site()`
