@@ -64,7 +64,7 @@ def tests_rows(runs: list[tuple[str, dict]]) -> list[str]:
             rows.append(gate(f"tests/{suite['suite']} [{label}]", bad == 0, f"{suite['tests']} tests, {bad} failing, {suite['skip']} skipped, {suite['seconds']} s"))
         cov = doc.get("coverage")
         if cov:
-            rows.append(gate(f"coverage [{label}]", cov["percent"] >= 65, f"{cov['percent']}% of {cov['statements']} statements (gate: 65%, tasks.md E7 raises it)"))
+            rows.append(gate(f"coverage [{label}]", cov["percent"] >= 70, f"{cov['percent']}% of {cov['statements']} statements (gate: 70%)"))
     return rows
 
 

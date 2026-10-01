@@ -67,6 +67,28 @@ class FullUninstallTest(unittest.TestCase):
         finally:
             box.close()
 
+    def test_on_windows_the_python_folder_is_removed_by_a_detached_shell_after_exit(self):
+        from exakit.domain.platform import Platform
+        from tests.unit.fakes import FakeRunner
+        runner = FakeRunner()
+        box = installed_box(platform=Platform("windows", "x86_64"), runner=runner)
+        try:
+            (box.home / "python").mkdir()
+            (box.home / "python" / "python.exe").write_text("")
+            with mock.patch("exakit.app.uninstall.for_component") as comp:
+                comp.return_value.uninstall = lambda dry_run: []
+                result = uninstall.run(box.ctx, ["--yes"])
+            self.assertEqual(result.status, "removed")
+            self.assertTrue((box.home / "python" / "python.exe").exists(), "the running Python is left for the detached shell")
+            self.assertFalse((box.home / "credentials").exists())
+            spawned = [c for c in runner.calls if c and c[0] == "spawn"]
+            self.assertEqual(len(spawned), 1)
+            self.assertIn("rmdir", spawned[0][-1])
+            self.assertIn(str(box.home / "python"), spawned[0][-1])
+            self.assertIn("removed a few seconds after this command exits", box.screen())
+        finally:
+            box.close()
+
     def test_yes_removes_the_kit_in_order(self):
         box = installed_box()
         try:

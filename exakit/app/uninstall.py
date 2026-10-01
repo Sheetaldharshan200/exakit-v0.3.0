@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import tempfile
 import time
 from pathlib import Path
 
@@ -117,9 +118,21 @@ def _remove_home(ctx: Context, dry: bool, gone: list[str]) -> None:
             for child in home.iterdir():
                 if child.name != "python":
                     shutil.rmtree(child, ignore_errors=True) if child.is_dir() else child.unlink(missing_ok=True)
-            ctx.ui.info(f"The kit's Python at {home / 'python'} is in use by this command - delete that folder afterwards.")
+            _remove_python_after_exit(ctx, home)
         else:
             shutil.rmtree(home, ignore_errors=True)
+
+
+def _remove_python_after_exit(ctx: Context, home: Path) -> None:
+    """Windows: the kit's Python runs this very command, so a detached shell removes it a few seconds after we exit."""
+    python_dir = home / "python"
+    script = f'timeout /t 5 /nobreak >nul & rmdir /s /q "{python_dir}" & rmdir "{home}"'
+    log = Path(tempfile.gettempdir()) / "exakit-uninstall.log"
+    try:
+        ctx.runner.spawn(["cmd", "/c", script], log_path=log)
+        ctx.ui.info(f"The kit's Python at {python_dir} runs this command; it is removed a few seconds after this command exits.")
+    except OSError:
+        ctx.ui.info(f"The kit's Python at {python_dir} is in use by this command - delete that folder afterwards.")
 
 
 def _remove_bins(ctx: Context, dry: bool, gone: list[str]) -> None:

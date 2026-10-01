@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+**The exapump glibc shim is back.** On a Linux distro whose glibc is older
+than 2.38 (Ubuntu 22.04, RHEL 8 and 9, Debian 11 and 12) the exapump release
+binary cannot start; the kit now does what the shell kit did: it moves the
+binary aside and runs it inside a small `ubuntu:24.04` container through
+Podman, transparently, from the same path with the same CLI.
+
+**Windows uninstall removes everything.** The kit's own Python runs the
+uninstall command, so its folder could not be deleted from inside; a detached
+shell now removes it a few seconds after the command exits.
+
 **Intel Macs are refused up front.** The local database runs on Apple silicon
 Macs, Linux x86_64/arm64 and Windows x86_64; on an Intel Mac the installer and
 `exakit preflight` now say so before downloading or writing anything, where

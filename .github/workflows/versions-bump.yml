@@ -304,7 +304,6 @@ jobs:
               ],
               "mcp": [
                   ("catalog/components/mcp.json", "json", "fallback_version"),
-                  ("mcp/runtime/exakit.py", "python", "DEFAULT_MCP_VERSION"),
               ],
               "pyexasol": [
                   ("catalog/components/pyexasol.json", "json", "fallback_version"),

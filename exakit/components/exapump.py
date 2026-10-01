@@ -12,6 +12,8 @@ from exakit.adapters.net.github import asset_digest, download_url
 from exakit.domain.errors import Failed
 from exakit.lifecycles.base import temp_dir
 
+from .exapump_shim import install_glibc_shim
+
 from .base import ComponentBase
 
 VERSION_IN_TEXT = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
@@ -142,8 +144,8 @@ class Lifecycle(ComponentBase):
                          f"A virus scanner or endpoint-security agent is holding it. Allow {self.bin} (or wait for the scan to finish), then: exakit update",
                          remedy="exakit update exapump")
         if "GLIBC_" in text:
-            raise Failed("exapump's release binary needs a newer glibc than this system has. The container shim the legacy installer "
-                         "builds for this case is not part of the Python kit yet - re-run the installer to get it.", remedy=self.ctx.install_command())
+            install_glibc_shim(self, text)
+            return
         raise Failed(f"exapump was installed but does not run: {text.strip() or 'unknown error'}. See the log and {self.ctx.catalog.kit.endpoints.github_web}/{self.repo()}/issues")
 
     # --- the profile and the check --------------------------------------------------------------

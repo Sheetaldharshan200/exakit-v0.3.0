@@ -104,13 +104,13 @@ Recorded on 2026-09-30 on this Mac (macOS, Python 3.12.10) by `tools/run_tests.p
 
 | Suite | Result |
 |---|---|
-| unit (331) | pass |
+| unit (355) | pass |
 | contract (30) | pass |
 | scenarios (284: 7 states x 43 commands, each in both modes, plus 8 edge cases) | pass |
-| e2e (10, 1 network test skipped) | pass |
-| mcp (116) | pass |
+| e2e (11, 1 network test skipped) | pass |
+| mcp (118) | pass |
 | sample-data (7) | pass |
-| coverage of `exakit/` and `mcp/` | 67% (gate 65%; tasks.md E7) |
+| coverage of `exakit/` and `mcp/` | 72% (gate 70%) |
 | coding standard (`tools/check_standard.py`) | pass; 650 public functions without a docstring noted |
 | lint (`ruff.toml`) | clean |
 | release gate (`tools/release_check.py`) | pass with warnings: CHANGELOG still Unreleased; five pushed commits carry an attribution trailer |

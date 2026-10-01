@@ -140,16 +140,16 @@ jobs:
           sys.exit(1 if problems else 0)
           PY
 
-      - name: the MCP fallback constant matches the manifest
-        # mcp/runtime/exakit.py keeps a last-resort default for the MCP server
-        # version. It must move with the manifest, in the same pull request.
+      - name: the MCP catalog fallback matches the manifest
+        # catalog/components/mcp.json carries the last-resort MCP server
+        # version (the MCP subsystem reads it). It must move with the manifest.
         run: |
           set -u
           advertised="$(python3 -c 'import json; print(json.load(open("versions.json"))["components"]["mcp"]["version"])')"
-          constant="$(sed -n 's/^DEFAULT_MCP_VERSION = "\(.*\)"$/\1/p' mcp/runtime/exakit.py)"
-          printf 'manifest: %s\nexakit.py: %s\n' "$advertised" "$constant"
-          if [ "$advertised" != "$constant" ]; then
-            echo "DEFAULT_MCP_VERSION in mcp/runtime/exakit.py must equal components.mcp.version" >&2
+          fallback="$(python3 -c 'import json; print(json.load(open("catalog/components/mcp.json"))["fallback_version"])')"
+          printf 'manifest: %s\ncatalog: %s\n' "$advertised" "$fallback"
+          if [ "$advertised" != "$fallback" ]; then
+            echo "fallback_version in catalog/components/mcp.json must equal components.mcp.version" >&2
             exit 1
           fi
 

@@ -30,7 +30,7 @@ Update this file in the same commit as the work. Design sections are in
 ### Tests and CI
 - [x] A16 `tests/unit`, `tests/contract`, `tests/e2e` runners. The legacy suites stay at `tests/*.sh` and `*.ps1` (their `ROOT` is `dirname/..`; moving them would touch 40 files for nothing) and now run against `setup/legacy-exakit*` (design 11, D9)
 - [x] A17 `versions.yml` and `windows-ps51.yml` run the three Python suites and the legacy suites
-- [ ] A18 Full local run on this Mac (bash 3.2, pwsh 7, python 3.12) recorded in test-and-acceptance.md section 5
+- [x] A18 Full local run on this Mac (bash 3.2, pwsh 7, python 3.12) recorded in test-and-acceptance.md section 5 (2026-09-30, by tools/run_tests.py)
 
 ### Docs
 - [x] A19 `AGENTS.md` (EXAKIT_PERSONA, `exakit persona`), `README.md`, quickstarts, `CHANGELOG.md`, `CLAUDE.md` recipes (persona, add-on, component), `MARKETPLACE.md` pointer
@@ -46,7 +46,7 @@ Update this file in the same commit as the work. Design sections are in
 - [x] B5 `adapters/exapump.py` + `app/{data,data_files,sql,logs}.py` (bundled datasets, files with cut-short recovery, folders with receipts, JSON through json-tables) + CLI wiring; `tests/unit/app/{test_data,test_sql_logs}.py`
 - [x] B6 `app/persona.py` apply through `run_plan` (datasets via data, clients via mcp, add-ons via marketplace, skills via skills; records `persona.*`); `tests/unit/app/test_persona_apply.py` + contract; acceptance A21 to A24
 - [x] B8 Every function in `exakit/` is under 40 lines and every module under 400 (`data_folder.py` and `mcp_readonly.py` split out of `data_files.py` and `mcp.py`); an ast check in the test run record proves it
-- [ ] B7 Retire the legacy suites for these areas once C4 deletes the legacy add-on modules they cover; CI roster runs the Python suites already (`versions.yml`)
+- [x] B7 The legacy suites went with the shell tree in Phase D (ADR 0007); `quality.yml` runs the Python suites on every platform
 
 ## Phase C: install, update, runtime, uninstall
 
@@ -62,10 +62,10 @@ Update this file in the same commit as the work. Design sections are in
 
 - [x] D1 `setup/lib`, the legacy CLIs, the setup scripts, `upgrade/`, `setup/load-data.sh` and every legacy `tests/*.sh` / `*.ps1` suite deleted; `setup/` holds only the two launcher copies; help documents in `help/`, the what's-new file in `help/whats-new.json`, the cargo shim source in `shim/`; Kit 2 (`upgrade-kit2`, `rollback-kit2`, `upgrade/`) removed outright - it was never going to ship; `MIGRATED_COMMANDS` removed; CI runs the Python suites on ubuntu, macOS and Windows; the bump workflows retune `fallback_version` in the catalog (D27)
 - [x] D2 `CLAUDE.md`, `MARKETPLACE.md` (the add-on walkthrough is the catalog file plus a `Lifecycle` subclass), `AGENTS.md` describe only the Python kit
-- [ ] D3 Optional: `ui/tui/` on Textual in the kit venv, `exakit ui` command (decision A3) - not started
+- [ ] D3 Optional: `ui/tui/` on Textual in the kit venv, `exakit ui` command (decision A3) - not planned for 0.3.0
 - [x] D4 Manual acceptance M-3 on a scratch Linux machine: `.github/workflows/real-install.yml` (run 36718941027, 2026-09-30) installed with the analyst persona, status running, tpch loaded, the agent commands, a second run skipping every step, stop/start/update/data-load, uninstall. macOS runners cannot virtualise: everything but the database proven there. M-5 (Windows 11) still manual
-- [ ] D4b Manual acceptance M-5 on Windows 11 (PowerShell 5.1) and M-4 on a 0.2.0 install
-- [ ] D5 The exapump glibc container shim (Linux with glibc < 2.38) is not ported; Windows uninstall leaves `$EXAKIT_HOME/python` for the user to delete
+- [ ] D4b Manual acceptance M-5 on Windows 11 (PowerShell 5.1) and M-4 on a 0.2.0 install: real machines, not runners (the Windows runner proves everything but the database)
+- [x] D5 The exapump glibc container shim is ported (`exakit/components/exapump_shim.py`, image in `catalog/kit.json`, `EXAKIT_EXAPUMP_SHIM_IMAGE` overrides); the Windows uninstall removes `$EXAKIT_HOME/python` through a detached shell a few seconds after it exits
 
 ## Phase E: quality gates (2026-09-30)
 
@@ -75,7 +75,7 @@ Update this file in the same commit as the work. Design sections are in
 - [x] E4 `tools/run_tests.py` (JUnit XML, tests.json, test-report.md, coverage), `tools/release_check.py` (the release gate), `tools/qa_report.py` (the QA report); `docs/release-checklist.md`
 - [x] E5 `.github/workflows/quality.yml`: standard + lint + shellcheck, the suites on Linux 3.11/3.12, macOS and Windows with coverage, the release gate, the QA report as the run summary, SonarQube when the token is set (`windows-ps51.yml` and the `kit-tests` job folded in)
 - [x] E6 Bugs the gates found and fixed: the installer never recorded the persona; a corrupt install record was a traceback; `update --dry-run` acted; `<command> --help --json` printed no JSON; the dry run did not validate `EXAKIT_PERSONA`; a 3.12-only f-string in `domain/catalog.py`; the two package workflows did not parse
-- [ ] E7 Raise the coverage gate from 65% as `app/legacy_*`, `app/deploy.py` and the runtime adapter gain tests
+- [x] E7 The coverage gate is 70% (72% measured): the CLI entry point and every help page are exercised in process, the glibc shim and the Windows uninstall have tests
 - [ ] E8 Five commits in the pushed history carry an attribution trailer (before the rule); the release gate warns until the history is rewritten, which is the owner's call
 - [ ] E9 Docstrings on the 650 public functions the standard notes (not gating)
 
@@ -87,4 +87,4 @@ Update this file in the same commit as the work. Design sections are in
 - [x] F4 `tests/unit/domain/test_settings.py` validates the file, every field's type, the endpoint templates, the installer command per platform, the failure on a missing file, and holds the moved literals out of `exakit/`; `tools/release_check.py` holds the shell layer's own defaults (it runs before Python) equal to the file
 - [x] F5 What the Windows jobs found: install.ps1 still demanded the deleted `setup\lib\exakit-common.ps1` (every Windows install from a checkout failed); no Windows install produced an `exakit` command at all (the helper step copied the sh launcher) - now `exakit.cmd` (a shim in `bootstrap/`, byte-identical copy in `setup/`) plus `exakit.ps1` in the bin dir, on install and on self-update, removed by uninstall; the MCP ACL reader depended on how icacls echoed the path. An e2e guard holds every kit path the installers name to a file that exists
 - [x] F6 Intel Macs: the local database does not run there (the launcher refuses); the kit now refuses before anything is downloaded or written, in both installers and the Python gate, from `platforms` on the Personal component (D35); the real-install workflow proves the refusal on GitHub's Intel macOS runner
-- [ ] F7 `mcp/runtime/exakit.py` still carries `DEFAULT_MCP_VERSION` (the update-test workflows rewrite it); the MCP subsystem should read the mcp component's `fallback_version` from the catalog like everything else
+- [x] F7 The MCP subsystem reads the mcp component's package and `fallback_version` from the catalog (`catalog_mcp_defaults`); `versions.yml` holds that file to the manifest, the bump and update-test workflows no longer rewrite a constant

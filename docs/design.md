@@ -396,6 +396,7 @@ the literals out of the package.
                 "reap_min_age_seconds": 180, "container_probe_timeout_seconds": 20, "container_action_timeout_seconds": 120 },
   "mcp":      { "readonly_user": "mcp_readonly", "readonly_schemas": "STARTER_KIT" },
   "data":     { "schema": "STARTER_KIT" },
+  "exapump":  { "glibc_shim_image": "ubuntu:24.04" },   // where the binary runs when the host glibc is older than 2.38
   "notice":   { "interval_seconds": 86400 }
 }
 ```
@@ -721,6 +722,7 @@ hold the rule that every variable the code reads is written down somewhere.
 | `EXAKIT_DEBUG` | 1 re-raises an unexpected error with its traceback instead of the one-line refusal |
 | `EXAKIT_EXAPUMP_CONFIG_DIR` | where exapump's config.toml lives (default ~/.exapump); tests relocate it |
 | `EXAKIT_EXAPUMP_PROFILE` | the exapump profile the kit writes and reads (default starter-kit) |
+| `EXAKIT_EXAPUMP_SHIM_IMAGE` | the container image the exapump glibc shim runs the binary in (default `exapump.glibc_shim_image` in kit.json, ubuntu:24.04) |
 | `EXAKIT_EXASOL_SCHEDULER_MIRROR_REPO` | the repository whose release carries the scheduler binaries (default: the kit repository) |
 | `EXAKIT_EXASOL_SCHEDULER_RELEASE_TAG` | that release's tag (default: the pinned one) |
 | `EXAKIT_FORCE_COMPONENT_INSTALL` | 1 installs a component even when a system copy is present |

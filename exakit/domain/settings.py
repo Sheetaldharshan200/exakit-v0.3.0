@@ -36,6 +36,7 @@ FIELDS: tuple[tuple[str, str, type], ...] = (
     ("runtime", "container_probe_timeout_seconds", int), ("runtime", "container_action_timeout_seconds", int),
     ("mcp", "readonly_user", str), ("mcp", "readonly_schemas", str),
     ("data", "schema", str),
+    ("exapump", "glibc_shim_image", str),
     ("notice", "interval_seconds", int),
 )
 
@@ -88,6 +89,7 @@ class KitSettings:
     mcp_readonly_user: str
     mcp_readonly_schemas: str
     data_schema: str
+    exapump_shim_image: str
     notice_interval: int
 
     @classmethod
@@ -111,6 +113,7 @@ class KitSettings:
             container_action_timeout=value("runtime", "container_action_timeout_seconds"),
             mcp_readonly_user=value("mcp", "readonly_user"), mcp_readonly_schemas=value("mcp", "readonly_schemas"),
             data_schema=value("data", "schema"),
+            exapump_shim_image=value("exapump", "glibc_shim_image"),
             notice_interval=value("notice", "interval_seconds"),
         )
 

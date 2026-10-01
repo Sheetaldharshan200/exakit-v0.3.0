@@ -55,8 +55,9 @@ class SubprocessRunner:
     def spawn(self, cmd: Sequence[str], *, log_path: Path) -> int:
         """Start a daemon in its own session, both streams appended to ``log_path``; the pid is the answer."""
         log_path.parent.mkdir(parents=True, exist_ok=True)
+        detached = {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
         with log_path.open("a", encoding="utf-8") as log:
-            child = subprocess.Popen(list(cmd), stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+            child = subprocess.Popen(list(cmd), stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, **detached)
         return child.pid
 
     def interactive(self, cmd: Sequence[str], *, env: Mapping[str, str] | None = None) -> int:

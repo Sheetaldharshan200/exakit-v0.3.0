@@ -49,6 +49,58 @@ class ExapumpTest(unittest.TestCase):
         finally:
             box.close()
 
+    def test_a_glibc_mismatch_installs_the_container_shim_and_proves_it_runs(self):
+        """The release binary needs glibc 2.38; on an older distro it runs inside a container, through the same path and CLI."""
+        from exakit.adapters.process.runner import Completed
+
+        class OnceOld(FakeRunner):
+            def __init__(self):
+                super().__init__(which={"podman": "/usr/bin/podman"})
+                self.old = True
+            def run(self, cmd, **kw):
+                self.calls.append(tuple(cmd))
+                if cmd[-1] == "--version" and cmd[0].endswith("/exapump") and self.old:
+                    self.old = False
+                    return Completed(1, "", "exapump: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.38' not found")
+                if cmd[:2] == ["ldd", "--version"]:
+                    return Completed(0, "ldd (Ubuntu GLIBC 2.35-0ubuntu3) 2.35\n", "")
+                return Completed(0, "exapump 0.13.0\n", "")
+
+        runner = OnceOld()
+        box = Sandbox(manifest=MANIFEST, runner=runner, platform=Platform("linux", "x86_64"))
+        try:
+            lc = for_component(box.ctx, "exapump")
+            lc.bin.parent.mkdir(parents=True, exist_ok=True)
+            lc.bin.write_bytes(b"ELF exapump")
+            lc.verify_runs()
+            real = box.ctx.paths.home / "libexec" / "exapump-real"
+            self.assertEqual(real.read_bytes(), b"ELF exapump")
+            shim = lc.bin.read_text(encoding="utf-8")
+            self.assertIn("/usr/bin/podman", shim)
+            self.assertIn("ubuntu:24.04", shim)
+            self.assertIn(str(real), shim)
+            self.assertIn(("/usr/bin/podman", "pull", "ubuntu:24.04"), runner.calls)
+            self.assertEqual(box.manifest().get("components.exapump.shim_image"), "ubuntu:24.04")
+            self.assertIn("runs through the ubuntu:24.04 container", box.screen())
+        finally:
+            box.close()
+
+    def test_a_glibc_mismatch_without_podman_is_a_clear_failure(self):
+        from exakit.adapters.process.runner import Completed
+        runner = FakeRunner()
+        box = Sandbox(manifest=MANIFEST, runner=runner, platform=Platform("linux", "x86_64"))
+        try:
+            lc = for_component(box.ctx, "exapump")
+            lc.bin.parent.mkdir(parents=True, exist_ok=True)
+            lc.bin.write_bytes(b"ELF")
+            runner.responses[(str(lc.bin), "--version")] = Completed(1, "", "version `GLIBC_2.38' not found")
+            with self.assertRaises(Failed) as caught:
+                lc.verify_runs()
+            self.assertIn("Podman is not available", caught.exception.message)
+            self.assertEqual(caught.exception.remedy, "exakit update exapump")
+        finally:
+            box.close()
+
     def test_install_downloads_verifies_and_records(self):
         body = b"#!/bin/sh\necho exapump 0.13.0\n"
         digest = hashlib.sha256(body).hexdigest()

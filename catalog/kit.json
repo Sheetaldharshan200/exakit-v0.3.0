@@ -56,5 +56,8 @@
   },
   "notice": {
     "interval_seconds": 86400
+  },
+  "exapump": {
+    "glibc_shim_image": "ubuntu:24.04"
   }
 }
