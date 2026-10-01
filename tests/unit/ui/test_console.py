@@ -92,6 +92,23 @@ class ConsoleTest(unittest.TestCase):
         self.assertEqual(r.checkboxes("Pick", opts, []), ["a", "b"])
 
 
+class BannerTest(unittest.TestCase):
+    def test_the_fancy_banner_draws_the_wordmark_with_the_green_x(self):
+        out = io.StringIO()
+        ConsoleRenderer(palette=FANCY, out=out, interactive=False).banner("Exasol Personal Local Starter Kit", "sub")
+        text = out.getvalue()
+        self.assertIn("███████╗", text)
+        self.assertIn(FANCY.green, text)
+        self.assertIn("Exasol Personal Local Starter Kit", text)
+        self.assertIn("sub", text)
+
+    def test_the_plain_banner_is_the_title_alone(self):
+        out = io.StringIO()
+        ConsoleRenderer(palette=PLAIN, out=out, interactive=False).banner("Title")
+        self.assertNotIn("█", out.getvalue())
+        self.assertIn("Title", out.getvalue())
+
+
 class FactoryTest(unittest.TestCase):
     def test_json_gives_the_silent_renderer(self):
         r = make_renderer(json=True, env={})

@@ -32,7 +32,10 @@ class InstallerDryRunTest(unittest.TestCase):
                    "EXAKIT_DRY_RUN": "1", "NO_COLOR": "1"}
             done = _run(["sh", str(REPO / "install.sh")], env)
             self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
-            self.assertIn("Dry run requested", done.stdout)
+            self.assertIn("Dry run", done.stdout)
+            if shutil.which("python3"):          # the plan is drawn by the kit when a Python 3.11+ is on PATH
+                self.assertIn("Step 1/6  Exasol launcher", done.stdout)
+                self.assertIn("Step 6/6  exakit helper command", done.stdout)
             self.assertFalse((Path(tmp) / "home" / "manifest.json").exists())
             self.assertFalse((Path(tmp) / "home" / "python").exists())
 

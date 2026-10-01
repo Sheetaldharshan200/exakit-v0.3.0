@@ -18,7 +18,7 @@ from typing import IO
 from exakit.domain.log import Log, NullLog
 from exakit.domain.plan import Plan, Step, StepState
 
-from .widgets import FANCY, PLAIN, Option, Palette, term_cols, visible_len, wrap
+from .widgets import FANCY, PLAIN, Option, Palette, term_cols, visible_len, wrap, wordmark_lines
 
 SPIN_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 SECTION_LABELS = {"datasets": "Sample data", "mcp_clients": "AI clients", "addons": "Add-ons",
@@ -56,8 +56,12 @@ class ConsoleRenderer:
         self._w(line)
 
     def banner(self, title: str, subtitle: str = "") -> None:
-        """Draw the kit's banner with a title and subtitle."""
+        """Draw the kit's banner: the wordmark in fancy mode, then the title and subtitle."""
         self._w()
+        for line in wordmark_lines(self.p):
+            self._w(line)
+        if self.p.fancy:
+            self._w()
         self._w(f"  {self.p.bold}{title}{self.p.reset}")
         if subtitle:
             self._w(f"  {self.p.dim}{subtitle}{self.p.reset}")
@@ -137,14 +141,15 @@ class ConsoleRenderer:
         for section, steps in plan.by_section().items():
             lines.append(f"{SECTION_LABELS.get(section, section)}:")
             for step in steps:
+                name = step.label or step.id
                 if step.state is StepState.DONE:
-                    mark = f"{p.ok}{p.tick}{p.reset}  {step.id} {p.dim}(already there){p.reset}"
+                    mark = f"{p.ok}{p.tick}{p.reset}  {name} {p.dim}(already there){p.reset}"
                 elif step.state is StepState.PENDING:
-                    mark = f"{p.accent}+{p.reset}  {step.id}"
+                    mark = f"{p.accent}+{p.reset}  {name}"
                 elif step.state is StepState.FAILED:
-                    mark = f"{p.err}{p.cross}{p.reset}  {step.id} {p.dim}(failed){p.reset}"
+                    mark = f"{p.err}{p.cross}{p.reset}  {name} {p.dim}(failed){p.reset}"
                 else:
-                    mark = f"{p.dim}-  {step.id} (skipped){p.reset}"
+                    mark = f"{p.dim}-  {name} (skipped){p.reset}"
                 lines.append(f"  {mark}")
                 if step.reason:
                     lines.append(f"       {p.dim}{step.reason}{p.reset}")

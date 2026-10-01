@@ -546,11 +546,7 @@ if (Test-Path $uiLib) {
         $uiLoaded = $true
     } catch { $uiLoaded = $false }
 }
-if (-not $uiLoaded) {
-    Write-Host ""
-    Write-Host "  Personal Local Starter Kit"
-    Write-Host ""
-}
+# The install screen (the wordmark, the facts, the plan) is drawn by the Python kit.
 
 if ($env:EXAKIT_DRY_RUN -eq "1") {
     Write-Host "  * Dry run requested (EXAKIT_DRY_RUN=1) - nothing was installed, and nothing under $ExakitHome was changed." -ForegroundColor Blue
@@ -589,7 +585,6 @@ Write-Host "  * Starting setup: python -m exakit install" -ForegroundColor Blue
 Write-Host ""
 # We already showed the banner above; the install skips its own so the
 # wordmark appears exactly once.
-$env:EXAKIT_BANNER_SHOWN = "1"
 # --- 5. the kit's own Python, then the kit ---------------------------------------
 # From here on the kit is Python: bootstrap\ensure-python.ps1 puts a managed
 # interpreter under $ExakitHome\python (uv, digest-checked, never the system

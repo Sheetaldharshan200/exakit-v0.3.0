@@ -104,9 +104,23 @@ main() {
         exit 1
     }
 
-    render_banner_plan() {
-        printf '\n  Exasol Personal Local Starter Kit\n'
-        printf '  Platform: %s (%s)   Target: %s\n  Kit: %s   Home: %s\n\n' "$platform" "$arch" "$target" "$kit_dir" "$EXAKIT_HOME"
+    # The install screen (the wordmark, the facts, the plan) is drawn by the
+    # Python kit; this script only says what it downloads and hands over.
+    # plan_python - the interpreter a DRY RUN may use to draw the plan without
+    # installing anything: the kit's own if an earlier install set it up, else
+    # a system Python 3.11+ (never used for the install itself).
+    plan_python() {
+        _pp=""
+        [ -f "$EXAKIT_HOME/python/interpreter" ] && _pp="$(head -n 1 "$EXAKIT_HOME/python/interpreter" 2>/dev/null)"
+        if [ -z "$_pp" ] || ! "$_pp" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1; then
+            _pp=""
+            for _cand in python3 python; do
+                if command -v "$_cand" >/dev/null 2>&1 && "$_cand" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1; then
+                    _pp="$_cand"; break
+                fi
+            done
+        fi
+        printf '%s' "$_pp"
     }
 
     # --- 1. preflight --------------------------------------------------------
@@ -228,10 +242,15 @@ main() {
         exit $?
     fi
 
-    # --- 4. show the plan ----------------------------------------------------
-    render_banner_plan
-
+    # --- 4. a dry run: the screen and the plan, nothing installed ------------
     if [ "${EXAKIT_DRY_RUN:-0}" = "1" ]; then
+        _dry_py="$(plan_python)"
+        if [ -n "$_dry_py" ]; then
+            EXAKIT_KIT_DIR="$kit_dir" PYTHONPATH="$kit_dir${PYTHONPATH:+:$PYTHONPATH}" "$_dry_py" -m exakit install --dry-run
+        else
+            printf '\n  Exasol Personal Local Starter Kit\n  Platform: %s (%s)   Target: %s\n  Kit: %s   Home: %s\n\n' "$platform" "$arch" "$target" "$kit_dir" "$EXAKIT_HOME"
+            say "Dry run: the six install steps are the launcher, the local database, exapump, the AI bridge, pyexasol and the exakit command."
+        fi
         say "Dry run requested (EXAKIT_DRY_RUN=1) - nothing was installed, and nothing under $EXAKIT_HOME was changed."
         say "The kit is unpacked for inspection in a temporary folder: $kit_dir"
         say "To install, run the same command again without EXAKIT_DRY_RUN=1."
@@ -264,9 +283,6 @@ main() {
     [ -n "${EXAKIT_INSTALL_T0:-}" ] && _bootstrap_s=" ($(( $(date +%s) - EXAKIT_INSTALL_T0 ))s after start)"
     say "Starting setup: python -m exakit install$_bootstrap_s"
     printf '\n'
-    # We already showed the banner above; the install skips its own so the
-    # wordmark appears exactly once.
-    export EXAKIT_BANNER_SHOWN=1
     # --- 6. the kit's own Python, then the kit ------------------------------
     # bootstrap/ensure-python.sh puts a managed interpreter under
     # $EXAKIT_HOME/python (uv, digest-checked, never the system Python) and

@@ -189,6 +189,24 @@ class SoftFailureTest(unittest.TestCase):
 
 
 class AnswersTest(unittest.TestCase):
+    def test_a_dry_run_shows_the_screen_and_the_plan_with_its_step_titles(self):
+        box, calls, patches = box_with()
+        box.ctx.dry_run = True
+        try:
+            with Patched(patches):
+                result = install.run(box.ctx)
+            self.assertEqual(result.status, "dry-run")
+            self.assertEqual(calls.log, [])
+            screen = box.screen()
+            self.assertIn("Exasol Personal Local Starter Kit", screen)
+            self.assertIn("Platform: macos (aarch64)", screen)
+            self.assertIn("Step 1/6  Exasol launcher", screen)
+            self.assertIn("Step 6/6  exakit helper command", screen)
+            self.assertIn("Dry run: nothing was installed", screen)
+            self.assertEqual([s["id"] for s in result.data["install"]], ["launcher", "runtime", "exapump", "mcp", "pyexasol", "exakit_helper"])
+        finally:
+            box.close()
+
     def test_persona_answers_drive_the_data_and_client_sections(self):
         box, calls, patches = box_with(env={"EXAKIT_PERSONA": "data-scientist"})
         try:

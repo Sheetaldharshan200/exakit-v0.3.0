@@ -103,6 +103,23 @@ class Palette:
 
 PLAIN = Palette(fancy=False)
 
+# The EXASOL wordmark (ANSI Shadow style), drawn in fancy mode above the title.
+# Split so the X carries the logo's two-tone look: its left strokes and the
+# crossing peak in Exasol green, the rest in the terminal's default colour.
+WORDMARK_E = ("███████╗", "██╔════╝", "█████╗  ", "██╔══╝  ", "███████╗", "╚══════╝")
+WORDMARK_X_LEFT = ("██╗ ", "╚██╗", " ╚███", " ██╔", "██╔╝", "╚═╝ ")
+WORDMARK_X_RIGHT = (" ██╗", "██╔╝", "╔╝ ", "██╗ ", " ██╗", " ╚═╝")
+WORDMARK_REST = (" █████╗ ███████╗ ██████╗ ██╗", "██╔══██╗██╔════╝██╔═══██╗██║", "███████║███████╗██║   ██║██║",
+                 "██╔══██║╚════██║██║   ██║██║", "██║  ██║███████║╚██████╔╝███████╗", "╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚══════╝")
+
+
+def wordmark_lines(palette: Palette) -> list[str]:
+    """The six lines of the wordmark with the palette's colours; empty in plain mode."""
+    if not palette.fancy:
+        return []
+    return [f"  {palette.bold}{palette.fg}{e}{palette.green}{xl}{palette.fg}{xr}{rest}{palette.reset}"
+            for e, xl, xr, rest in zip(WORDMARK_E, WORDMARK_X_LEFT, WORDMARK_X_RIGHT, WORDMARK_REST, strict=True)]
+
 FANCY = Palette(
     fancy=True,
     reset="\x1b[0m", bold="\x1b[1m", dim="\x1b[2m",

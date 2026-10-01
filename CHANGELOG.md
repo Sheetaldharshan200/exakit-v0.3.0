@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+**The install screen is back, and the dry run shows the plan.** The EXASOL
+wordmark heads the install in a terminal, the plan names its six steps, and
+`EXAKIT_DRY_RUN=1` now draws that screen and plan through the kit (with any
+Python 3.11+ it finds, installing nothing) where before it stopped after a
+shell summary.
+
 **The exapump glibc shim is back.** On a Linux distro whose glibc is older
 than 2.38 (Ubuntu 22.04, RHEL 8 and 9, Debian 11 and 12) the exapump release
 binary cannot start; the kit now does what the shell kit did: it moves the

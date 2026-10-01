@@ -35,6 +35,7 @@ class Step:
     reason: str = ""
     run: Callable[[], None] | None = field(default=None, repr=False, compare=False)
     remedy: str | None = None
+    label: str = ""                        # what a screen shows for the step; the id stays the contract
 
     def to_dict(self) -> dict[str, Any]:
         """The step as the plan document prints it."""

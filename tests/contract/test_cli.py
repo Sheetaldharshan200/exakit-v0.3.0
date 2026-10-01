@@ -290,8 +290,8 @@ class PhaseCCommandsTest(unittest.TestCase):
     def test_install_dry_run_prints_the_plan_and_changes_nothing(self):
         done = self.empty.run("install", "--dry-run")
         self.assertEqual(done.returncode, 0, done.stderr)
-        for step in ("launcher", "runtime", "exapump", "mcp", "pyexasol", "exakit_helper"):
-            self.assertIn(step, done.stdout)
+        for title in ("Exasol launcher", "Local database deployment", "exapump", "AI bridge", "pyexasol", "exakit helper command"):
+            self.assertIn(title, done.stdout)          # the screen names the steps; the ids are the --json contract below
         self.assertFalse((self.empty.home / "manifest.json").exists())
 
     def test_install_refuses_arguments(self):

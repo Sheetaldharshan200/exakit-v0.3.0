@@ -257,7 +257,7 @@ def plan(ctx: Context) -> Plan:
     """What an install would do now: every step done or pending. Nothing is changed."""
     manifest = ctx.manifest_or_none()
     done = set(manifest.steps_completed()) if manifest else set()
-    items = [Step("install", step, StepState.DONE if step in done else StepState.PENDING) for step in steps.STEP_IDS]
+    items = [Step("install", step, StepState.DONE if step in done else StepState.PENDING, label=TITLES.get(step, step)) for step in steps.STEP_IDS]
     return Plan("Install: the Exasol Personal Local Starter Kit", items, remedy_command="exakit install")
 
 
@@ -281,12 +281,31 @@ def _steps(session: steps.Session) -> None:
     steps.step_helper(session, TITLES["exakit_helper"])
 
 
+def banner(ctx: Context, root: Path) -> None:
+    """The install screen's head: the wordmark (in a terminal), the title, the platform, the target, the paths."""
+    if ctx.env.get("EXAKIT_BANNER_SHOWN") == "1":
+        return
+    p = ctx.platform
+    word = "wsl" if p.is_wsl else p.os
+    target = "Exasol Personal (local deployment via Podman)" if p.os == "linux" else "Exasol Personal (local deployment)"
+    home = ctx.env.get("HOME", "")
+
+    def short(path: Path) -> str:
+        return str(path).replace(home, "~", 1) if home else str(path)
+
+    ctx.ui.banner("Exasol Personal Local Starter Kit", f"Platform: {word} ({p.arch})   Target: {target}")
+    ctx.ui.text(f"  Kit: {short(root)}   Home: {short(ctx.paths.home)}")
+    ctx.ui.text("")
+
+
 def run(ctx: Context) -> Result:
     """``exakit install``: the whole install, resumable; a dry run shows the plan."""
     answers = resolve_answers(ctx)      # an unknown persona stops here, dry run or not
+    banner(ctx, kit_root(ctx))
     if ctx.dry_run:
         the_plan = plan(ctx)
         ctx.ui.plan(the_plan)
+        ctx.ui.info("Dry run: nothing was installed. Run the same command without the dry run to install.")
         return Result(True, "dry-run", data=the_plan.to_dict())
     prepare_home(ctx)
     init_manifest(ctx)
@@ -295,8 +314,6 @@ def run(ctx: Context) -> Result:
     session = steps.Session(ctx, answers, root)
     record_persona(ctx)
     try:
-        if ctx.env.get("EXAKIT_BANNER_SHOWN") != "1":
-            ctx.ui.banner("Personal Local Starter Kit")
         record_kit(ctx, root)
         crossing_before(ctx)
         session.current = "requirements"
