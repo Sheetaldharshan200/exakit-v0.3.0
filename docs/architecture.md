@@ -41,7 +41,7 @@ marketplace, manifest, status or UI logic.
 |           (presentation only: parses, calls a use case, renders)      |
 +-----------------------------------+-----------------------------------+
 |  ui       renderers for the SAME result objects:                      |
-|           plain (no tty), ansi (today's look), tui (optional, later)  |
+|           plain (no tty), ansi (today's look), tui (Textual screens)  |
 +-----------------------------------+-----------------------------------+
 |  app      use cases = plan -> confirm -> apply -> verify -> record     |
 |           install, update, status, marketplace, persona, mcp,         |
@@ -82,7 +82,7 @@ update-path/
 |   |-- __main__.py             python -m exakit
 |   |-- cli/                    one file per command: status.py, install.py, update.py, marketplace.py,
 |   |                           persona.py, mcp.py, data.py, skills.py, runtime.py, uninstall.py, help.py
-|   |-- ui/                     render(result): plain.py, ansi.py (banner, spinner, table, panel), tui/ (later)
+|   |-- ui/                     render(result): console.py (plain and ansi), silent.py, tui/ (Textual, its own venv)
 |   |-- app/                    use cases (plan/apply): install.py, update.py, marketplace.py, persona.py,
 |   |                           mcp.py, data.py, skills.py, runtime.py, uninstall.py, status.py
 |   |-- domain/                 pure models and rules: manifest.py, versions.py, catalog.py, component.py,
@@ -169,7 +169,7 @@ rest, so users never see two tools.
 |---|---|---|
 | A1 | Python 3.11+, standard library only, in the core. | Third-party deps in the core (packaging, offline installs, Defender scanning 12k files on every run). |
 | A2 | Managed CPython via uv, never the system Python. | System Python (Xcode stub, Store stub, version drift). |
-| A3 | TUI is optional and later (`ui/tui/`, Textual in the kit venv), never needed by the installer. | TUI first (blocks on the install path). |
+| A3 | The interactive screens run on Textual (`ui/tui/`), installed by uv into its own venv under the kit home on the first interactive run, behind the same Renderer protocol as the console. The console renderer remains for pipes, `--json`, `EXAKIT_TUI=0`, scripted runs and any machine where Textual cannot be installed: the installer never depends on it, a failed Textual install falls back silently. Textual is never imported by the core (`exakit/ui/tui/` is the one package allowed to), so the stdlib rule of A1 holds everywhere else. (Revised 2026-10-01: was "optional and later".) | A hand-rolled full-screen UI in the core (a second toolkit to maintain); Textual in the core interpreter (a third-party package on the install path); TUI first, blocking the install path. |
 | A4 | Strangler migration with golden contract tests, not a rewrite behind a flag. | Big-bang rewrite (no safe update path for existing installs). |
 | A5 | Add-ons and personas are JSON in `catalog/`; code only for exceptions. | Module pairs per add-on (today's cost). |
 | A6 | Only `bootstrap/` may contain OS-specific shell, and it may contain no lifecycle logic. | Keeping helpers in shell "because they are small". |

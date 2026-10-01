@@ -38,6 +38,7 @@ LAYER_ALLOWS = {
     "cli": {"domain", "ui", "app", "cli", "lifecycles", "components"},
 }
 OWN_PACKAGES = {"exakit", "mcp"}
+TUI_PACKAGES = {"textual", "rich"}          # allowed in exakit/ui/tui/ only (architecture A3): the screens live in their own venv
 # The one place outside adapters/ that opens a file: the terminal itself is the UI's device (design.md 9).
 BOUNDARY_EXCEPTIONS = {"exakit/ui/__init__.py": "/dev/tty", "exakit/ui/keys.py": "/dev/tty"}
 SHELL_FILES = ["install.sh", "install.ps1", "bootstrap/ensure-python.sh", "bootstrap/ensure-python.ps1",
@@ -161,6 +162,8 @@ def rule_stdlib() -> Iterator[Finding]:
             elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
                 names = [node.module.split(".")[0]]
             for name in names:
+                if name in TUI_PACKAGES and rel(path).startswith("exakit/ui/tui/"):
+                    continue
                 if name not in stdlib and name not in OWN_PACKAGES:
                     yield rel(path), node.lineno, f"third-party import '{name}': exakit/ is standard library only"
 

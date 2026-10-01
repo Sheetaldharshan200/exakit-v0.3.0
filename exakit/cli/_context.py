@@ -47,6 +47,33 @@ def build(*, json: bool, yes: bool, dry_run: bool, readonly: bool, mutating: boo
     )
 
 
+def tui_site(ctx: Context) -> Path | None:
+    """The screens' site-packages (architecture A3): ready, or prepared now by uv from the pin; None keeps the console."""
+    from exakit.adapters import tui_env
+    from exakit.adapters.uv import UvTool, find_uv
+    try:
+        doc = ctx.versions.current()
+        tool = doc.tool("textual") if doc else None
+        if not tool:
+            return None
+        spec = f"{ctx.catalog.kit.ui_package}=={tool['version']}"
+        venv = ctx.paths.home / ctx.catalog.kit.ui_venv_dir
+        windows = ctx.platform.os == "windows"
+        site = tui_env.ready(venv, spec, windows=windows)
+        if site is not None:
+            return site
+        bin_path = find_uv(ctx.env, ctx.paths.home, ctx.runner, windows=windows)
+        if not bin_path:
+            ctx.log.line("INFO", "screens: uv is not available here, keeping the console")
+            return None
+        uv = UvTool(bin_path, ctx.runner, python_version=ctx.catalog.kit.managed_python, windows=windows)
+        with ctx.ui.busy("Preparing the screens (first run only)"):
+            return tui_env.ensure(venv, uv, spec, windows=windows)
+    except Exception as err:    # the screens are optional; whatever stops them is one log line
+        ctx.log.line("WARN", f"screens: not available ({err}); keeping the console")
+        return None
+
+
 def _kit_version(root: Path) -> str:
     import json as _json
     try:

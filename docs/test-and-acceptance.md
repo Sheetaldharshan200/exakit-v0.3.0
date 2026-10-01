@@ -21,7 +21,7 @@ The suites, each provable on its own with `python3 -m unittest discover -s <dir>
 
 | Suite | Directory | Proves | Machine state |
 |---|---|---|---|
-| unit | `tests/unit` | every rule and adapter over fakes; the four upstream fallback orders (the versions manifest, About, release digests, the add-on release sites of D36) | none |
+| unit | `tests/unit` | every rule and adapter over fakes; the four upstream fallback orders (the versions manifest, About, release digests, the add-on release sites of D36); the Textual screens headless through Textual's pilot (`tests/unit/ui/test_tui.py`, skipped where Textual is not installed; the CI test job installs the pin) | none |
 | contract | `tests/contract` | the frozen `--json` shapes and exit codes against the real CLI | a hermetic sandbox (`tests/support.py`: throwaway kit home and user home, bare PATH, no `EXAKIT_*` inherited) |
 | scenarios | `tests/scenarios` | every command x every machine state x both output modes; the refusal paths of the mutating commands; the password never printed; a read never changes the record; the edge cases | the same sandbox, seven states (`harness.STATES`) |
 | e2e | `tests/e2e` | the installer dry run, the launcher answers; the real uv + CPython bootstrap with `EXAKIT_E2E_NETWORK=1` | none (network opt-in) |
@@ -100,21 +100,22 @@ Personas x answers x platform x mode. Each cell is covered by the check named.
 
 ## 5. Latest local run
 
-Recorded on 2026-09-30 on this Mac (macOS, Python 3.12.10) by `tools/run_tests.py --coverage`; the full listing is `reports/test-report.md` (a snapshot is committed under `docs/reports/`).
+Recorded on 2026-10-01 on this Mac (macOS, Python 3.12) by `tools/run_tests.py`; the full listing is `reports/test-report.md` (a snapshot is committed under `docs/reports/`).
 
 | Suite | Result |
 |---|---|
-| unit (355) | pass |
+| unit (397; 7 skipped without Textual, which pass under the pinned Textual: 14 screen tests) | pass |
 | contract (30) | pass |
 | scenarios (284: 7 states x 43 commands, each in both modes, plus 8 edge cases) | pass |
 | e2e (11, 1 network test skipped) | pass |
 | mcp (118) | pass |
 | sample-data (7) | pass |
-| coverage of `exakit/` and `mcp/` | 72% (gate 70%) |
-| coding standard (`tools/check_standard.py`) | pass; 650 public functions without a docstring noted |
-| lint (`ruff.toml`) | clean |
-| release gate (`tools/release_check.py`) | pass with warnings: CHANGELOG still Unreleased; five pushed commits carry an attribution trailer |
-| real install (`real-install.yml`, ubuntu-latest) | pass, see M-3 |
+| coverage of `exakit/` and `mcp/` | 72% (gate 70%, last measured 2026-09-30) |
+| coding standard (`tools/check_standard.py`) | pass; 0 public functions without a docstring |
+| lint (`ruff.toml`, ruff 0.14.0) | clean |
+| release gate (`tools/release_check.py`) | pass with warnings: CHANGELOG still Unreleased; one pushed commit carries an attribution trailer |
+| real install (`real-install.yml`: ubuntu full, macOS Apple silicon everything but the database, Windows full, Intel Mac refused) | pass |
+| the Textual screens in a real terminal (`exakit marketplace` on a sandbox home, 2026-10-01) | the venv built by uv on the first run, the app drawn, the refusal carried out of it, Ctrl-C restored the terminal, exit 4 |
 
 The legacy suites were deleted with the shell tree in Phase D (ADR 0007).
 What they proved is carried by: dry-run-matrix and install-resume-safety ->

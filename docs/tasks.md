@@ -62,7 +62,7 @@ Update this file in the same commit as the work. Design sections are in
 
 - [x] D1 `setup/lib`, the legacy CLIs, the setup scripts, `upgrade/`, `setup/load-data.sh` and every legacy `tests/*.sh` / `*.ps1` suite deleted; `setup/` holds only the two launcher copies; help documents in `help/`, the what's-new file in `help/whats-new.json`, the cargo shim source in `shim/`; Kit 2 (`upgrade-kit2`, `rollback-kit2`, `upgrade/`) removed outright - it was never going to ship; `MIGRATED_COMMANDS` removed; CI runs the Python suites on ubuntu, macOS and Windows; the bump workflows retune `fallback_version` in the catalog (D27)
 - [x] D2 `CLAUDE.md`, `MARKETPLACE.md` (the add-on walkthrough is the catalog file plus a `Lifecycle` subclass), `AGENTS.md` describe only the Python kit
-- [ ] D3 Optional: `ui/tui/` on Textual in the kit venv, `exakit ui` command (decision A3) - not planned for 0.3.0
+- [x] D3 `ui/tui/` on Textual (decision A3, revised 2026-10-01): Phase G; an `exakit ui` dashboard command stays unplanned
 - [x] D4 Manual acceptance M-3 on a scratch Linux machine: `.github/workflows/real-install.yml` (run 36718941027, 2026-09-30) installed with the analyst persona, status running, tpch loaded, the agent commands, a second run skipping every step, stop/start/update/data-load, uninstall. macOS runners cannot virtualise: everything but the database proven there. M-5 (Windows 11) still manual
 - [ ] D4b Manual acceptance M-5 on Windows 11 (PowerShell 5.1) and M-4 on a 0.2.0 install: real machines, not runners (the Windows runner proves everything but the database)
 - [x] D5 The exapump glibc container shim is ported (`exakit/components/exapump_shim.py`, image in `catalog/kit.json`, `EXAKIT_EXAPUMP_SHIM_IMAGE` overrides); the Windows uninstall removes `$EXAKIT_HOME/python` through a detached shell a few seconds after it exits
@@ -78,6 +78,13 @@ Update this file in the same commit as the work. Design sections are in
 - [x] E7 The coverage gate is 70% (72% measured): the CLI entry point and every help page are exercised in process, the glibc shim and the Windows uninstall have tests
 - [ ] E8 Five commits in the pushed history carry an attribution trailer (before the rule); the release gate warns until the history is rewritten, which is the owner's call
 - [x] E9 Every public function and method in `exakit/` carries a docstring (the rule counts module-level functions and methods, not closures); `tools/check_standard.py` reports 0
+
+## Phase G: the Textual screens (2026-10-01)
+
+- [x] G1 `catalog/kit.json` `ui` block, `versions.json` `tools.textual`, `adapters/tui_env.py` (the venv under the kit home: created once by uv, reinstalled on a pin change, absent uv or network means no screens), `cli/_context.tui_site()`
+- [x] G2 `ui/tui/`: `KitApp` (header with the wordmark, the plan panel, the log pane, the status bar), the modal screens (select, checkboxes, confirm, prompt), `TuiRenderer` (every Renderer call handed to the app from the worker thread; the plain transcript mirrored for the scrollback), `app.tcss`; `cli/main` runs the interactive flows inside the app and prints the transcript when it closes
+- [x] G3 `tests/unit/ui/test_tui.py` (headless, Textual's pilot; skipped without Textual), `tests/unit/adapters/test_tui_env.py`; the CI test job installs the pinned Textual; the checker allows `textual` and `rich` in `exakit/ui/tui/` only
+- [x] G4 `exakit uninstall` removes the screens' venv with the kit home (it lives there); `exakit update` picks up a new pin on the next interactive run (the marker file); proven in a real terminal on 2026-10-01: the venv built by uv on the first run, the app drawn, a refusal carried out of it, Ctrl-C closing it with the terminal restored; the wordmark steps aside under 70 columns
 
 ## Phase F: every default is data (2026-09-30)
 

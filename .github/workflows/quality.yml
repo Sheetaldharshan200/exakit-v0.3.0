@@ -56,7 +56,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: pip install --quiet coverage
+      - name: the test dependencies (coverage, and the pinned Textual for the screens' tests)
+        shell: bash
+        run: pip install --quiet coverage "textual==$(python -c 'import json; print(json.load(open("versions.json"))["tools"]["textual"]["version"])')"
       - name: every suite, with coverage and the reports
         run: python tools/run_tests.py --coverage
       - name: what icacls says about a protected file (Windows, diagnostic)

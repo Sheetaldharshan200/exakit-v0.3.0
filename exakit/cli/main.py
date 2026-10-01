@@ -15,8 +15,10 @@ import traceback
 from collections.abc import Callable
 
 from exakit.app import Context, notice
+from exakit.app.requirements import supported_platforms
 from exakit.domain.errors import BadInput, ExakitError, Failed
 from exakit.domain.result import Result
+from exakit.ui import tui
 
 from . import _context, commands
 
@@ -93,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
             _emit(page, ctx)
             return page.exit_code
         if command in HANDLERS:
-            result = HANDLERS[command](rest, ctx)
+            result = _run(command, rest, ctx)
             _emit(result, ctx)
             notice.maybe_show(ctx, command)
             return result.exit_code
@@ -105,6 +107,22 @@ def main(argv: list[str] | None = None) -> int:
         return 130
     except Exception as err:  # the last line of defence: a user never sees a traceback, the log does
         return _unexpected(err, ctx, flags["json"])
+
+
+def _run(command: str, rest: list[str], ctx: Context) -> Result:
+    """Run the command: inside the Textual screens when this run wants them and they can be had, else as is."""
+    handler = HANDLERS[command]
+    if tui.wanted(ctx.env, sys.stdout, command=command, args=rest, json=ctx.json, dry_run=ctx.dry_run) and _platform_ok(ctx):
+        site = _context.tui_site(ctx)
+        if site is not None and tui.load(site):
+            return tui.run(ctx, lambda: handler(rest, ctx), title="Exasol Personal Local Starter Kit", subtitle=f"exakit {command}")
+    return handler(rest, ctx)
+
+
+def _platform_ok(ctx: Context) -> bool:
+    """False on a machine the local database cannot run on: it must refuse in words, without the screens' venv being written."""
+    supported = supported_platforms(ctx)
+    return not supported or ctx.platform.platform_key in supported
 
 
 def _unexpected(err: Exception, ctx: Context | None, json_mode: bool) -> int:

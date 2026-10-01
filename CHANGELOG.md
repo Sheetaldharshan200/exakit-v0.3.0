@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+**The interactive screens run on Textual.** In a terminal, the install,
+the marketplace, an update, an uninstall and the other interactive flows
+draw a full-screen app: the plan with each step's state and time, the log,
+a status bar with the spinner and the download bar, and proper menus. The
+toolkit is installed by uv into its own folder under the kit home on the
+first interactive run; the kit itself stays standard-library. Pipes,
+`--json`, scripted runs, `EXAKIT_TUI=0` and any machine where that install
+fails keep the console output, and the console transcript is printed when
+the app closes so the scrollback keeps everything.
+
 **The add-ons come from their own releases.** The kit bundles Exasol
 Scheduler and JSON Tables; it does not maintain them. Their binaries now
 download from the `exasol-labs` release of the version the kit advertises,

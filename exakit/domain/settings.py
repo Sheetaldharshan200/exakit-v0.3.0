@@ -37,6 +37,7 @@ FIELDS: tuple[tuple[str, str, type], ...] = (
     ("mcp", "readonly_user", str), ("mcp", "readonly_schemas", str),
     ("data", "schema", str),
     ("exapump", "glibc_shim_image", str),
+    ("ui", "package", str), ("ui", "venv_dir", str),
     ("notice", "interval_seconds", int),
 )
 
@@ -90,6 +91,8 @@ class KitSettings:
     mcp_readonly_schemas: str
     data_schema: str
     exapump_shim_image: str
+    ui_package: str
+    ui_venv_dir: str
     notice_interval: int
 
     @classmethod
@@ -114,6 +117,7 @@ class KitSettings:
             mcp_readonly_user=value("mcp", "readonly_user"), mcp_readonly_schemas=value("mcp", "readonly_schemas"),
             data_schema=value("data", "schema"),
             exapump_shim_image=value("exapump", "glibc_shim_image"),
+            ui_package=value("ui", "package"), ui_venv_dir=value("ui", "venv_dir"),
             notice_interval=value("notice", "interval_seconds"),
         )
 

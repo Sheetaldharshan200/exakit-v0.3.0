@@ -59,5 +59,9 @@
   },
   "exapump": {
     "glibc_shim_image": "ubuntu:24.04"
+  },
+  "ui": {
+    "package": "textual",
+    "venv_dir": "ui-venv"
   }
 }

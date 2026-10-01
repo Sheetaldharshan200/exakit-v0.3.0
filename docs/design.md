@@ -115,10 +115,12 @@ exakit/
     install.py update.py runtime.py (start/stop/repair/autostart/migrate) uninstall.py
   ui/
     __init__.py          Renderer Protocol; make_renderer(mode) -> Renderer
-    plain.py             no colour, one line per event (no tty, NO_COLOR, EXAKIT_NO_FANCY)
-    ansi.py              banner, palette, glyphs, spinner, progress, live table, panel, menus (port of ui.sh)
+    console.py           one renderer, two palettes: plain (no tty, NO_COLOR, EXAKIT_NO_FANCY) and fancy (colour, glyphs, the spinner, arrow-key menus)
+    spinner.py           the live line: a spinner with a detail and the time so far; plain-mode milestones
+    keys.py              the key reader behind the arrow-key menus (termios on POSIX, msvcrt on Windows)
     silent.py            used under --json: everything goes to the log, nothing to stdout
-    widgets.py           shared: wrap(), visible_len(), Table/Panel dataclasses
+    widgets.py           shared: wrap(), visible_len(), the wordmark, Option, the progress bar
+    tui/                 the Textual screens (6.1): __init__ (wanted/load/run), app.py, renderer.py, screens.py, app.tcss
   app/
     __init__.py          Context dataclass; UseCase Protocol (plan/apply)
     status.py info.py version.py help.py
@@ -431,6 +433,10 @@ its `checksums` publish, else the release API's (cached), else the refusal
 or the `EXAKIT_ALLOW_UNVERIFIED_<ID>=1` hatch. A download that cannot
 complete hands over to the next site; a checksum mismatch never does.
 
+The `ui` block names the screens' toolkit: `{"package": "textual", "venv_dir": "ui-venv"}`
+(the package uv installs, pinned by `tools.textual.version` in `versions.json`, and
+the folder under the kit home it lives in). Section 6.1.
+
 ### 3.4 `manifest.json` schema 2 (additive)
 
 ```
@@ -445,7 +451,8 @@ query, and is logged as one line.
 
 ### 3.5 `versions.json`
 
-Schema stays 1. Additive: `tools.uv` (section 1.2) and, per component,
+Schema stays 1. Additive: `tools.uv` (section 1.2), `tools.textual`
+(`{"version": "8.2.8"}`, the screens' toolkit of 6.1) and, per component,
 nothing new. The `expected` component set in `versions.yml` stays.
 
 ---
@@ -569,6 +576,50 @@ class Renderer(Protocol):
 table behaviour, terminal-width capping) so screens look identical.
 `plain.py` prints one line per call. `silent.py` writes to the log. Menus in
 non-interactive mode return their defaults, exactly as today.
+
+### 6.1 The Textual screens (`ui/tui/`)
+
+The interactive flows (install, marketplace, update, uninstall, mcp-setup,
+data-load, migrate, skills-install, `persona apply`) draw a full-screen
+Textual app when the output is a terminal, `--json` is not set, the run is
+not a dry run and `EXAKIT_TUI` is not `0`; every other run keeps the console
+renderer. Textual is a third-party package, so it never enters the core
+interpreter: `cli/_context.tui_site()` asks `adapters/tui_env.ensure()` for a
+venv under the kit home (`ui.venv_dir` in kit.json, created by uv from the
+managed Python, `textual==<tools.textual.version>` installed into it, a
+marker file holding the spec so a pin change reinstalls once), and
+`ui/tui.load()` adds that venv's site-packages to `sys.path` and imports
+Textual. Any failure on that path (no uv, offline, an import error) is one
+log line and the console renderer: the installer never depends on the
+screens. The platform gate runs before the venv is created, so an
+unsupported machine still writes nothing.
+
+Threading: Textual owns the main thread (`KitApp.run()`); the command runs
+in a worker thread with `ctx.ui` set to `TuiRenderer`, whose every method
+hands its call to the app with `call_from_thread` (a menu awaits a modal
+screen's answer on a future, so the worker blocks exactly as it does on a
+console prompt). The renderer also mirrors every line into a plain
+`ConsoleRenderer` over a buffer; when the app closes, `cli/main` writes that
+transcript to stdout so the scrollback holds what the console mode would
+have printed, and then emits the Result as always. A `Result` or an
+`ExakitError` raised by the worker is carried out of the app and handled
+by the same code path as the console. Ctrl-C and `q` close the app: the
+process exits with 130 as it did before.
+
+Screens: a header with the wordmark and the platform/target line; a plan
+panel (one row per step with its state glyph, label and time taken); the
+log pane (info, ok, warn, error, panels, the summary); a status bar with the
+spinner, the current download's bar and elapsed time; modal screens for
+`select` (radio list), `checkboxes` (selection list with `a`/`n`), `confirm`
+and `prompt`. Keys match the console menus: Up/Down, Space, Enter, digits,
+Esc. Styling lives in `app.tcss`; nothing is drawn by hand.
+
+Tests: `tests/unit/ui/test_tui.py` runs the app headless through Textual's
+`run_test` pilot (skipped where Textual is not installed; the CI test job
+installs the pinned version); `tests/unit/adapters/test_tui_env.py` proves
+the venv is created once, reinstalled on a pin change and skipped when uv is
+absent. The checker allows `textual` and `rich` imports in `exakit/ui/tui/`
+only.
 
 ---
 
@@ -727,6 +778,7 @@ deletes `setup/`.
 | D33 | The Log protocol lives in `domain/log.py`; the UI imports nothing from `adapters/`. Daemons start through `Runner.spawn`, HTTP probes through `adapters.net.http.http_status`. | The layer rule of section 9, held by the checker. The one exception, the terminal device in `ui/__init__.py`, is named in the checker. |
 | D34 | Every default is data: `catalog/kit.json` for the kit (repository, installer URLs, fetch URLs and cache budgets, endpoint templates, the managed Python, the machine requirements, the runtime's port and budgets, the MCP and data defaults), the `source` and `config` blocks of the catalog for each component and add-on (tags, asset names per platform, pins, mirrors, service users). The code reads them through `ctx.catalog`; an environment variable overrides where documented. A test holds the literals out of `exakit/`. | The fallback order (GitHub, cache, ours) is only as good as the "ours" it ends in; a value that lives in a module cannot be changed by a kit update without a code change, and the same value lived in three places. |
 | D36 | The kit is a bundler, not the maintainer of the add-ons: an add-on's binaries come from the add-on's own GitHub release first (`exasol-labs/exasol-scheduler`, `exasol-labs/exasol-json-tables`: the upstream archives, verified by the digests upstream publishes, the binary extracted), and the kit's mirror release answers only when that download cannot complete, or for a platform upstream does not publish (the JSON Tables linux-aarch64 engine). The sites are catalog data (`source.releases`); `versions.json` pins the mirror's digests and names the mirror release. | The mirror pinned a release tag that did not exist in this repository and digests of another build; the installs failed on a download the source repository was answering all along. The upstream release is the authority on what the add-on is; the mirror is a fallback and must never be the only path. |
+| D37 | The interactive screens are Textual, in a venv of their own (architecture A3, revised): the core stays standard-library, the console renderer stays the fallback, the Textual app owns the main thread and the command runs in a worker whose renderer hands every call to the app; the transcript is printed when the app closes. | A hand-rolled full-screen UI (arrow menus, spinners, bars drawn with escape codes) is the second UI toolkit to maintain; Textual gives layout, widgets, modals and a test pilot for the price of one pinned package that the installer can live without. |
 | D35 | The platforms the local database runs on are data: `platforms` on the Personal component (`catalog/components/personal.json`: Apple silicon Macs, Linux x86_64/arm64, Windows x86_64). The Python gate and `exakit preflight` read it and refuse in words before step 1; `install.sh` holds the same rule for Intel Macs because it runs before Python exists. An unsupported machine installs nothing: no download, no record, no command. | The launcher itself refuses Intel Macs (`local deployments are only supported on macOS Apple Silicon, Linux amd64/arm64, and Windows amd64`); the kit must say so first, not after installing half of itself. |
 
 ## 15. Variables the code reads that the user guide does not list
@@ -742,6 +794,7 @@ hold the rule that every variable the code reads is written down somewhere.
 | `EXAKIT_DEBUG` | 1 re-raises an unexpected error with its traceback instead of the one-line refusal |
 | `EXAKIT_EXAPUMP_CONFIG_DIR` | where exapump's config.toml lives (default ~/.exapump); tests relocate it |
 | `EXAKIT_EXAPUMP_PROFILE` | the exapump profile the kit writes and reads (default starter-kit) |
+| `EXAKIT_TUI` | 0 keeps the console renderer in a terminal (no Textual screens, no venv for them); unset or 1 draws the Textual screens for the interactive flows when the output is a terminal |
 | `EXAKIT_VERBOSE_BOOTSTRAP` | 1 prints the bootstrap's progress lines (uv download, the managed Python); silent otherwise, failures always shown |
 | `EXAKIT_EXAPUMP_SHIM_IMAGE` | the container image the exapump glibc shim runs the binary in (default `exapump.glibc_shim_image` in kit.json, ubuntu:24.04) |
 | `EXAKIT_EXASOL_SCHEDULER_MIRROR_REPO` | the repository of the scheduler's mirror site, the fallback behind the upstream release (default: the kit repository) |
