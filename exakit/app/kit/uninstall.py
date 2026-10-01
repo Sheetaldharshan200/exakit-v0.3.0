@@ -290,7 +290,6 @@ def farewell_aside(ctx: Context) -> None:
     """Beside the log while the kit is removed: the sign-off, the feedback address, the way back in."""
     lines = [*SIGN_OFF, "Thank you for trying out the Exasol Personal Local Starter Kit.", "",
              ctx.catalog.kit.feedback_note, "", f"  {ctx.catalog.kit.feedback_email}", "",
-             "Nothing is sent on your behalf: this kit has no telemetry.", "",
              "To install again:", f"  {ctx.install_command()}"]
     ctx.ui.aside("Signing off", lines)
 
@@ -301,4 +300,3 @@ def farewell(ctx: Context) -> None:
     ctx.ui.text("  Thank you for trying out the Exasol Personal Local Starter Kit.")
     ctx.ui.text(f"  {ctx.catalog.kit.feedback_note}")
     ctx.ui.text(f"    {ctx.catalog.kit.feedback_email}")
-    ctx.ui.text("  Nothing is sent on your behalf: this kit collects no telemetry, and the address is for you to write to.")

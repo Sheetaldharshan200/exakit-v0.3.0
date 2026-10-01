@@ -105,7 +105,6 @@ class FullUninstallTest(unittest.TestCase):
             self.assertIn("To install again", box.screen())
             self.assertIn("Thank you for trying out the Exasol Personal Local Starter Kit", box.screen())
             self.assertIn(box.ctx.catalog.kit.feedback_email, box.screen())
-            self.assertIn("collects no telemetry", box.screen())
             self.assertIn("There is no export step", box.screen())
         finally:
             box.close()
