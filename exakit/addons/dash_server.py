@@ -223,7 +223,7 @@ class Lifecycle(PythonVenvLifecycle):
             raise Failed("dash-server is not installed", remedy="exakit marketplace dash-server")
         port = self.port()
         if self.http_answers(port) and self.foreign_holder(port) is None:
-            self.ctx.ui.ok(f"dash-server is already running (http://127.0.0.1:{port})")
+            self.ctx.ui.working(f"dash-server is already running (http://127.0.0.1:{port})")
             return
         holder = self.foreign_holder(port)
         if holder:

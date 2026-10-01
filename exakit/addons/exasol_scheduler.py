@@ -220,7 +220,7 @@ class Lifecycle(BinaryLifecycle):
             self.ctx.ui.warn("exasol-scheduler is not installed - add it with: exakit marketplace")
             raise Failed("exasol-scheduler is not installed", remedy="exakit marketplace exasol-scheduler")
         if self.pids():
-            self.ctx.ui.ok("exasol-scheduler is already running")
+            self.ctx.ui.working("exasol-scheduler is already running")
             return
         self.giveup.unlink(missing_ok=True)
         self.ctx.runner.spawn([str(self.launcher)], log_path=self.log_file)

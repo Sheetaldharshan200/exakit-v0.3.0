@@ -83,6 +83,7 @@ Update this file in the same commit as the work. Design sections are in
 
 - [x] H1 `exakit ui` (help page, HANDLERS, the scenario matrix's refusal without a terminal) and a bare `exakit` in a terminal once installed; `cli/dashboard_data.DashboardData`, the facade the ui layer reads through
 - [x] H6 After the first real run of the dashboard: the Status page is one equal-height card per installed piece with the connection facts (DSN, users, password files), the kit's version and source and each component's versions; an action's job view carries a running row and tails the kit's log; the service start and stop narrate; buttons are plain boxes
+- [x] H9 Found in the user's real install: the MCP server failed its handshake because the kit's `PYTHONPATH` (the kit folder, with its own `mcp` package) reached the server; child processes get a clean environment (D43). Add-on installs narrate once; inputs and the red buttons restyled; a click on a bordered list lands on its row
 - [x] H8 The scheduler's status card reads the scheduler's tables (tasks, enabled, last run, failures) and offers Repair when the engine gave up
 - [x] H7 A branch-tracked kit copy records its commit and refreshes when the branch moved (D42); `exakit update --force`
 - [x] H5 The release gate's attribution check reads this repository's own commits (after the upstream base), the changelog's top section is named after the kit version, and an install follows the repository it came from (D41) so the update path is testable from a fork without a pull request to production

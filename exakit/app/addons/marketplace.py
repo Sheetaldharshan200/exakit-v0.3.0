@@ -219,8 +219,6 @@ def _start_service(ctx: Context, addon: Addon, lifecycle) -> None:
         return
     if services.autostart_wanted(ctx):
         services.register_autostart(ctx, services.Service(addon.id, hooks))
-    if str(hooks.status()).startswith("running"):
-        return                      # the validation already started it and said where it answers
     try:
         hooks.start()
     except ExakitError:

@@ -2,6 +2,13 @@
 
 ## 0.3.0 (in progress; the date is added when the tag is cut)
 
+**The MCP handshake works under the kit.** The launcher puts the kit
+folder on `PYTHONPATH`, and the kit ships its own `mcp` package, so the MCP
+server started by the kit imported that instead of the MCP SDK and failed
+with "FastMCP server support is not installed". Child processes no longer
+inherit the kit's folder. Add-on installs say "installed" once, the stop
+buttons use the terminal's bright red, and input boxes are plain boxes.
+
 **A dataset is one folder.** Drop `data/datasets/<id>/` with its
 `dataset.conf`, the schema SQL and one CSV per table, and the kit offers it;
 `data/datasets/README.md` has the contract and a test checks every folder.
