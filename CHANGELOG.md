@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (in progress; the date is added when the tag is cut)
 
 **A dataset is one folder.** Drop `data/datasets/<id>/` with its
 `dataset.conf`, the schema SQL and one CSV per table, and the kit offers it;

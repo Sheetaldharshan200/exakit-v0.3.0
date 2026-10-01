@@ -68,6 +68,15 @@ class SettingsFileTest(unittest.TestCase):
 class SettingsReachTheCodeTest(unittest.TestCase):
     """The values the code used to hardcode now come from the file, with the environment on top."""
 
+    def test_an_install_keeps_following_the_repository_it_came_from(self):
+        from exakit.cli._context import resolve_kit_repo
+        self.assertEqual(resolve_kit_repo({}, None, "root/kit"), "root/kit")
+        self.assertEqual(resolve_kit_repo({}, "fork/kit@main", "root/kit"), "fork/kit")
+        self.assertEqual(resolve_kit_repo({}, "checkout:/some/path", "root/kit"), "root/kit")
+        self.assertEqual(resolve_kit_repo({}, "local:/some/path", "root/kit"), "root/kit")
+        self.assertEqual(resolve_kit_repo({"EXAKIT_KIT_REPO": "me/mine"}, "fork/kit@main", "root/kit"), "me/mine")
+        self.assertEqual(resolve_kit_repo({"EXAKIT_REPO": "old/name"}, None, "root/kit"), "old/name")
+
     def test_the_context_reads_the_repository_and_the_installer_from_the_settings(self):
         from tests.unit.app.harness import MANIFEST, Sandbox
         box = Sandbox(manifest=MANIFEST)

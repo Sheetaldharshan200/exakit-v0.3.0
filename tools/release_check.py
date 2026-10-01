@@ -79,7 +79,7 @@ def check_changelog(strict: bool) -> Check:
     if re.search(rf"^## {re.escape(version)}\b", text, re.M):
         return "changelog", "pass", []
     if re.search(r"^## Unreleased", text, re.M):
-        return "changelog", "fail" if strict else "warn", [f"CHANGELOG.md still says Unreleased; rename the section to {version} when tagging"]
+        return "changelog", "fail" if strict else "warn", [f"CHANGELOG.md still says Unreleased; the top section is named after the version in versions.json ({version})"]
     return "changelog", "fail", [f"CHANGELOG.md has no section for {version}"]
 
 
@@ -153,10 +153,23 @@ def check_fallbacks() -> Check:
     return "fallbacks", "fail" if problems else "pass", problems
 
 
+# The last commit this repository inherited from krishna-exasol/update-path (the merge of its PR #341). Everything
+# before it is upstream's history, written under upstream's rules; the attribution check reads what came after.
+HISTORY_BASE = "b35976782d99bda6c28a55a9ace3279a92bd57bb"
+
+
+def _own_commits() -> str:
+    """The log of this repository's own commits (after HISTORY_BASE), or the last 50 where the base is not in the clone."""
+    scoped = subprocess.run(["git", "log", f"{HISTORY_BASE}..HEAD", "--format=%h%x00%s%x00%b%x1e"], cwd=REPO, capture_output=True, text=True, check=False)
+    if scoped.returncode == 0:
+        return scoped.stdout
+    return subprocess.run(["git", "log", "-50", "--format=%h%x00%s%x00%b%x1e"], cwd=REPO, capture_output=True, text=True, check=False).stdout
+
+
 def check_attribution() -> Check:
     problems = [f"{p.relative_to(REPO)}" for p in text_files() if p.name != "release_check.py" and ATTRIBUTION.search(p.read_text(encoding="utf-8", errors="replace"))]
     status = "fail" if problems else "pass"
-    log = subprocess.run(["git", "log", "-50", "--format=%h%x00%s%x00%b%x1e"], cwd=REPO, capture_output=True, text=True, check=False).stdout
+    log = _own_commits()
     tainted = [f"commit {entry.split(chr(0))[0]} ({entry.split(chr(0))[1][:50]})" for entry in log.split("\x1e") if entry.strip() and ATTRIBUTION.search(entry)]
     if tainted:                      # history already pushed: reported for the owner to rewrite, never rewritten here
         status = status if status == "fail" else "warn"

@@ -29,7 +29,7 @@ same commit as the tag.
 ## 3. Tagging
 
 1. `python3 tools/run_tests.py --coverage && python3 tools/check_standard.py && python3 tools/release_check.py --strict`
-2. Rename the `## Unreleased` section of `CHANGELOG.md` to the version and date; add the what's-new card if it is missing.
+2. The top section of `CHANGELOG.md` is already named after the version in `versions.json`; replace its "in progress" note with the date, and add the what's-new card if it is missing.
 3. Copy `reports/qa-report.md`, `reports/test-report.md` and `reports/release-check.md` to `docs/reports/` and commit them with the tag.
 4. `gh workflow run real-install.yml --ref main`, wait for ubuntu-latest to pass, attach its artifact to the release notes.
 5. Tag, push the tag, publish the release; `versions.yml` then re-verifies the pins.
