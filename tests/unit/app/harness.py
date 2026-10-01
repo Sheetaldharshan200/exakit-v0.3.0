@@ -84,7 +84,7 @@ class Sandbox:
 MANIFEST = {
     "manifest_version": 1, "kit_level": 1, "installed_at": "2026-09-30T00:00:00Z", "os": "macos", "arch": "arm64",
     "runtime": {"type": "personal", "status": "running", "version": "2.3.0", "dsn": "127.0.0.1:8563", "user": "sys"},
-    "components": {"skills": {"version": "1.12.1"}, "mcp_server": {"version": "2.2.0"}, "exapump": {"profile": "starter-kit"}},
+    "components": {"skills": {"version": "1.12.2"}, "mcp_server": {"version": "2.2.0"}, "exapump": {"profile": "starter-kit"}},
     "data": {"loaded": True, "datasets": {"tpch": {"loaded": True}}},
     "steps_completed": ["launcher", "runtime", "exapump", "mcp", "pyexasol", "exakit_helper"], "log_dir": "/tmp/x",
 }

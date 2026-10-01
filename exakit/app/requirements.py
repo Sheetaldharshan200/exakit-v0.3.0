@@ -33,9 +33,12 @@ def _refuse(ctx: Context, message: str, *lines: str, reason: str) -> Failed:
 
 def _check_platform(ctx: Context) -> None:
     p = ctx.platform
-    if p.os not in ("macos", "linux"):
+    if p.os not in ("macos", "linux", "windows"):
         raise _refuse(ctx, f"Exasol Personal supports macOS, Linux (native or WSL) and Windows x86_64 - it does not support {p.os}.",
-                      "Nothing was installed. On Windows use install.ps1.", reason=f"Incompatible platform: {p.os}.")
+                      "Nothing was installed.", reason=f"Incompatible platform: {p.os}.")
+    if p.os == "windows" and p.arch != "x86_64":
+        raise _refuse(ctx, f"Exasol Personal supports Windows on x86_64 only - this machine is {p.arch}.",
+                      "Nothing was installed.", reason=f"Incompatible platform: windows/{p.arch}.")
     if p.is_wsl and p.wsl_version == 1:
         raise _refuse(ctx, "This is a WSL 1 distro. Exasol Personal runs the database in a container, and WSL 1 has no Linux kernel to run one with.",
                       "Convert this distro to WSL 2, from PowerShell on the Windows side:",

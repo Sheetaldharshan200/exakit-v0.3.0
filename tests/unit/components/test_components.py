@@ -355,17 +355,17 @@ class SkillSetTest(unittest.TestCase):
             (kit / "skills" / "old").mkdir(parents=True)
             (kit / "skills" / "old" / "SKILL.md").write_text("old")
             tree = {"skills/new/SKILL.md": "---\nname: new\ndescription: x. Triggers — y\n---\n",
-                    "versions.json": json.dumps({"schema_version": 1, "kit": {"version": "0.3.0"}, "components": {"skills": {"version": "1.12.1"}}})}
+                    "versions.json": json.dumps({"schema_version": 1, "kit": {"version": "0.3.0"}, "components": {"skills": {"version": "1.12.2"}}})}
             box.downloader.pages["https://github.com/krishna-exasol/update-path/archive/refs/heads/main.tar.gz"] = tarball(tree)
             def place(ctx):
-                ctx.manifest_store.update(lambda m: m.set("components.skills.version", "1.12.1"))
+                ctx.manifest_store.update(lambda m: m.set("components.skills.version", "1.12.2"))
                 return 1
             with mock.patch("exakit.app.skills.install", place):
                 for_component(box.ctx, "skills").update()
             self.assertTrue((kit / "skills" / "new" / "SKILL.md").exists())
             self.assertFalse((kit / "skills" / "old").exists())
-            self.assertEqual((kit / "skills" / ".version").read_text().strip(), "1.12.1")
+            self.assertEqual((kit / "skills" / ".version").read_text().strip(), "1.12.2")
             self.assertFalse(any(p.name.startswith("skills.backup-") for p in kit.iterdir()))
-            self.assertIn("AI skills updated to 1.12.1", box.screen())
+            self.assertIn("AI skills updated to 1.12.2", box.screen())
         finally:
             box.close()

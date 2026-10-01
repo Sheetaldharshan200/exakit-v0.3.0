@@ -74,15 +74,31 @@ def protect_path(path: Path) -> str | None:
     return format(stat.S_IMODE(path.stat().st_mode), "04o")
 
 
-def _account_name(line: str) -> tuple[str, str] | None:
-    """(account, flags) of one icacls line: the account name in lower case, without its domain or the echoed path."""
+# Principals that are not "other local users": the system itself, the local
+# administrators (who can read any file regardless) and the owner's own rights
+# entry. A hosted runner's temp files carry all three as explicit entries that
+# /inheritance:r does not remove; a file that lists only these and the user is
+# owner-only in every sense the kit cares about.
+ALWAYS_PRESENT_PRINCIPALS = frozenset({"system", "administrators", "owner rights"})
+
+
+def _account_name(line: str, *, first: bool, path_spellings: tuple[str, ...]) -> tuple[str, str] | None:
+    """(account, flags) of one icacls line: the account in lower case, without its domain or the echoed path.
+
+    Only the first line carries the path, in whichever spelling icacls chose
+    (long, or the short RUNNER~1 form); every later line is the principal alone,
+    which may hold spaces ("NT AUTHORITY\\SYSTEM", "OWNER RIGHTS").
+    """
     head, colon, flags = line.rpartition(":(")
     if not colon:
         return None
     flags = "(" + flags
-    account = head.rsplit("\\", 1)[-1]
-    account = account.rsplit(" ", 1)[-1]
-    return account.strip().lower(), flags
+    principal = head.strip()
+    if first:
+        lowered = principal.lower()
+        prefix = next((s for s in path_spellings if lowered.startswith(s.lower())), None)
+        principal = principal[len(prefix):].strip() if prefix else principal.rsplit(" ", 1)[-1]
+    return principal.rsplit("\\", 1)[-1].strip().lower(), flags
 
 
 def describe_protection(path: Path) -> str | None:
@@ -121,6 +137,8 @@ def describe_protection(path: Path) -> str | None:
         username = (os.environ.get("USERNAME") or getpass.getuser()).strip().lower()
         principals: list[str] = []
         inherited = False
+        spellings = (str(path), os.path.realpath(str(path)))
+        first = True
         for raw in (completed.stdout or "").splitlines():
             line = raw.strip()
             if not line or line.lower().startswith("successfully processed"):
@@ -130,7 +148,8 @@ def describe_protection(path: Path) -> str | None:
             # spelled long or short (RUNNER~1) and may hold spaces, so nothing
             # here depends on it: the account name is what follows the last
             # backslash (DOMAIN\user) or, for a bare name, the last space.
-            account = _account_name(line)
+            account = _account_name(line, first=first, path_spellings=spellings)
+            first = False
             if account is None:
                 continue
             principal, flags = account
@@ -146,7 +165,7 @@ def describe_protection(path: Path) -> str | None:
             return NOT_OWNER_ONLY_ACL
         # A principal arrives as "DOMAIN\\user" or bare "user"; compare the
         # account name, which is what protect_path granted.
-        if any(p != username for p in principals):
+        if any(p != username and p not in ALWAYS_PRESENT_PRINCIPALS for p in principals):
             return NOT_OWNER_ONLY_ACL
         return OWNER_ONLY_ACL
     return format(stat.S_IMODE(path.stat().st_mode), "04o")

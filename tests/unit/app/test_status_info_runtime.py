@@ -164,7 +164,7 @@ class InfoTest(unittest.TestCase):
             self.assertEqual((result.status, result.remedy, result.exit_code), ("stopped", "exakit start", 3))
             self.assertEqual(result.data["database"], "not running")
             self.assertEqual(result.data["runtime"]["dsn"], "127.0.0.1:8563")
-            self.assertEqual(result.data["skills"]["installed_version"], "1.12.1")
+            self.assertEqual(result.data["skills"]["installed_version"], "1.12.2")
             self.assertIn(result.data["skills"]["status"], ("current", "update_pending"))
             box.ctx.runtime = FakeRuntime("running")
             self.assertEqual(info.run(box.ctx).exit_code, 0)
@@ -186,7 +186,7 @@ class InfoTest(unittest.TestCase):
             info.run(box.ctx)
             screen = box.screen()
             for word in ("Setup details", "DSN:          127.0.0.1:8563", "Admin pass:   /u/creds/sys_password", "TLS:          enabled",
-                         "Skills:       1.12.1", "exakit info --json", "Guide:        exakit guide"):
+                         "Skills:       1.12.2", "exakit info --json", "Guide:        exakit guide"):
                 self.assertIn(word, screen, word)
         finally:
             box.close()

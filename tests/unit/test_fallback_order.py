@@ -7,7 +7,9 @@ and a release asset's digest.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import io
 import json
 import tempfile
 import time
@@ -23,7 +25,7 @@ from tests.unit.app.harness import MANIFEST, FakeVersions, Sandbox
 from tests.unit.fakes import FakeDownloader, ListLog
 
 URL = "https://raw.githubusercontent.com/o/r/main/versions.json"
-API = "https://api.github.com/repos/exasol-labs/exapump/releases/tags/v0.13.0"
+API = "https://api.github.com/repos/exasol-labs/exapump/releases/tags/v0.12.0"
 
 
 def manifest_text(exapump: str) -> str:
@@ -99,26 +101,29 @@ class AboutOrderTest(unittest.TestCase):
 
 
 class ReleaseDigestOrderTest(unittest.TestCase):
-    """A binary is verified against our pinned digest without any network; otherwise GitHub, then the cached answer."""
+    """A binary is verified against our pinned digest without any network; otherwise GitHub, then the cached answer.
 
-    ASSET = "exapump-0.13.0-macos-aarch64"
+    0.12.0 is a version the catalog does not pin, so these scenarios reach the API; 0.13.0 is the pinned fallback.
+    """
+
+    ASSET = "exapump-0.12.0-macos-aarch64"
     BODY = b"exapump binary"
 
     def _box(self, pinned: bool, pages: dict | None = None) -> Sandbox:
         box = Sandbox(manifest=MANIFEST)
         block = {"sha256": {"macos-aarch64": hashlib.sha256(self.BODY).hexdigest()}} if pinned else {}
         box.ctx.versions = FakeVersions({"schema_version": 1, "updated": "2026-09-30", "kit": {"version": "0.3.0"},
-                                         "components": {"exapump": {"version": "0.13.0", "severity": "normal", **block}}})
-        box.downloader.pages[f"https://github.com/exasol-labs/exapump/releases/download/v0.13.0/{self.ASSET}"] = self.BODY
+                                         "components": {"exapump": {"version": "0.12.0", "severity": "normal", **block}}})
+        box.downloader.pages[f"https://github.com/exasol-labs/exapump/releases/download/v0.12.0/{self.ASSET}"] = self.BODY
         box.downloader.pages.update(pages or {})
         return box
 
     def _fetch(self, box: Sandbox) -> Path:
         lifecycle = for_component(box.ctx, "exapump")
         dest = Path(box.tmp.name) / "staged"
-        return lifecycle.fetch_verified(f"https://github.com/exasol-labs/exapump/releases/download/v0.13.0/{self.ASSET}", dest,
-                                        digest=lifecycle.digest_for("0.13.0", self.ASSET), what=self.ASSET,
-                                        repo="exasol-labs/exapump", tag="v0.13.0", asset=self.ASSET)
+        return lifecycle.fetch_verified(f"https://github.com/exasol-labs/exapump/releases/download/v0.12.0/{self.ASSET}", dest,
+                                        digest=lifecycle.digest_for("0.12.0", self.ASSET), what=self.ASSET,
+                                        repo="exasol-labs/exapump", tag="v0.12.0", asset=self.ASSET)
 
     def test_our_pinned_digest_needs_no_network(self):
         box = self._box(pinned=True)
@@ -137,6 +142,25 @@ class ReleaseDigestOrderTest(unittest.TestCase):
             self.assertTrue(any(box.ctx.paths.releases_cache.glob("*.json")), "the release answer is cached")
             del box.downloader.pages[API]                        # rate-limited on the next run
             self._fetch(box)                                     # still verified, from the cached answer
+        finally:
+            box.close()
+
+    def test_unpinned_with_no_github_installs_the_pinned_fallback_release_and_says_so(self):
+        """Upstream's contract: a version with no checksum anywhere, and no API answer, becomes the pinned fallback (verified)."""
+        box = self._box(pinned=False)
+        try:
+            box.ctx.versions = FakeVersions({"schema_version": 1, "updated": "2026-09-30", "kit": {"version": "0.3.0"},
+                                             "components": {"exapump": {"version": "0.14.0", "severity": "normal"}}})
+            source = box.ctx.catalog.component("exapump").source
+            source["sha256"]["exapump-0.13.0-macos-aarch64"] = hashlib.sha256(self.BODY).hexdigest()
+            lifecycle = for_component(box.ctx, "exapump")
+            said = io.StringIO()
+            with contextlib.redirect_stderr(said):
+                version, asset, digest = lifecycle.pinned_fallback("0.14.0", "exapump-0.14.0-macos-aarch64")
+            self.assertEqual((version, asset, digest), ("0.13.0", "exapump-0.13.0-macos-aarch64", hashlib.sha256(self.BODY).hexdigest()))
+            self.assertIn("pinned fallback release 0.13.0", said.getvalue())
+            box.env["EXAKIT_ALLOW_UNVERIFIED_EXAPUMP"] = "1"
+            self.assertEqual(lifecycle.pinned_fallback("0.14.0", "exapump-0.14.0-macos-aarch64")[0], "0.14.0")
         finally:
             box.close()
 

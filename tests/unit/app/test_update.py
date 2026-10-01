@@ -42,7 +42,7 @@ def box_for(doc: dict, current: dict[str, str | None], manifest: dict | None = N
     return box, recorder, patches
 
 
-DOC = versions_doc(personal=("2.3.0", {}), exapump=("0.13.0", {}), mcp=("2.2.0", {}), pyexasol=("2.4.1", {}), skills=("1.12.1", {}))
+DOC = versions_doc(personal=("2.3.0", {}), exapump=("0.13.0", {}), mcp=("2.2.0", {}), pyexasol=("2.4.1", {}), skills=("1.12.2", {}))
 
 
 class ArgsAndTargetsTest(unittest.TestCase):
@@ -70,7 +70,7 @@ class ArgsAndTargetsTest(unittest.TestCase):
 
 class LoopTest(unittest.TestCase):
     def test_everything_current_updates_nothing(self):
-        box, rec, patches = box_for(DOC, {"exakit": "0.3.0", "personal": "2.3.0", "exapump": "0.13.0", "mcp": "2.2.0", "pyexasol": "2.4.1", "skills": "1.12.1"})
+        box, rec, patches = box_for(DOC, {"exakit": "0.3.0", "personal": "2.3.0", "exapump": "0.13.0", "mcp": "2.2.0", "pyexasol": "2.4.1", "skills": "1.12.2"})
         try:
             with patches[0], patches[1], patches[2]:
                 result = update.run(box.ctx, [])
@@ -80,7 +80,7 @@ class LoopTest(unittest.TestCase):
             box.close()
 
     def test_behind_components_are_updated_and_ahead_ones_kept(self):
-        box, rec, patches = box_for(DOC, {"exakit": "0.3.0", "personal": "2.3.0", "exapump": "0.12.0", "mcp": "2.3.0", "pyexasol": None, "skills": "1.12.1"})
+        box, rec, patches = box_for(DOC, {"exakit": "0.3.0", "personal": "2.3.0", "exapump": "0.12.0", "mcp": "2.3.0", "pyexasol": None, "skills": "1.12.2"})
         try:
             with patches[0], patches[1], patches[2]:
                 result = update.run(box.ctx, [])
@@ -92,7 +92,7 @@ class LoopTest(unittest.TestCase):
             box.close()
 
     def test_runtime_is_deferred_without_an_answer_and_applied_with_yes(self):
-        box, rec, patches = box_for(DOC, {"exakit": "0.3.0", "personal": "2.2.0", "exapump": "0.13.0", "mcp": "2.2.0", "pyexasol": "2.4.1", "skills": "1.12.1"})
+        box, rec, patches = box_for(DOC, {"exakit": "0.3.0", "personal": "2.2.0", "exapump": "0.13.0", "mcp": "2.2.0", "pyexasol": "2.4.1", "skills": "1.12.2"})
         try:
             with patches[0], patches[1], patches[2]:
                 result = update.run(box.ctx, [])
@@ -105,7 +105,7 @@ class LoopTest(unittest.TestCase):
             box.close()
 
     def test_env_no_and_major_upgrade_are_left_alone(self):
-        box, rec, patches = box_for(DOC, {"exakit": "0.3.0", "personal": "2.2.0", "exapump": "0.13.0", "mcp": "2.2.0", "pyexasol": "2.4.1", "skills": "1.12.1"},
+        box, rec, patches = box_for(DOC, {"exakit": "0.3.0", "personal": "2.2.0", "exapump": "0.13.0", "mcp": "2.2.0", "pyexasol": "2.4.1", "skills": "1.12.2"},
                                     env={"EXAKIT_CONFIRM_RUNTIME_UPDATE": "no"})
         try:
             with patches[0], patches[1], patches[2]:
@@ -113,8 +113,8 @@ class LoopTest(unittest.TestCase):
             self.assertIn("Apply it when convenient", box.screen())
         finally:
             box.close()
-        box, rec, patches = box_for(versions_doc(personal=("3.0.0", {}), exapump=("0.13.0", {}), mcp=("2.2.0", {}), pyexasol=("2.4.1", {}), skills=("1.12.1", {})),
-                                    {"exakit": "0.3.0", "personal": "2.3.0", "exapump": "0.13.0", "mcp": "2.2.0", "pyexasol": "2.4.1", "skills": "1.12.1"},
+        box, rec, patches = box_for(versions_doc(personal=("3.0.0", {}), exapump=("0.13.0", {}), mcp=("2.2.0", {}), pyexasol=("2.4.1", {}), skills=("1.12.2", {})),
+                                    {"exakit": "0.3.0", "personal": "2.3.0", "exapump": "0.13.0", "mcp": "2.2.0", "pyexasol": "2.4.1", "skills": "1.12.2"},
                                     env={"EXAKIT_CONFIRM_RUNTIME_UPDATE": "yes"})
         try:
             with patches[0], patches[1], patches[2]:
@@ -139,8 +139,8 @@ class LoopTest(unittest.TestCase):
             box.close()
 
     def test_min_kit_blocks_a_component_on_a_routine_update(self):
-        doc = versions_doc(exapump=("0.13.0", {"min_kit_version": "9.9.9"}), personal=("2.3.0", {}), mcp=("2.2.0", {}), pyexasol=("2.4.1", {}), skills=("1.12.1", {}))
-        box, rec, patches = box_for(doc, {"exakit": "0.3.0", "exapump": "0.12.0", "personal": "2.3.0", "mcp": "2.2.0", "pyexasol": "2.4.1", "skills": "1.12.1"})
+        doc = versions_doc(exapump=("0.13.0", {"min_kit_version": "9.9.9"}), personal=("2.3.0", {}), mcp=("2.2.0", {}), pyexasol=("2.4.1", {}), skills=("1.12.2", {}))
+        box, rec, patches = box_for(doc, {"exakit": "0.3.0", "exapump": "0.12.0", "personal": "2.3.0", "mcp": "2.2.0", "pyexasol": "2.4.1", "skills": "1.12.2"})
         try:
             with patches[0], patches[1], patches[2]:
                 self.assertEqual(update.run(box.ctx, []).status, "current")

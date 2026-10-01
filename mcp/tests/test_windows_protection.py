@@ -151,6 +151,23 @@ class DescribeProtectionTests(unittest.TestCase):
         out = f"{self.target} DESKTOP-1\\piotr:(F)\n\nSuccessfully processed 1 files.\n"
         self.assertEqual(self._describe(out), OWNER_ONLY_ACL)
 
+    def test_system_administrators_and_owner_rights_do_not_break_owner_only(self) -> None:
+        """The explicit entries a hosted runner's temp files carry: not other local users, so still owner-only."""
+        from mcp.runtime.filesystem import OWNER_ONLY_ACL
+        out = (
+            f"{self.target} RUNNERVM\\piotr:(F)\n"
+            "                 NT AUTHORITY\\SYSTEM:(F)\n"
+            "                 BUILTIN\\Administrators:(F)\n"
+            "                 OWNER RIGHTS:(F)\n"
+            "Successfully processed 1 files; Failed processing 0 files\n"
+        )
+        self.assertEqual(self._describe(out), OWNER_ONLY_ACL)
+
+    def test_another_user_is_drift_even_without_inheritance(self) -> None:
+        from mcp.runtime.filesystem import NOT_OWNER_ONLY_ACL
+        out = f"{self.target} DESKTOP-1\\piotr:(F)\n                 DESKTOP-1\\guest:(R)\n"
+        self.assertEqual(self._describe(out), NOT_OWNER_ONLY_ACL)
+
     def test_an_inherited_ace_is_drift(self) -> None:
         """The exact shape a client rewrite produces: the file is recreated and
         picks the parent's ACEs back up, marked (I)."""

@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from exakit.adapters.exapump import Profile, looks_not_runnable_yet, write_profile
-from exakit.adapters.net.github import download_url
+from exakit.adapters.net.github import asset_digest, download_url
 from exakit.domain.errors import Failed
 from exakit.lifecycles.base import temp_dir
 
@@ -58,6 +58,29 @@ class Lifecycle(ComponentBase):
         published = self.published_digest(version, self.ctx.platform.platform_key)
         return published or (self.source.get("sha256") or {}).get(asset)
 
+    def pinned_fallback(self, version: str, asset: str) -> tuple[str, str, str | None]:
+        """(version, asset, digest) to install when the requested version has no checksum anywhere.
+
+        The release API is asked once; when it will not answer (the 60-an-hour
+        limit, or no network) the pinned fallback release is installed instead,
+        verified against its pinned digest, and the switch is said out loud.
+        The unverified hatch keeps its meaning: the requested version, unverified.
+        """
+        digest = asset_digest(self.repo(), self.tag(version), asset, self.ctx.net, endpoints=self.ctx.catalog.kit.endpoints,
+                              token=self.ctx.env.get("GITHUB_TOKEN"), cache_dir=self.ctx.paths.releases_cache)
+        if digest is not None or self.ctx.env.get("EXAKIT_ALLOW_UNVERIFIED_EXAPUMP") == "1":
+            return version, asset, digest
+        fallback = self.fallback_version()
+        if not fallback or fallback == version:
+            return version, asset, None
+        fallback_asset = self.asset_name(fallback)
+        pinned = self.digest_for(fallback, fallback_asset)
+        if pinned is None:
+            return version, asset, None
+        self.ctx.ui.warn(f"No checksum is available for exapump {version} and the release API did not answer (GitHub's rate limit, or no "
+                         f"network) - installing the pinned fallback release {fallback} instead, verified against its pinned digest.")
+        return fallback, fallback_asset, pinned
+
     def _keep_existing(self, version: str) -> bool:
         """True when a working exapump of the right version is already in place (and recorded)."""
         if self.force() or not Path(self.cli()).exists():
@@ -82,13 +105,16 @@ class Lifecycle(ComponentBase):
         if self._keep_existing(version):
             return
         asset = self.asset_name(version)
+        digest = self.digest_for(version, asset)
+        if digest is None:
+            version, asset, digest = self.pinned_fallback(version, asset)
         started = time.monotonic()
         self.ctx.ui.info(f"Downloading exapump v{version} ({asset})")
         with temp_dir("exakit-exapump-") as tmp:
             staged = Path(tmp) / asset
             repo, tag = self.repo(), self.tag(version)
             self.fetch_verified(download_url(repo, tag, asset, endpoints=self.ctx.catalog.kit.endpoints), staged,
-                                digest=self.digest_for(version, asset), what=asset, repo=repo, tag=tag, asset=asset)
+                                digest=digest, what=asset, repo=repo, tag=tag, asset=asset)
             self.install_binary(staged, self.bin)
         self.verify_runs()
         self.ctx.ui.ok(f"exapump v{version} installed to {self.bin} ({self.elapsed(started)})")

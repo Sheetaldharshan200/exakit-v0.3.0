@@ -56,7 +56,7 @@ class InstallTest(unittest.TestCase):
                 self.assertTrue((root / "exasol-marketplace" / "SKILL.md").is_file())
                 self.assertFalse((root / "dash-server").exists())   # add-on not installed
             m = box.manifest()
-            self.assertEqual(m.get("components.skills.version"), "1.12.1")
+            self.assertEqual(m.get("components.skills.version"), "1.12.2")
             self.assertIn("exasol-marketplace", m.get("components.skills.installed"))
             self.assertNotIn("dash-server", m.get("components.skills.installed"))
             self.assertIn("Installed", box.screen())
