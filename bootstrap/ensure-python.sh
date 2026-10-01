@@ -18,7 +18,7 @@
 
 EXAKIT_PYTHON_VERSION="${EXAKIT_PYTHON_VERSION:-3.12}"
 
-_ep_say() { [ "${EXAKIT_QUIET_BOOTSTRAP:-0}" = 1 ] || printf '  - %s\n' "$*" >&2; }
+_ep_say() { [ "${EXAKIT_VERBOSE_BOOTSTRAP:-0}" = 1 ] && printf '  - %s\n' "$*" >&2; return 0; }
 _ep_fail() { printf '  [x] %s\n' "$*" >&2; return 1; }
 
 # _ep_runs <interpreter> - true when it runs and is 3.11 or newer.

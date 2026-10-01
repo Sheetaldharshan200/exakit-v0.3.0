@@ -279,10 +279,6 @@ main() {
         printf '\n'
         fail "This installer and the kit it downloaded do not match. Nothing was installed."
     fi
-    _bootstrap_s=""
-    [ -n "${EXAKIT_INSTALL_T0:-}" ] && _bootstrap_s=" ($(( $(date +%s) - EXAKIT_INSTALL_T0 ))s after start)"
-    say "Starting setup: python -m exakit install$_bootstrap_s"
-    printf '\n'
     # --- 6. the kit's own Python, then the kit ------------------------------
     # bootstrap/ensure-python.sh puts a managed interpreter under
     # $EXAKIT_HOME/python (uv, digest-checked, never the system Python) and

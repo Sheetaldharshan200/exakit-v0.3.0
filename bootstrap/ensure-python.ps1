@@ -36,7 +36,7 @@ function Install-ExakitUv {
     $dir = Join-Path $KitHome "tools\uv"
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     $zip = Join-Path $env:TEMP ("exakit-uv-" + [guid]::NewGuid().ToString("N") + ".zip")
-    Write-Host "  - Downloading uv $version"
+    if ($env:EXAKIT_VERBOSE_BOOTSTRAP -eq "1") { Write-Host "  - Downloading uv $version" }
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
         Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip
@@ -84,7 +84,7 @@ function Confirm-ExakitPython {
         if (-not (Install-ExakitUv -KitHome $home_ -KitDir $kitDir)) { return 1 }
         $uv = Join-Path $home_ "tools\uv\uv.exe"
     }
-    Write-Host "  - Setting up the kit's Python $script:ExakitPythonVersion (managed by uv, never the system one)"
+    if ($env:EXAKIT_VERBOSE_BOOTSTRAP -eq "1") { Write-Host "  - Setting up the kit's Python $script:ExakitPythonVersion (managed by uv, never the system one)" }
     New-Item -ItemType Directory -Force -Path (Join-Path $home_ "python") | Out-Null
     $env:UV_PYTHON_INSTALL_DIR = Join-Path $home_ "python"
     & $uv python install $script:ExakitPythonVersion --quiet

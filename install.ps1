@@ -581,8 +581,6 @@ if (-not (Test-Path $pythonKit)) {
     if ($ExakitRanAsFile) { exit 1 }
     return
 }
-Write-Host "  * Starting setup: python -m exakit install" -ForegroundColor Blue
-Write-Host ""
 # We already showed the banner above; the install skips its own so the
 # wordmark appears exactly once.
 # --- 5. the kit's own Python, then the kit ---------------------------------------
