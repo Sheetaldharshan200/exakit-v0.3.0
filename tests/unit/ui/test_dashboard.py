@@ -262,3 +262,34 @@ class DashboardTest(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(any("dash-server" in str(h.match_display) or "dash-server" in (h.help or "") for h in hits) or hits)
             discovered = [hit async for hit in provider.discover()]
             self.assertEqual(len(discovered), 5)
+
+
+@unittest.skipUnless(HAVE_TEXTUAL, "textual is not installed here")
+class OneLineRowsTest(unittest.IsolatedAsyncioTestCase):
+    """A list row never wraps, whatever the width, so the line under the mouse is the row it opens."""
+
+    def test_the_fit_keeps_the_hint_while_there_is_room_and_cuts_it_otherwise(self):
+        from exakit.ui.tui.choices import fit
+        self.assertEqual(fit("dash-server", "installed", 16, 40), ("dash-server     ", "installed"))
+        self.assertEqual(fit("exasol-vscode", "managed outside the kit", 16, 30), ("exasol-vscode   ", "managed out…"))
+        self.assertEqual(fit("exasol-scheduler", "installed", 0, 19), ("exasol-scheduler", ""))
+        self.assertEqual(fit("a-very-long-add-on-name", "installed", 0, 10), ("a-very-lo…", ""))
+
+    async def test_a_narrow_list_still_shows_one_line_per_row(self):
+        from textual.app import App
+        from exakit.ui.tui.choices import ChoiceList
+        from exakit.ui.widgets import Option
+
+        class Narrow(App):
+            CSS = "ChoiceList { width: 24; }"
+
+            def compose(self):
+                yield ChoiceList([Option("dash-server", "dash-server", "installed"), Option("exasol-vscode", "exasol-vscode", "managed outside the kit"),
+                                  Option("exasol-scheduler", "exasol-scheduler", "installed")], single=True, marks=False)
+
+        async with Narrow().run_test(size=(60, 10)) as pilot:
+            await pilot.pause()
+            rows = pilot.app.query_one(ChoiceList).render().plain.split("\n")
+            self.assertEqual(len(rows), 3)
+            self.assertTrue(all(len(row) <= 24 for row in rows), rows)
+            self.assertEqual(rows[0], " ▸ dash-server  install…")

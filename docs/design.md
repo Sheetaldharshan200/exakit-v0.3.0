@@ -618,7 +618,9 @@ Esc. Styling lives in `app.tcss`; nothing is drawn by hand.
 Look: the terminal's own colours (`ansi_color`), no painted background
 anywhere, borders in a faint foreground; the questions are a `ChoiceList`
 (a pointer row, a green tick for what is chosen, the mouse ticks and chooses
-as well as the keys); text can be selected with the mouse and copied with
+as well as the keys; a row is always one line: the status column is cut
+with an ellipsis, and the column alignment goes first, when the list is
+narrow, so the line under the mouse is the row it opens); text can be selected with the mouse and copied with
 Ctrl-C, or Cmd-C where the terminal forwards it (the kitty keyboard
 protocol: kitty, WezTerm, Ghostty); in Terminal.app and iTerm2 Cmd-C never
 reaches a program, so there Option-drag selects through the terminal and

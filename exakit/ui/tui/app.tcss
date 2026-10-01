@@ -152,9 +152,9 @@ Toast {
 }
 
 .entries {
-    width: 36%;
+    width: 44%;
     min-width: 24;
-    max-width: 44;
+    max-width: 48;
     border-right: solid $foreground 20%;
     background: transparent;
 }

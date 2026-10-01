@@ -13,6 +13,20 @@ from exakit.ui.menu_rules import tick
 from exakit.ui.widgets import Option
 
 ACCENT = "green"
+MIN_HINT = 6                                                # the shortest hint worth aligning a column for
+
+
+def fit(label: str, hint: str, column: int, room: int) -> tuple[str, str]:
+    """Cut a row's label and hint to one line of ``room`` cells: the label padded to ``column`` (0 for none), the hint shortened with an ellipsis, dropped when nothing is left for it."""
+    if len(label) > room:
+        return label[: max(room - 1, 0)] + "…", ""
+    label = label.ljust(column) if column else label
+    if not hint:
+        return label, ""
+    left = room - len(label) - 2
+    if left >= len(hint):
+        return label, hint
+    return label, (hint[: left - 1] + "…") if left >= 3 else ""
 
 
 class ChoiceList(Static, can_focus=True):
@@ -69,22 +83,33 @@ class ChoiceList(Static, can_focus=True):
         self.redraw()
 
     def render(self) -> Text:
-        """The rows: pointer, tick box, label, hint."""
-        text = Text()
-        width = max((len(o.label) for o in self.options if o.hint), default=0)
+        """The rows: pointer, tick box, label, hint. A row is one line whatever the width, so a click's line is its row."""
+        text = Text(no_wrap=True, overflow="ellipsis")
+        column = max((len(o.label) for o in self.options if o.hint), default=0)
+        room = (self.content_size.width or 10_000) - 3 - (2 if self.marks else 0)
+        if column + 2 + MIN_HINT > room:
+            column = 0                                      # too narrow for aligned columns: the hint follows its label
         for index, option in enumerate(self.options):
-            pointer = "▸" if index == self.cursor else " "
-            ticked = option.id in self.chosen
-            mark = "✓" if ticked else ("○" if self.single else "☐")
-            text.append(f" {pointer} ", style=ACCENT if index == self.cursor else "")
-            if self.marks:
-                text.append(mark + " ", style=ACCENT if ticked else "dim")
-            text.append(option.label.ljust(width) if option.hint else option.label, style=("dim" if option.disabled else ("bold" if index == self.cursor else "")))
-            if option.hint:
-                text.append(f"  {option.hint}", style="dim")
+            self._row(text, option, index, column, room)
             if index < len(self.options) - 1:
                 text.append("\n")
         return text
+
+    def _row(self, text: Text, option: Option, index: int, column: int, room: int) -> None:
+        """Append one row, cut to the room so it never wraps."""
+        current = index == self.cursor
+        text.append(f" {'▸' if current else ' '} ", style=ACCENT if current else "")
+        if self.marks:
+            ticked = option.id in self.chosen
+            text.append(("✓" if ticked else ("○" if self.single else "☐")) + " ", style=ACCENT if ticked else "dim")
+        label, hint = fit(option.label, option.hint or "", column, room)
+        text.append(label, style="dim" if option.disabled else ("bold" if current else ""))
+        if hint:
+            text.append(f"  {hint}", style="dim")
+
+    def on_resize(self) -> None:
+        """A new width: the rows are cut again."""
+        self.refresh()
 
     def redraw(self) -> None:
         """Repaint after a change."""

@@ -8,6 +8,9 @@ server started by the kit imported that instead of the MCP SDK and failed
 with "FastMCP server support is not installed". Child processes no longer
 inherit the kit's folder. Add-on installs say "installed" once, the stop
 buttons use the terminal's bright red, and input boxes are plain boxes.
+A list row is always one line: a status that does not fit is shortened
+with an ellipsis instead of wrapping under the name, so the line under the
+mouse is the row it opens.
 
 **A dataset is one folder.** Drop `data/datasets/<id>/` with its
 `dataset.conf`, the schema SQL and one CSV per table, and the kit offers it;
