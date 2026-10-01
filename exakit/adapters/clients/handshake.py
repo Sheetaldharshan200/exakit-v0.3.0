@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import subprocess
+
+from exakit.adapters.process.runner import clean_env
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -21,7 +23,7 @@ def stdio_handshake(command: str, spec: str, env: Mapping[str, str], *, timeout:
     """Run ``<command> <spec>`` with the connection in the environment; ok when an initialize result comes back."""
     try:
         proc = subprocess.Popen([command, spec], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, env=dict(env))
+                                text=True, env=clean_env(env))
     except OSError as err:
         return Handshake(False, f"could not start {command}: {err}")
     try:

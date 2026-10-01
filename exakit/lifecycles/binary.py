@@ -81,7 +81,7 @@ class BinaryLifecycle(LifecycleBase):
         self.after_engine(version)
         self.write_launchers()
         self.record(version=version, engine=str(self.engine), command=str(self.ctx.paths.bin_dir / self.addon.launcher) if self.addon.launcher else None)
-        self.ctx.ui.ok(f"{self.addon.id} {version} installed")
+        self.ctx.ui.working(f"{self.addon.id} {version} installed")
 
     def after_engine(self, version: str) -> None:
         """What follows the engine download; nothing by default."""

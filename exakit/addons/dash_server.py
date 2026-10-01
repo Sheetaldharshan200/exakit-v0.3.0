@@ -167,7 +167,7 @@ class Lifecycle(PythonVenvLifecycle):
             self.ctx.ui.working(f"Installing dash-server {version}")
             self.install_package(version)
             self.restore_package_data(version)
-            self.ctx.ui.ok(f"dash-server installed: {self.venv}")
+            self.ctx.ui.working(f"dash-server installed: {self.venv}")
         self.instance.mkdir(parents=True, exist_ok=True)
         self.record(port=port)
         self.write_launchers()

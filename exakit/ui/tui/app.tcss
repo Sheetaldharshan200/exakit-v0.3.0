@@ -303,3 +303,32 @@ Button.-error:hover {
     padding: 1 1 0 1;
     background: transparent;
 }
+
+/* Inputs: the same plain rounded box as the buttons. */
+Input {
+    border: round $foreground 30%;
+    background: transparent;
+    padding: 0 1;
+}
+
+Input:focus {
+    border: round $foreground 60%;
+    background: transparent;
+}
+
+Input > .input--placeholder {
+    color: $foreground 50%;
+}
+
+Input > .input--cursor {
+    background: $foreground 30%;
+    color: $foreground;
+}
+
+Button.-error, Button.-error:focus {
+    color: ansi_bright_red;
+}
+
+Button.-error:focus {
+    border: round ansi_bright_red;
+}

@@ -162,7 +162,7 @@ class Lifecycle(PythonVenvLifecycle):
             raise Failed("the prebuilt ingest engine does not run on this machine (see log)")
         self.write_launchers()
         self.record(version=version, venv=str(self.venv), python=str(self.python), engine=str(self.engine), command=str(self.launcher))
-        self.ctx.ui.ok(f"JSON Tables installed: {self.venv}")
+        self.ctx.ui.working(f"JSON Tables installed: {self.venv}")
 
     def validate(self) -> None:
         """The package imports and the engine turns a sample JSON into Parquet; records validated."""

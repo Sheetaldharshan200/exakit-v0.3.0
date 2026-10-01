@@ -144,7 +144,8 @@ class ChoiceList(Static, can_focus=True):
 
     def on_click(self, event: events.Click) -> None:
         """A click on a row toggles it (and chooses it, in a single choice)."""
-        index = event.y
+        offset = event.get_content_offset(self)        # relative to the rows, whatever border or padding the list has
+        index = offset.y if offset is not None else -1
         if 0 <= index < len(self.options):
             self.toggle(index)
             self.post_message(self.Moved(index, self))

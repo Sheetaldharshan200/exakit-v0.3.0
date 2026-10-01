@@ -34,13 +34,31 @@ class Runner(Protocol):
                timeout: float | None = None) -> Completed: ...
 
 
+KIT_ROOT = Path(__file__).resolve().parents[3]
+
+
+def clean_env(base: Mapping[str, str]) -> dict[str, str]:
+    """The environment for a child process: the kit's own folder taken out of PYTHONPATH.
+
+    The launcher puts the kit folder on PYTHONPATH so ``python -m exakit`` imports; a child Python (the MCP server
+    under uvx, an add-on's venv) would then find the kit's own ``mcp`` package before the MCP SDK and fail to import.
+    """
+    env = dict(base)
+    entries = [p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p and Path(p).resolve() != KIT_ROOT]
+    if entries:
+        env["PYTHONPATH"] = os.pathsep.join(entries)
+    else:
+        env.pop("PYTHONPATH", None)
+    return env
+
+
 class SubprocessRunner:
     """Captures both streams, never raises on a non-zero exit, times out with code 124."""
 
     def run(self, cmd: Sequence[str], *, env: Mapping[str, str] | None = None, cwd: Path | None = None,
             timeout: float | None = None, stdin: str | None = None) -> Completed:
         """Run a command and capture both streams; a timeout answers code 124."""
-        full_env = dict(os.environ)
+        full_env = clean_env(os.environ)
         if env:
             full_env.update(env)
         try:
@@ -61,7 +79,7 @@ class SubprocessRunner:
     def stream(self, cmd: Sequence[str], on_line: Callable[[str], None], *, env: Mapping[str, str] | None = None,
                timeout: float | None = None) -> Completed:
         """Run a long command, handing every line of its merged output to ``on_line`` as it arrives; the lines are also the answer."""
-        full_env = dict(os.environ)
+        full_env = clean_env(os.environ)
         if env:
             full_env.update(env)
         try:
@@ -89,12 +107,12 @@ class SubprocessRunner:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         detached = {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
         with log_path.open("a", encoding="utf-8") as log:
-            child = subprocess.Popen(list(cmd), stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, **detached)
+            child = subprocess.Popen(list(cmd), stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=clean_env(os.environ), **detached)
         return child.pid
 
     def interactive(self, cmd: Sequence[str], *, env: Mapping[str, str] | None = None) -> int:
         """Run with the terminal attached (a password prompt, a licence screen); the exit code is the answer."""
-        full_env = dict(os.environ)
+        full_env = clean_env(os.environ)
         if env:
             full_env.update(env)
         try:
