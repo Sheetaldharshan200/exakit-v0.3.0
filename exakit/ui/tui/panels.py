@@ -127,6 +127,39 @@ class ProgressRow(Static):
         self.update(Text.assemble(*((text, STYLES[style]) for text, style in parts)))
 
 
+class Loader(Static):
+    """A spinner with a word at the right of a row while something refreshes; empty when idle."""
+
+    def __init__(self, label: str = "Refreshing…") -> None:
+        super().__init__("", id="loader")
+        self.label = label
+        self.active = False
+        self._frame = 0
+        self._t0 = 0.0
+
+    def on_mount(self) -> None:
+        """Tick while active."""
+        self.set_interval(0.1, self._tick)
+
+    def start(self) -> None:
+        """Show the spinner."""
+        self.active = True
+        self._t0 = time.monotonic()
+        self._tick()
+
+    def stop(self) -> None:
+        """Hide it."""
+        self.active = False
+        self.update("")
+
+    def _tick(self) -> None:
+        if not self.active:
+            return
+        self._frame += 1
+        took = elapsed_text(time.monotonic() - self._t0)
+        self.update(Text.assemble((SPIN_FRAMES[self._frame % len(SPIN_FRAMES)], ACCENT), f" {self.label}", (f" {took}" if took else "", "dim")))
+
+
 class LogPane(VerticalScroll):
     """The lines of the run, in order; a running job gets a live row right under the line that announced it."""
 

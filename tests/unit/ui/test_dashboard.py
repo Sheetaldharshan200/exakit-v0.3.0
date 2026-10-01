@@ -173,6 +173,31 @@ class DashboardTest(unittest.IsolatedAsyncioTestCase):
         unavailable = {**CATALOG[2], "market": "unavailable", "market_reason": "VS Code was not found"}
         self.assertIn("unavailable: VS Code was not found", catalog_detail(unavailable).plain)
 
+    async def test_a_refresh_shows_a_loader_until_the_data_is_back(self):
+        from exakit.ui.tui.dashboard import DashboardApp
+        from exakit.ui.tui.panels import Loader
+
+        class Slow(FakeData):
+            def status(self):
+                time.sleep(0.4)
+                return super().status()
+
+        app = DashboardApp(Slow(), title="t")
+        async with app.run_test(size=(120, 40)) as pilot:
+            seen = False
+            for _ in range(60):
+                await pilot.pause(0.02)
+                if app.query_one(Loader).active:
+                    seen = True
+                    break
+            self.assertTrue(seen, "the loader shows while the data loads")
+            await self._settled(pilot, app)
+            for _ in range(40):
+                await pilot.pause(0.02)
+                if not app.query_one(Loader).active:
+                    break
+            self.assertFalse(app.query_one(Loader).active, "and hides when it is back")
+
     async def test_a_command_entry_shows_its_help_page(self):
         app, _ = await self._open()
         async with app.run_test(size=(120, 40)) as pilot:

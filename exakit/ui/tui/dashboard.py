@@ -22,7 +22,7 @@ from exakit.ui.progress import ProgressState
 
 from .choices import ChoiceList
 from .palette import KitProvider
-from .panels import LogPane, ProgressRow, WordmarkHeader
+from .panels import Loader, LogPane, ProgressRow, WordmarkHeader
 from .sections import SECTIONS, ComingSoonView, EntryList, JobView, MarketplaceView, RunJob, StatusView, catalog_detail
 
 LOADING = ("status", "versions", "catalog", "marketplace", "commands", "info")
@@ -53,7 +53,9 @@ class SearchBar(Vertical):
 
     def compose(self) -> ComposeResult:
         """The input and the results list."""
-        yield Input(placeholder="Search commands and components   (Tab completes, Enter opens, / focuses)", id="search-input", suggester=FirstMatch(self))
+        with Horizontal(id="search-row"):
+            yield Input(placeholder="Search commands and components   (Tab completes, Enter opens, / focuses)", id="search-input", suggester=FirstMatch(self))
+            yield Loader()
         yield ChoiceList([], single=True, widget_id="results", classes="hidden", marks=False)
 
     @property
@@ -161,12 +163,19 @@ class DashboardApp(App[None]):
         self.run_worker(self._load, thread=True, exit_on_error=False, name="load")
 
     def _load(self) -> None:
+        self.call_from_thread(self._loading, True)
         payload = {name: getattr(self.data, name)() for name in LOADING}
         self.call_from_thread(self._loaded, payload)
+
+    def _loading(self, on: bool) -> None:
+        loaders = self.query(Loader)
+        if loaders:
+            loaders.first().start() if on else loaders.first().stop()
 
     async def _loaded(self, payload: dict[str, Any]) -> None:
         if not self.is_running or not self.query("#content"):
             return
+        self._loading(False)
         self.state.update(payload)
         self.query_one(SearchBar).set_entries(self.entries())
         if not self.job_running and not self.query(JobView):      # a finished job's log stays until Esc

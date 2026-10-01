@@ -16,6 +16,8 @@ The 0.2.0 self-update insisted on five library files this tree no longer
 has, so they ship as empty stubs; a workflow installs the real 0.2.0 kit
 on scratch machines and proves both routes.
 
+**A refresh shows itself.** A spinner beside the search box says "Refreshing…" while the dashboard reloads.
+
 **Updates, one or all.** The dashboard's Updates tab updates the selected
 component from its row and everything from one button in the header; Start
 is green only while something is stopped, Stop is always red. A "Skip" row
