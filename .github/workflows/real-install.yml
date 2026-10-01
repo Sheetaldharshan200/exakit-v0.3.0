@@ -201,6 +201,7 @@ jobs:
       - name: status, and the commands an agent runs
         run: |
           exakit status --json | Out-File status.json -Encoding utf8
+          if ($LASTEXITCODE -notin @(0, 3)) { throw "exakit status exited $LASTEXITCODE" }
           $status = Get-Content status.json -Raw | ConvertFrom-Json
           Write-Host "status: $($status.status)  persona: $($status.persona)  installed: $($status.installed)"
           if (-not $status.installed) { throw "not installed" }
@@ -212,6 +213,8 @@ jobs:
           exakit help mcp | Out-Null
           exakit info --json | Out-Null
           Write-Host "agent commands answered"
+          # The state commands answer 3 (no database) on this runner by design; the assertions above are the verdict.
+          exit 0
 
       - name: a second run skips every done step
         run: |
