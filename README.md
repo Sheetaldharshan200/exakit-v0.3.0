@@ -91,7 +91,7 @@ Every platform runs the same database, **Exasol Personal**, set up by the same l
 
 If you already run the kit's database in a container, re-run the install command to migrate your data, or run `exakit migrate docker-nano` later. Nothing is deleted. The sample data is not copied, because the kit loads it itself.
 
-**WSL** is supported and follows the Linux path: run the same command inside a WSL2 distro. Podman or Docker Desktop on the Windows side does not count. Windows and WSL share port 8563, so run the database on one side only; the kit asks you to stop the other side's database rather than adopt it. Windows arm64 is not supported for local deployments. Run the kit inside WSL2 or a Linux VM instead.
+**WSL** is supported and follows the Linux path: run the same command inside a WSL2 distro. Podman or Docker Desktop on the Windows side does not count. Windows and WSL share port 8563, so run the database on one side only; the kit asks you to stop the other side's database rather than adopt it. Windows arm64 and Intel Macs are not supported for local deployments (the database runs on Apple silicon Macs, Linux x86_64/arm64 and Windows x86_64); the installer says so before it downloads anything. Run the kit inside WSL2 or a Linux VM instead.
 
 Python 3.11+ is needed on every platform. If you don't have it, the kit installs its own copy.
 

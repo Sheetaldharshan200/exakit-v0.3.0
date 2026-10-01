@@ -35,7 +35,10 @@ that breaks one is wrong even if it is otherwise good.
   `irm ... | iex` on Windows. No preinstalled Python or other runtime is
   assumed before the installer runs.
 - **C4. Portability floors.** Bash 3.2 (macOS default) and Windows PowerShell
-  5.1 (`CLAUDE.md`). Linux, macOS, WSL and Windows, on x86_64 and arm64.
+  5.1 (`CLAUDE.md`). Linux, macOS, WSL and Windows, on x86_64 and arm64; the
+  local database itself on Apple silicon Macs, Linux x86_64/arm64 and Windows
+  x86_64 (`catalog/components/personal.json`, `platforms`), refused in words
+  before anything is installed elsewhere.
 - **C5. The agent contract is frozen.** `AGENTS.md`: every state query has
   `installed`, `status` and `remedy`; `remedy` is a runnable command or
   `null`; exit codes 0/1/2/3/4/5 keep their meanings; `--json` prints one

@@ -31,14 +31,33 @@ def _refuse(ctx: Context, message: str, *lines: str, reason: str) -> Failed:
     return Failed(reason)
 
 
+PLATFORM_WORDS = {"macos-aarch64": "macOS on Apple silicon", "macos-x86_64": "macOS on Intel", "linux-x86_64": "Linux x86_64",
+                  "linux-aarch64": "Linux arm64 (native or WSL 2)", "windows-x86_64": "Windows x86_64", "windows-aarch64": "Windows arm64"}
+
+
+def supported_platforms(ctx: Context) -> tuple[str, ...]:
+    """The platform keys the local database runs on: the Personal component's catalog entry."""
+    return ctx.catalog.component("personal").platforms
+
+
+def platform_words(keys: tuple[str, ...]) -> str:
+    return ", ".join(PLATFORM_WORDS.get(k, k) for k in keys)
+
+
+def this_platform_word(ctx: Context) -> str:
+    p = ctx.platform
+    return PLATFORM_WORDS.get(p.platform_key, f"{p.os}/{p.arch}") + (" under WSL" if p.is_wsl else "")
+
+
 def _check_platform(ctx: Context) -> None:
     p = ctx.platform
-    if p.os not in ("macos", "linux", "windows"):
-        raise _refuse(ctx, f"Exasol Personal supports macOS, Linux (native or WSL) and Windows x86_64 - it does not support {p.os}.",
-                      "Nothing was installed.", reason=f"Incompatible platform: {p.os}.")
-    if p.os == "windows" and p.arch != "x86_64":
-        raise _refuse(ctx, f"Exasol Personal supports Windows on x86_64 only - this machine is {p.arch}.",
-                      "Nothing was installed.", reason=f"Incompatible platform: windows/{p.arch}.")
+    supported = supported_platforms(ctx)
+    if supported and p.platform_key not in supported:
+        raise _refuse(ctx, f"The local Exasol database runs on {platform_words(supported)}. This machine is {this_platform_word(ctx)}, "
+                      "so the database cannot run here.",
+                      "Nothing was installed. Use a supported machine for the local database, or point the kit's tools at an Exasol "
+                      "database elsewhere (exapump and the MCP server take any DSN).",
+                      reason=f"Unsupported platform for the local database: {this_platform_word(ctx)}.")
     if p.is_wsl and p.wsl_version == 1:
         raise _refuse(ctx, "This is a WSL 1 distro. Exasol Personal runs the database in a container, and WSL 1 has no Linux kernel to run one with.",
                       "Convert this distro to WSL 2, from PowerShell on the Windows side:",
@@ -273,6 +292,9 @@ def _preflight_platform(ctx: Context, ok, bad, note) -> None:
     if machine.macos_translated(p, ctx.runner):
         note("This shell is running under Rosetta 2, so it reports itself as Intel. The kit has looked past that and will install the native arm64 build.")
     ok(f"CPU architecture: {p.arch}") if p.arch in ("aarch64", "x86_64") else bad(f"CPU architecture: {p.arch} is not supported (arm64 or x86_64 required)")
+    supported = supported_platforms(ctx)
+    if supported and p.platform_key not in supported:
+        bad(f"Platform: {this_platform_word(ctx)} - the local Exasol database runs on {platform_words(supported)} only")
     if machine.wsl_drvfs_path(p, ctx.runner, ctx.paths.home):
         bad(f"Kit home {ctx.paths.home} is on a Windows drive: WSL mounts those without Linux file permissions, so the database passwords stored there "
             "cannot be protected - set EXAKIT_HOME to a path on the Linux filesystem, e.g. EXAKIT_HOME=$HOME/.exasol-starter-kit")

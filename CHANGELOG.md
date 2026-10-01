@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+**Intel Macs are refused up front.** The local database runs on Apple silicon
+Macs, Linux x86_64/arm64 and Windows x86_64; on an Intel Mac the installer and
+`exakit preflight` now say so before downloading or writing anything, where
+before the install ran to the database step and failed there.
+
 **Windows installs have an `exakit` command again**, `exakit.cmd` beside the
 PowerShell launcher in `~\.local\bin`, installed by the installer and the
 self-update and removed by the uninstall; `install.ps1` no longer demands a

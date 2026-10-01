@@ -7,14 +7,15 @@ name: real install
 # full uninstall. Nothing here is mocked; the runner is thrown away after.
 #
 # ubuntu-latest is the machine that proves the database on Linux: Podman is
-# there and the deployment runs. macos-15-intel is the machine that proves it
-# on macOS: GitHub's Intel macOS runners allow nested virtualisation, which
-# Apple's Virtualization framework needs. macos-latest (Apple silicon) is a
-# VM without it and ships with 7 GB, so the launcher cannot deploy there; that
-# job proves everything around the database (the bootstrap, the launcher
-# download, the persona's add-ons and skills, status with no database, the
-# uninstall) under the documented EXAKIT_FORCE hatch and is allowed to fail
-# at "status must be running".
+# there and the deployment runs. macos-latest (Apple silicon) is a VM without
+# Apple's Virtualization framework and ships with 7 GB, so the launcher cannot
+# deploy there; that job proves everything around the database (the bootstrap,
+# the launcher download, the persona's add-ons and skills, status with no
+# database, the uninstall) under the documented EXAKIT_FORCE hatch and is
+# allowed to fail at "status must be running". The Intel Mac job proves the
+# other half of the contract: the local database does not run on Intel Macs
+# (the launcher itself says so), so the kit refuses before anything is
+# downloaded or written.
 # windows-latest is the same story under Windows PowerShell 5.1: the hosted
 # runner has no WSL2 and no nested virtualisation, so install.ps1, the
 # bootstrap, the kit's Python, the persona, the skills, status and the
@@ -31,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-15-intel, macos-latest]
+        os: [ubuntu-latest, macos-latest]
     continue-on-error: ${{ matrix.os == 'macos-latest' }}
     env:
       EXAKIT_LOCAL_KIT: ${{ github.workspace }}
@@ -245,3 +246,47 @@ jobs:
           name: real-install-windows-latest
           path: kept/
           if-no-files-found: ignore
+
+  refuse-intel-mac:
+    name: Intel Mac is refused before anything is installed
+    runs-on: macos-15-intel
+    timeout-minutes: 15
+    env:
+      EXAKIT_LOCAL_KIT: ${{ github.workspace }}
+      EXAKIT_PERSONA: analyst
+      EXAKIT_NO_UPDATE_NOTICE: "1"
+      NO_COLOR: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: the machine
+        run: uname -a && sysctl -n machdep.cpu.brand_string
+      - name: the preflight names the platform as the blocker
+        run: |
+          set +e
+          EXAKIT_PREFLIGHT=1 sh install.sh | tee preflight.log
+          code=${PIPESTATUS[0]}
+          set -e
+          test "$code" -ne 0
+          grep -q "macOS on Intel" preflight.log
+      - name: the installer refuses, and nothing is written
+        run: |
+          set +e
+          sh install.sh 2>&1 | tee install.log
+          code=${PIPESTATUS[0]}
+          set -e
+          test "$code" -ne 0
+          grep -q "Nothing was installed" install.log
+          test ! -e "$HOME/.exasol-starter-kit/manifest.json"
+          test ! -e "$HOME/.local/bin/exakit"
+          test ! -e "$HOME/.local/bin/exasol"
+          test ! -d "$HOME/.exasol"
+      - name: the Python kit's own gate says the same (through the bootstrap)
+        run: |
+          . bootstrap/ensure-python.sh
+          ensure_python
+          set +e
+          "$EXAKIT_PYTHON" -m exakit preflight --json > preflight.json
+          code=$?
+          set -e
+          test "$code" -eq 1
+          python3 -c 'import json; d=json.load(open("preflight.json")); assert d["status"] == "blocked", d; assert any("Intel" in f for f in d["failures"]), d["failures"]; print("blocked:", d["failures"][0])'

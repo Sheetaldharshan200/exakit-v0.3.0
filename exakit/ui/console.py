@@ -29,9 +29,10 @@ class ConsoleRenderer:
     """Draws to ``out``; reads from ``ask`` when there is a terminal to ask."""
 
     def __init__(self, *, palette: Palette, out: IO[str], interactive: bool, log: Log | None = None,
-                 reader=None, home: str = "") -> None:
+                 reader=None, home: str = "", err: IO[str] | None = None) -> None:
         self.p = palette
         self.out = out
+        self.err = err or sys.stderr
         self.interactive = interactive
         self.log = log or NullLog()
         self._read = reader or (lambda: sys.stdin.readline())
@@ -72,13 +73,13 @@ class ConsoleRenderer:
         self.log.line("OK", text)
 
     def warn(self, text: str) -> None:
-        sys.stderr.write(f"      {self.p.warn}!{self.p.reset} {text}\n")
-        sys.stderr.flush()
+        self.err.write(f"      {self.p.warn}!{self.p.reset} {text}\n")
+        self.err.flush()
         self.log.line("WARN", text)
 
     def error(self, text: str) -> None:
-        sys.stderr.write(f"      {self.p.err}{self.p.cross}{self.p.reset} {text}\n")
-        sys.stderr.flush()
+        self.err.write(f"      {self.p.err}{self.p.cross}{self.p.reset} {text}\n")
+        self.err.flush()
         self.log.line("ERROR", text)
 
     def card(self, message: str, *, log_path: str | None = None, remedy: str | None = None) -> None:
@@ -88,8 +89,8 @@ class ConsoleRenderer:
             lines.append(f"    {self.p.dim}{self.p.bullet}{self.p.reset} Next: {remedy}")
         if log_path:
             lines.append(f"    {self.p.dim}{self.p.vb} Log: {log_path}{self.p.reset}")
-        sys.stderr.write("\n".join(lines) + "\n")
-        sys.stderr.flush()
+        self.err.write("\n".join(lines) + "\n")
+        self.err.flush()
 
     def rule(self) -> None:
         width = min(76, max(8, term_cols() - 4))

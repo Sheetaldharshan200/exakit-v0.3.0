@@ -89,6 +89,30 @@ class RequirementsTest(unittest.TestCase):
         finally:
             box.close()
 
+    def test_an_intel_mac_is_refused_before_anything_with_the_supported_platforms_named(self):
+        box = Sandbox(manifest=MANIFEST, platform=Platform("macos", "x86_64"))
+        box.ctx.runtime = FakeRuntime("stopped")
+        try:
+            with mock.patch("exakit.app.requirements.machine.ram_gb", lambda p, r: 16), \
+                 mock.patch("exakit.app.requirements.machine.free_disk_gb", lambda p, r, path: 100), \
+                 self.assertRaises(Failed) as caught:
+                requirements.check(box.ctx)
+            self.assertIn("macOS on Intel", caught.exception.message)
+            self.assertIn("Apple silicon", box.screen())
+            self.assertIn("Nothing was installed", box.screen())
+        finally:
+            box.close()
+        box = Sandbox(manifest=MANIFEST, platform=Platform("macos", "x86_64"), json_mode=True)
+        try:
+            with mock.patch("exakit.app.requirements.machine.ram_gb", lambda p, r: 16), \
+                 mock.patch("exakit.app.requirements.machine.free_disk_gb", lambda p, r, path: 100), \
+                 mock.patch("exakit.app.requirements.machine.macos_translated", lambda p, r: False):
+                result = requirements.preflight(box.ctx)
+            self.assertEqual(result.status, "blocked")
+            self.assertTrue(any("macOS on Intel" in f for f in result.data["failures"]), result.data)
+        finally:
+            box.close()
+
     def test_wsl1_and_windows_are_refused(self):
         box = Sandbox(manifest=MANIFEST, platform=Platform("linux", "x86_64", wsl_version=1))
         try:

@@ -63,7 +63,7 @@ class Sandbox:
         store = FileManifestStore(paths.manifest, paths.manifest_lock)
         if manifest is not None:
             store.save(Manifest(manifest))
-        ui = SilentRenderer() if json_mode else ConsoleRenderer(palette=PLAIN, out=self.out, interactive=interactive, reader=lambda: "")
+        ui = SilentRenderer() if json_mode else ConsoleRenderer(palette=PLAIN, out=self.out, err=self.out, interactive=interactive, reader=lambda: "")
         self.ctx = Context(
             paths=paths, platform=platform or Platform("macos", "aarch64"), env=self.env,
             catalog=Catalog.load(REPO, paths.personas_user, warn=lambda m: None),

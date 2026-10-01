@@ -7,9 +7,7 @@ and a release asset's digest.
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
-import io
 import json
 import tempfile
 import time
@@ -154,11 +152,9 @@ class ReleaseDigestOrderTest(unittest.TestCase):
             source = box.ctx.catalog.component("exapump").source
             source["sha256"]["exapump-0.13.0-macos-aarch64"] = hashlib.sha256(self.BODY).hexdigest()
             lifecycle = for_component(box.ctx, "exapump")
-            said = io.StringIO()
-            with contextlib.redirect_stderr(said):
-                version, asset, digest = lifecycle.pinned_fallback("0.14.0", "exapump-0.14.0-macos-aarch64")
+            version, asset, digest = lifecycle.pinned_fallback("0.14.0", "exapump-0.14.0-macos-aarch64")
             self.assertEqual((version, asset, digest), ("0.13.0", "exapump-0.13.0-macos-aarch64", hashlib.sha256(self.BODY).hexdigest()))
-            self.assertIn("pinned fallback release 0.13.0", said.getvalue())
+            self.assertIn("pinned fallback release 0.13.0", box.screen())
             box.env["EXAKIT_ALLOW_UNVERIFIED_EXAPUMP"] = "1"
             self.assertEqual(lifecycle.pinned_fallback("0.14.0", "exapump-0.14.0-macos-aarch64")[0], "0.14.0")
         finally:

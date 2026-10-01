@@ -4,8 +4,8 @@ This guide takes you from a bare Mac to a local Exasol database with an AI assis
 
 ## What you need
 
-- macOS on Apple Silicon or Intel. One optional add-on, JSON Tables, runs on
-  Apple Silicon only; everything else runs on both.
+- macOS on Apple silicon. The local database does not run on Intel Macs:
+  the installer says so and installs nothing there.
 - 8 GB+ RAM, ~20 GB free disk
 
 The install runs unattended, and the database is usually up in under 2 minutes. The steps after it (sample data, the AI bridge and the Python driver) take longer.

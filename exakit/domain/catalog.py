@@ -78,6 +78,12 @@ def _check_source(source: Any, problems: Problems) -> None:
         problems.append("source.package is required for a PyPI source")
 
 
+def _check_platforms(doc: dict[str, Any], problems: Problems) -> None:
+    platforms = doc.get("platforms", [])
+    if not isinstance(platforms, list) or any(p not in PLATFORM_KEYS for p in platforms):
+        problems.append(f"platforms must list keys from {', '.join(PLATFORM_KEYS)}")
+
+
 def _check_id_list(doc: dict[str, Any], key: str, problems: Problems, *, allow_words: tuple[str, ...] = ()) -> None:
     value = doc.get(key)
     if isinstance(value, str) and value in allow_words:
@@ -103,6 +109,7 @@ class Component:
     requires: tuple[str, ...]
     help: str | None
     manifest_key: str
+    platforms: tuple[str, ...] = ()      # empty = every platform the kit runs on
 
     @classmethod
     def from_doc(cls, doc: dict[str, Any]) -> Component:
@@ -111,6 +118,7 @@ class Component:
             install_order=int(doc.get("install_order", 100)), step_id=doc.get("step_id"),
             fallback_version=doc.get("fallback_version"), requires=tuple(doc.get("requires") or ()),
             help=doc.get("help"), manifest_key=doc.get("manifest_key") or doc["id"].replace("-", "_"),
+            platforms=tuple(doc.get("platforms") or ()),
         )
 
 
@@ -132,6 +140,7 @@ def validate_component(doc: Any, *, expected_id: str | None = None) -> Problems:
             problems.append(f"{key} must be a non-empty string")
     if "requires" in doc:
         _check_id_list(doc, "requires", problems)
+    _check_platforms(doc, problems)
     return problems
 
 
@@ -182,9 +191,7 @@ def validate_addon(doc: Any, *, expected_id: str | None = None) -> Problems:
     if doc.get("kind") not in ADDON_KINDS:
         problems.append(f"kind must be one of {', '.join(ADDON_KINDS)}")
     _check_source(doc.get("source"), problems)
-    platforms = doc.get("platforms", [])
-    if not isinstance(platforms, list) or any(p not in PLATFORM_KEYS for p in platforms):
-        problems.append(f"platforms must list keys from {', '.join(PLATFORM_KEYS)}")
+    _check_platforms(doc, problems)
     for key in ("requires", "provides"):
         if key in doc:
             _check_id_list(doc, key, problems)

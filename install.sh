@@ -156,6 +156,13 @@ main() {
         arm64|aarch64|x86_64|amd64) : ;;
         *) fail "Unsupported CPU architecture: $arch" ;;
     esac
+    # The local database runs on Apple silicon Macs, Linux x86_64/arm64 and
+    # Windows x86_64 (catalog/components/personal.json, platforms). An Intel
+    # Mac is refused here, before a byte is downloaded; the Python kit holds
+    # the same rule for everything that runs after this installer.
+    if [ "$platform" = "macos" ] && [ "$arch" != "arm64" ] && [ "$arch" != "aarch64" ]; then
+        fail "The local Exasol database runs on macOS with Apple silicon, Linux x86_64/arm64 and Windows x86_64. This Mac is Intel ($arch), so the database cannot run here. Nothing was installed."
+    fi
 
     # --- 3. fetch the kit ----------------------------------------------------
     # A DRY RUN WRITES NOTHING UNDER EXAKIT_HOME. It used to unpack into
@@ -287,6 +294,9 @@ preflight_report() {
     printf 'Preflight check\n'
     _pf_ok "Operating system: $platform"
     _pf_ok "CPU architecture: $arch"
+    if [ "$platform" = "macos" ] && [ "$arch" != "arm64" ] && [ "$arch" != "aarch64" ]; then
+        _pf_bad "Platform: macOS on Intel - the local Exasol database runs on Apple silicon Macs, Linux x86_64/arm64 and Windows x86_64 only"
+    fi
     if [ "$(uname -s)" = "Darwin" ]; then
         _pf_ram=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 ))
     else
