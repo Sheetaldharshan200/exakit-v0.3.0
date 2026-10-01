@@ -68,6 +68,21 @@ class each under `exakit/addons/`. `exakit marketplace --list --json`,
 keep their `--json` shapes and exit codes, pinned by `tests/contract`
 (docs/architecture.md, docs/design.md, docs/tasks.md).
 
+**A rate-limited GitHub no longer stops the exapump install.** The kit asks
+the GitHub release API for a version's checksum, and that API allows 60
+unauthenticated requests an hour per address - repeated installs, or an office
+behind one NAT, run out. When the version being installed has no checksum in
+versions.json or in the kit's pinned table and the API will not answer, setup
+now installs the pinned fallback release (exapump 0.13.0) instead, verified
+against its pinned digest, and says so - where before it stopped with "refusing
+to install an unverified exapump binary". The pinned table carries the 0.13.0
+digests for all five platforms. Under the default manifest policy the digest
+comes from versions.json and the API is never asked, so this only changes
+`EXAKIT_VERSION_POLICY=latest` and explicit version overrides.
+`EXAKIT_ALLOW_UNVERIFIED_EXAPUMP=1` keeps its meaning: install the requested
+version unverified. Carried over from the production hotfix
+(exasol-labs/exasol-personal-local-starterkit#24).
+
 **Sample data loads on Windows again, first time.** A fresh Windows install
 could end with "Dataset(s) tpch did not load": five of TPC-H's eight tables
 empty. The database runs inside the Podman WSL machine and reads each file back
