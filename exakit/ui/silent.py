@@ -7,7 +7,7 @@ without ``--yes`` before any question would be asked.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 
 from exakit.domain.log import Log, NullLog
@@ -96,3 +96,14 @@ class SilentRenderer:
         """Log the label; nothing is drawn."""
         self.log.line("INFO", label)
         yield
+
+    @contextmanager
+    def progress(self, label: str) -> Iterator[Callable[[int, int | None], None]]:
+        """Log the label; the bytes are not reported anywhere."""
+        self.log.line("INFO", label)
+        yield _ignore
+
+
+def _ignore(_done: int, _total: int | None) -> None:
+    """The reporter under --json: the bytes go nowhere."""
+    return

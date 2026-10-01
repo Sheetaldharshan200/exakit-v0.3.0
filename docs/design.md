@@ -406,11 +406,30 @@ download needs: `tag` (a template over `{version}`), `asset` (a template
 over `{version}`, `{platform}`, `{exe}`) or `assets` (one name per platform
 key), `digest_keys` (the platform's key in `versions.json`), `sha256` (pins
 for versions the manifest no longer lists), `checksums` (the release's
-checksum file), `mirror: kit` (the binaries are published by the kit
-repository, not upstream), `sources` (the archive ref of the upstream
-sources), `engine_assets` (JSON Tables' engine per platform). An add-on's
-`config` block holds its own knobs (dbt's profile and schema, the
+checksum file), `sources` (the archive ref of the upstream sources). An
+add-on's `config` block holds its own knobs (dbt's profile and schema, the
 scheduler's service user and schema); the service port is `service.port`.
+
+An add-on installed from GitHub releases names its **release sites** in
+`source.releases`, in the order they are tried (D36): the add-on's own
+repository first, the kit's mirror after it. Each site is an object:
+
+```json
+{"repo": "exasol-labs/exasol-scheduler",          // or "mirror": "kit" (the kit repository, kit.source, EXAKIT_<ID>_MIRROR_REPO)
+ "tag": "{version}",                               // a template over {version} and {bare} (the version without its v)
+ "assets": {"macos-aarch64": "exasol_scheduler-{version}-macos-arm64.tar.gz", "...": "..."},   // per platform key; "wheel" for a wheel
+ "checksums": "sidecar",                           // "<asset>.sha256" beside the asset, or a checksums file name, or absent (the release API)
+ "member": "*/exasol_scheduler",                   // the archive member that is the binary; absent for a bare file
+ "pins": "sha256"}                                 // the versions.json map that pins this site's digests
+```
+
+`exakit/lifecycles/releases.py` reads them: `sites()`, `has_asset()`,
+`asset_for()`, `fetch_asset()` (the first site that answers, verified),
+`fetch_binary()` (plus the member extraction). The digest for a site: its
+`pins` in `versions.json` when the manifest names this version, else what
+its `checksums` publish, else the release API's (cached), else the refusal
+or the `EXAKIT_ALLOW_UNVERIFIED_<ID>=1` hatch. A download that cannot
+complete hands over to the next site; a checksum mismatch never does.
 
 ### 3.4 `manifest.json` schema 2 (additive)
 
@@ -707,6 +726,7 @@ deletes `setup/`.
 | D32 | `--json` is answered by every path, including `<command> --help` and a corrupt install record (one refusal object, exit 1, never a traceback; `EXAKIT_DEBUG=1` re-raises). | The contract is "one object on stdout"; two paths broke it. |
 | D33 | The Log protocol lives in `domain/log.py`; the UI imports nothing from `adapters/`. Daemons start through `Runner.spawn`, HTTP probes through `adapters.net.http.http_status`. | The layer rule of section 9, held by the checker. The one exception, the terminal device in `ui/__init__.py`, is named in the checker. |
 | D34 | Every default is data: `catalog/kit.json` for the kit (repository, installer URLs, fetch URLs and cache budgets, endpoint templates, the managed Python, the machine requirements, the runtime's port and budgets, the MCP and data defaults), the `source` and `config` blocks of the catalog for each component and add-on (tags, asset names per platform, pins, mirrors, service users). The code reads them through `ctx.catalog`; an environment variable overrides where documented. A test holds the literals out of `exakit/`. | The fallback order (GitHub, cache, ours) is only as good as the "ours" it ends in; a value that lives in a module cannot be changed by a kit update without a code change, and the same value lived in three places. |
+| D36 | The kit is a bundler, not the maintainer of the add-ons: an add-on's binaries come from the add-on's own GitHub release first (`exasol-labs/exasol-scheduler`, `exasol-labs/exasol-json-tables`: the upstream archives, verified by the digests upstream publishes, the binary extracted), and the kit's mirror release answers only when that download cannot complete, or for a platform upstream does not publish (the JSON Tables linux-aarch64 engine). The sites are catalog data (`source.releases`); `versions.json` pins the mirror's digests and names the mirror release. | The mirror pinned a release tag that did not exist in this repository and digests of another build; the installs failed on a download the source repository was answering all along. The upstream release is the authority on what the add-on is; the mirror is a fallback and must never be the only path. |
 | D35 | The platforms the local database runs on are data: `platforms` on the Personal component (`catalog/components/personal.json`: Apple silicon Macs, Linux x86_64/arm64, Windows x86_64). The Python gate and `exakit preflight` read it and refuse in words before step 1; `install.sh` holds the same rule for Intel Macs because it runs before Python exists. An unsupported machine installs nothing: no download, no record, no command. | The launcher itself refuses Intel Macs (`local deployments are only supported on macOS Apple Silicon, Linux amd64/arm64, and Windows amd64`); the kit must say so first, not after installing half of itself. |
 
 ## 15. Variables the code reads that the user guide does not list
@@ -724,13 +744,13 @@ hold the rule that every variable the code reads is written down somewhere.
 | `EXAKIT_EXAPUMP_PROFILE` | the exapump profile the kit writes and reads (default starter-kit) |
 | `EXAKIT_VERBOSE_BOOTSTRAP` | 1 prints the bootstrap's progress lines (uv download, the managed Python); silent otherwise, failures always shown |
 | `EXAKIT_EXAPUMP_SHIM_IMAGE` | the container image the exapump glibc shim runs the binary in (default `exapump.glibc_shim_image` in kit.json, ubuntu:24.04) |
-| `EXAKIT_EXASOL_SCHEDULER_MIRROR_REPO` | the repository whose release carries the scheduler binaries (default: the kit repository) |
-| `EXAKIT_EXASOL_SCHEDULER_RELEASE_TAG` | that release's tag (default: the pinned one) |
+| `EXAKIT_EXASOL_SCHEDULER_MIRROR_REPO` | the repository of the scheduler's mirror site, the fallback behind the upstream release (default: the kit repository) |
+| `EXAKIT_EXASOL_SCHEDULER_RELEASE_TAG` | that mirror release's tag (default: the pinned one); `EXAKIT_EXASOL_SCHEDULER_MIRROR_TAG` is the same |
 | `EXAKIT_FORCE_COMPONENT_INSTALL` | 1 installs a component even when a system copy is present |
 | `EXAKIT_INSTALL_URL` | the installer URL the remedies quote (default https://www.exasol.com/install/starter-kit.sh) |
 | `EXAKIT_JSON_TABLES_BIN` | the exasol-json-tables launcher to use for JSON loads (default: the kit's) |
-| `EXAKIT_JSON_TABLES_MIRROR_REPO` | the repository whose release carries the JSON Tables wheel and engine |
-| `EXAKIT_JSON_TABLES_MIRROR_TAG` | that release's tag |
+| `EXAKIT_JSON_TABLES_MIRROR_REPO` | the repository of the JSON Tables mirror site, the fallback behind the upstream release (default: the kit repository) |
+| `EXAKIT_JSON_TABLES_MIRROR_TAG` | that mirror release's tag (default: the pinned one); `EXAKIT_JSON_TABLES_RELEASE_TAG` is the same |
 | `EXAKIT_KIT_REPO` | the repository versions.json and the kit's own updates come from (EXAKIT_REPO is the older name) |
 | `EXAKIT_KIT_SOURCE` | what kit.source records (default checkout:<path>); the installers set it to <repo>@<ref> |
 | `EXAKIT_LAUNCHAGENT_DIR` | macOS: where the autostart LaunchAgent is written (default ~/Library/LaunchAgents) |

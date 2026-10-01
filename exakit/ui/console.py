@@ -9,18 +9,17 @@ says so, exactly as the shell did.
 from __future__ import annotations
 
 import sys
-import threading
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from typing import IO
 
 from exakit.domain.log import Log, NullLog
 from exakit.domain.plan import Plan, Step, StepState
 
-from .widgets import FANCY, PLAIN, Option, Palette, term_cols, visible_len, wrap, wordmark_lines
+from .spinner import Milestones, Spinner
+from .widgets import FANCY, PLAIN, Option, Palette, progress_bar, term_cols, visible_len, wrap, wordmark_lines
 
-SPIN_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 SECTION_LABELS = {"datasets": "Sample data", "mcp_clients": "AI clients", "addons": "Add-ons",
                   "skills": "AI skills", "components": "Components"}
 
@@ -38,7 +37,7 @@ class ConsoleRenderer:
         self.log = log or NullLog()
         self._read = reader or (lambda: sys.stdin.readline())
         self.home = home
-        self._spin: _Spinner | None = None
+        self._spin: Spinner | None = None
         self._step_t0 = 0.0
 
     @property
@@ -49,8 +48,14 @@ class ConsoleRenderer:
     # --- lines -------------------------------------------------------------------
 
     def _w(self, text: str = "") -> None:
+        self._clear_spinner_line()
         self.out.write(text + "\n")
         self.out.flush()
+
+    def _clear_spinner_line(self) -> None:
+        """Make room for a line while a spinner is alive: it redraws itself below."""
+        if self._spin is not None:
+            self.out.write("\r\x1b[K")
 
     def text(self, line: str) -> None:
         """Write a line as is."""
@@ -85,12 +90,14 @@ class ConsoleRenderer:
 
     def warn(self, text: str) -> None:
         """Write a warning to the error stream and the log."""
+        self._clear_spinner_line()
         self.err.write(f"      {self.p.warn}!{self.p.reset} {text}\n")
         self.err.flush()
         self.log.line("WARN", text)
 
     def error(self, text: str) -> None:
         """Write an error to the error stream and the log."""
+        self._clear_spinner_line()
         self.err.write(f"      {self.p.err}{self.p.cross}{self.p.reset} {text}\n")
         self.err.flush()
         self.log.line("ERROR", text)
@@ -160,11 +167,15 @@ class ConsoleRenderer:
 
     # --- steps -------------------------------------------------------------------
 
+    def _spinner_template(self, label: str) -> str:
+        return f"{self.p.accent}{{frame}}{self.p.reset} {label}{{detail}} {self.p.dim}{{elapsed}}{self.p.reset}"
+
     @contextmanager
     def busy(self, label: str) -> Iterator[None]:
-        """A spinner with a label while a slow call runs; a single line elsewhere."""
+        """A spinner with the label and the time it has taken while a slow call runs; a log line elsewhere."""
+        self.log.line("INFO", label)
         if self.fancy and self.interactive and self._spin is None:
-            self._spin = _Spinner(self.out, f"{self.p.accent}{{frame}}{self.p.reset} {label}")
+            self._spin = Spinner(self.out, self._spinner_template(label))
             self._spin.start()
             try:
                 yield
@@ -172,15 +183,34 @@ class ConsoleRenderer:
                 self._spin.stop()
                 self._spin = None
             return
-        self.log.line("INFO", label)
         yield
+
+    @contextmanager
+    def progress(self, label: str) -> Iterator[Callable[[int, int | None], None]]:
+        """A live bar (bytes so far of the total) on the spinner while a download runs; quarter milestones as lines elsewhere."""
+        self.log.line("INFO", label)
+        if not (self.fancy and self.interactive):
+            yield Milestones(self, label).report
+            return
+        own = self._spin is None
+        spinner = self._spin = self._spin or Spinner(self.out, self._spinner_template(""))
+        if own:
+            spinner.start()
+        spinner.detail = f" {label}"
+        try:
+            yield lambda done, total: setattr(spinner, "detail", f" {label} {progress_bar(done, total)}")
+        finally:
+            spinner.detail = ""
+            if own:
+                spinner.stop()
+                self._spin = None
 
     def step_begin(self, step: Step | str) -> None:
         """Announce a plan step as it starts."""
         label = step if isinstance(step, str) else f"{SECTION_LABELS.get(step.section, step.section)}: {step.id}"
         self._step_t0 = time.monotonic()
         if self.fancy and self.interactive:
-            self._spin = _Spinner(self.out, f"{self.p.accent}{{frame}}{self.p.reset} {label}")
+            self._spin = Spinner(self.out, self._spinner_template(label))
             self._spin.start()
         else:
             self._w(f"  {self.p.arrow} {label}...")
@@ -325,36 +355,6 @@ class ConsoleRenderer:
             extra = f"  {p.dim}{option.hint}{p.reset}" if option.hint else ""
             self.out.write(f"\r\x1b[2K    {pointer} {box} {label}{extra}{p.reset}\n")
         self.out.write(f"\r\x1b[2K      {p.dim}{hint}{p.reset}\n")
-        self.out.flush()
-
-
-class _Spinner:
-    """Redraws one line on a thread until stopped. Only one is ever alive."""
-
-    def __init__(self, out: IO[str], template: str) -> None:
-        self.out = out
-        self.template = template
-        self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._run, daemon=True)
-
-    def start(self) -> None:
-        """Start the spinner."""
-        self.out.write("\x1b[?25l")
-        self._thread.start()
-
-    def _run(self) -> None:
-        i = 0
-        while not self._stop.is_set():
-            self.out.write("\r\x1b[K  " + self.template.format(frame=SPIN_FRAMES[i % len(SPIN_FRAMES)]))
-            self.out.flush()
-            i += 1
-            self._stop.wait(0.1)
-
-    def stop(self) -> None:
-        """Stop the spinner and clear its line."""
-        self._stop.set()
-        self._thread.join(timeout=1)
-        self.out.write("\r\x1b[K\x1b[?25h")
         self.out.flush()
 
 

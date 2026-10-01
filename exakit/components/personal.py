@@ -90,7 +90,8 @@ class Lifecycle(ComponentBase):
         self.ctx.ui.info(f"Downloading Exasol launcher v{version} ({asset})")
         with temp_dir("exakit-personal-") as tmp:
             archive = Path(tmp) / asset
-            self.ctx.net.fetch(self.release_url(version, asset), archive, what=asset)
+            with self.ctx.ui.progress(f"Downloading {asset}") as report:
+                self.ctx.net.fetch(self.release_url(version, asset), archive, what=asset, progress=report)
             checksums = Path(tmp) / "checksums.txt"
             self.ctx.net.fetch(self.release_url(version, str(self.source["checksums"]).format(version=version)), checksums, what="checksums")
             digest = digest_from_checksums(checksums.read_text(encoding="utf-8", errors="replace"), asset)

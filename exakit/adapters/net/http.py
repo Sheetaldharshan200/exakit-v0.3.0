@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import shutil
 import tempfile
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
@@ -15,8 +15,12 @@ from exakit.domain.errors import BadInput, Failed
 from .digest import verify_sha256
 
 
+Progress = Callable[[int, int | None], None]     # (bytes so far, bytes in total or None when the server does not say)
+
+
 class Downloader(Protocol):
-    def fetch(self, url: str, dest: Path, *, sha256: str | None = None, token: str | None = None, what: str = "file") -> Path: ...
+    def fetch(self, url: str, dest: Path, *, sha256: str | None = None, token: str | None = None, what: str = "file",
+              progress: Progress | None = None) -> Path: ...
     def text(self, url: str, *, token: str | None = None) -> str: ...
 
 
@@ -40,6 +44,23 @@ def http_status(url: str, *, timeout: float = 5) -> int | None:
         return int(err.code)
     except (urllib.error.URLError, OSError, ValueError):
         return None
+
+
+def _copy(response, out, progress: Progress | None) -> None:
+    """Stream the body in chunks; ``progress`` hears every chunk and the final size."""
+    declared = response.headers.get("Content-Length") if hasattr(response, "headers") else None
+    total = int(declared) if declared and str(declared).isdigit() else None
+    done = 0
+    while True:
+        chunk = response.read(256 * 1024)
+        if not chunk:
+            break
+        out.write(chunk)
+        done += len(chunk)
+        if progress:
+            progress(done, total)
+    if progress:
+        progress(done, total or done)
 
 
 class UrllibDownloader:
@@ -67,15 +88,16 @@ class UrllibDownloader:
                     time.sleep(0.5)
         raise DownloadFailed(f"Could not download {url}.", hint=str(last))
 
-    def fetch(self, url: str, dest: Path, *, sha256: str | None = None, token: str | None = None, what: str = "file") -> Path:
-        """Download to ``dest`` through a temp file; verify before the file is published."""
+    def fetch(self, url: str, dest: Path, *, sha256: str | None = None, token: str | None = None, what: str = "file",
+              progress: Progress | None = None) -> Path:
+        """Download to ``dest`` through a temp file, reporting the bytes as they land; verify before the file is published."""
         _require_https(url)
         dest.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=str(dest.parent), prefix=f".{dest.name}.", suffix=".part")
         tmp_path = Path(tmp)
         try:
             with self._open(url, token) as response, open(fd, "wb") as out:
-                shutil.copyfileobj(response, out, length=1024 * 1024)
+                _copy(response, out, progress)
             if sha256:
                 verify_sha256(tmp_path, sha256, what=what)
             tmp_path.replace(dest)

@@ -103,7 +103,8 @@ class ComponentBase:
                          hint=f"Override at your own risk with {hatch}=1")
         if digest is None:
             self.ctx.ui.warn(f"No digest available for {what} - proceeding WITHOUT checksum verification ({hatch}=1).")
-        self.ctx.net.fetch(url, dest, sha256=digest, token=self.ctx.env.get("GITHUB_TOKEN"), what=what)
+        with self.ctx.ui.progress(f"Downloading {what}") as report:
+            self.ctx.net.fetch(url, dest, sha256=digest, token=self.ctx.env.get("GITHUB_TOKEN"), what=what, progress=report)
         return dest
 
     def install_binary(self, staged: Path, dest: Path) -> None:

@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+**The add-ons come from their own releases.** The kit bundles Exasol
+Scheduler and JSON Tables; it does not maintain them. Their binaries now
+download from the `exasol-labs` release of the version the kit advertises,
+verified by the digests upstream publishes, and the kit's own mirror release
+answers only when that download cannot complete (or for the one engine
+upstream does not publish). The release sites are catalog data. The pinned
+mirror release for JSON Tables named a tag that did not exist, so every
+install of it failed; the pin now names the release that does.
+
+**The scheduler installs again.** Its service user is created with `GRANT
+CREATE SCHEMA`; the statement had carried the literal text `self.schema`,
+so the grant failed and the add-on reported a database that was running as
+not running. A failure now names the statement that failed.
+
+**Downloads show their progress**, as a live bar with the bytes so far on
+the step's spinner (quarter-way lines when the output is not a terminal),
+and every running step shows how long it has taken. The pause between
+"ready to use" and the marketplace is now a spinner that says what it is
+checking.
+
 **The menus take the arrow keys.** Up and Down move, Space ticks and unticks,
 Enter continues, `a` and `n` take all or none, a digit picks, Esc backs out;
 the numbered prompts remain where no terminal can give keys.

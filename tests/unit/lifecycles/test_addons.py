@@ -134,15 +134,21 @@ class JsonTablesTest(unittest.TestCase):
             finally:
                 box.close()
 
-    def test_release_naming_and_the_mirror_override(self):
+    def test_the_source_release_comes_first_and_the_kit_mirror_follows_it(self):
+        from exakit.lifecycles import releases
         box = Sandbox(manifest={**MANIFEST, "kit": {"source": "acme/kit@main"}})
         try:
             lc = for_addon(box.ctx, box.ctx.catalog.addon("json-tables"))
-            self.assertEqual(lc.mirror_repo(), "acme/kit")
-            self.assertEqual(lc.release_tag("0.9.0"), "json-tables-0.9.0")
+            sites = releases.sites(lc, "v0.9.0")
+            self.assertEqual([s.repo for s in sites], ["exasol-labs/exasol-json-tables", "acme/kit"])
+            self.assertEqual([s.tag for s in sites], ["v0.9.0", "json-tables-v0.9.0"])
+            self.assertEqual(sites[0].asset("wheel", "v0.9.0"), "exasol_json_tables-0.9.0-py3-none-any.whl")
+            self.assertEqual(sites[0].asset("macos-aarch64", "v0.9.0"), "json_to_parquet-v0.9.0-macos-arm64.tar.gz")
+            self.assertEqual(lc.engine_asset("v0.9.0"), "json_to_parquet-v0.9.0-macos-arm64.tar.gz")
             box.env["EXAKIT_JSON_TABLES_MIRROR_REPO"] = "me/mirror"
             box.env["EXAKIT_JSON_TABLES_MIRROR_TAG"] = "custom"
-            self.assertEqual((lc.mirror_repo(), lc.release_tag("0.9.0")), ("me/mirror", "custom"))
+            mirror = releases.sites(lc, "v0.9.0")[1]
+            self.assertEqual((mirror.repo, mirror.tag, mirror.mirror), ("me/mirror", "custom", True))
         finally:
             box.close()
 
@@ -163,17 +169,47 @@ class JsonTablesTest(unittest.TestCase):
 
 class SchedulerTest(unittest.TestCase):
     def test_asset_names_follow_the_platform(self):
-        for platform, asset in ((Platform("macos", "aarch64"), "exasol-scheduler-macos-arm64"), (Platform("linux", "x86_64"), "exasol-scheduler-linux-x86_64")):
+        for platform, asset in ((Platform("macos", "aarch64"), "exasol_scheduler-v1.0.0-macos-arm64.tar.gz"),
+                                (Platform("linux", "x86_64"), "exasol_scheduler-v1.0.0-linux-x86_64.tar.gz")):
             box = Sandbox(manifest=MANIFEST, platform=platform)
             try:
                 lc = for_addon(box.ctx, box.ctx.catalog.addon("exasol-scheduler"))
-                self.assertEqual(lc.asset_name("1.0.0"), asset)
+                self.assertEqual(lc.asset_name("v1.0.0"), asset)
                 self.assertTrue(lc.applicable()[0])
             finally:
                 box.close()
         box = Sandbox(manifest=MANIFEST, platform=Platform("windows", "x86_64"))
         try:
             self.assertFalse(for_addon(box.ctx, box.ctx.catalog.addon("exasol-scheduler")).applicable()[0])
+        finally:
+            box.close()
+
+    def test_the_service_user_gets_the_three_create_grants_and_a_failure_names_the_statement_not_the_password(self):
+        from exakit.adapters.process.runner import Completed
+        statements: list[str] = []
+
+        class Pump:
+            def sql(self, profile, text, **kw):
+                statements.append(text)
+                if text.startswith("GRANT CREATE TABLE"):
+                    return Completed(1, "", "insufficient privileges\n")
+                return Completed(0, "EXAKIT_SCHED_USER_MISSING", "")
+
+        box = Sandbox(manifest=CREDS)
+        try:
+            lc = for_addon(box.ctx, box.ctx.catalog.addon("exasol-scheduler"))
+            with mock.patch("exakit.app.runtime_ops.exapump", lambda ctx: Pump()), \
+                 mock.patch("exakit.app.runtime_ops.profile_name", lambda ctx: "starter-kit"), \
+                 self.assertRaises(Failed) as caught:
+                lc.ensure_db_user()
+            self.assertIn("granting CREATE TABLE failed: insufficient privileges", caught.exception.message)
+            self.assertEqual(caught.exception.remedy, "exakit status")
+            self.assertEqual([s for s in statements if s.startswith("GRANT")],
+                             ["GRANT CREATE SESSION TO SCHEDULER_SVC", "GRANT CREATE SCHEMA TO SCHEDULER_SVC", "GRANT CREATE TABLE TO SCHEDULER_SVC"])
+            self.assertTrue(any(s.startswith("CREATE USER SCHEDULER_SVC IDENTIFIED BY") for s in statements))
+            self.assertFalse(any("self.schema" in s for s in statements))
+            password = statements[1].split('"')[1]
+            self.assertNotIn(password, caught.exception.message)
         finally:
             box.close()
 

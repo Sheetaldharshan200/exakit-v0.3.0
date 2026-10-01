@@ -99,32 +99,6 @@ class Lifecycle(BinaryLifecycle):
         """The schema the scheduler's tables live in (catalog config)."""
         return str(self.addon.config["schema"])
 
-    def applicable(self) -> tuple[bool, str]:
-        """(True, '') where the catalog names a prebuilt binary for this platform, else the reason."""
-        if self.ctx.platform.platform_key not in (self.addon.source.get("assets") or {}):
-            return False, f"no prebuilt scheduler binary is published for this platform ({self.ctx.platform.os}/{self.ctx.platform.arch})"
-        return True, ""
-
-    def repo(self) -> str:
-        """EXAKIT_EXASOL_SCHEDULER_MIRROR_REPO, else the repository this kit copy came from, else the catalog's mirror."""
-        explicit = self.ctx.env.get("EXAKIT_EXASOL_SCHEDULER_MIRROR_REPO")
-        if explicit:
-            return explicit
-        manifest = self.ctx.manifest_or_none()
-        source = manifest.get("kit.source") if manifest else None
-        if isinstance(source, str) and "@" in source and "/" in source.split("@")[0]:
-            return source.split("@")[0]
-        return super().repo()
-
-    def release_tag(self, version: str) -> str:
-        """The release tag: EXAKIT_EXASOL_SCHEDULER_RELEASE_TAG, else the pin in versions.json, else the catalog's template."""
-        explicit = self.ctx.env.get("EXAKIT_EXASOL_SCHEDULER_RELEASE_TAG")
-        if explicit:
-            return explicit
-        doc = self.ctx.versions.current()
-        pinned = doc.value("components.exasol-scheduler.release") if doc and self.pin_applies(version) else None
-        return pinned or super().release_tag(version)
-
     def system_present(self) -> bool:
         """True when an exasol_scheduler that is not the kit's engine is on PATH."""
         found = self.ctx.runner.which("exasol_scheduler")
@@ -134,7 +108,7 @@ class Lifecycle(BinaryLifecycle):
 
     def ensure_db_user(self) -> None:
         """Create the service user with its own password file and the grants the first run needs, once."""
-        from exakit.app.runtime_ops import credentials, exapump, profile_name
+        from exakit.app.runtime_ops import credentials, exapump
         pump = exapump(self.ctx)
         if pump is None:
             raise Failed("exapump is required to create the scheduler's database user")
@@ -144,17 +118,22 @@ class Lifecycle(BinaryLifecycle):
             password = CredentialStore.new_token()
             store.store("exasol_scheduler_password", password)
         user = self.db_user.upper()
-        profile = profile_name(self.ctx)
-        probe = pump.sql(profile, f"SELECT CASE WHEN EXISTS (SELECT 1 FROM EXA_DBA_USERS WHERE USER_NAME = '{user}') "
-                                  "THEN 'EXAKIT_SCHED_USER_PRESENT' ELSE 'EXAKIT_SCHED_USER_MISSING' END AS STATUS")
-        if not probe.ok:
-            raise Failed("the dedicated database user could not be created - is the database running? (exakit start)", remedy="exakit start")
-        verb = "ALTER" if "EXAKIT_SCHED_USER_PRESENT" in probe.out else "CREATE"
-        statements = [f'{verb} USER {user} IDENTIFIED BY "{password}"', f"GRANT CREATE SESSION TO {user}",
-                      f"GRANT CREATE self.schema TO {user}", f"GRANT CREATE TABLE TO {user}"]
-        for sql in statements:
-            if not pump.sql(profile, sql).ok:
-                raise Failed("the dedicated database user could not be created - is the database running? (exakit start)", remedy="exakit start")
+        probe = self._sql(pump, f"SELECT CASE WHEN EXISTS (SELECT 1 FROM EXA_DBA_USERS WHERE USER_NAME = '{user}') "
+                                "THEN 'EXAKIT_SCHED_USER_PRESENT' ELSE 'EXAKIT_SCHED_USER_MISSING' END AS STATUS", what="looking the user up")
+        verb = "ALTER" if "EXAKIT_SCHED_USER_PRESENT" in probe else "CREATE"
+        self._sql(pump, f'{verb} USER {user} IDENTIFIED BY "{password}"', what=f"{verb.lower()}ing the user", secret=True)
+        for grant in ("CREATE SESSION", "CREATE SCHEMA", "CREATE TABLE"):
+            self._sql(pump, f"GRANT {grant} TO {user}", what=f"granting {grant}")
+
+    def _sql(self, pump, sql: str, *, what: str, secret: bool = False) -> str:
+        """Run one statement as the kit's admin profile; its output, or Failed naming what did not work (never a secret statement's text)."""
+        from exakit.app.runtime_ops import profile_name
+        done = pump.sql(profile_name(self.ctx), sql)
+        if done.ok:
+            return done.out
+        tail = "" if secret else " ".join((done.err or done.out).strip().splitlines()[-1:])
+        detail = f": {tail[:200]}" if tail else ""
+        raise Failed(f"the scheduler's database user could not be set up ({what} failed{detail})", remedy="exakit status")
 
     def schema_present(self) -> bool:
         """True when the scheduler's schema exists in the database."""
@@ -173,7 +152,7 @@ class Lifecycle(BinaryLifecycle):
         from exakit.app.runtime_ops import exapump, profile_name
         pump = exapump(self.ctx)
         if pump:
-            pump.sql(profile_name(self.ctx), f"REVOKE CREATE self.schema FROM {self.db_user.upper()}")
+            pump.sql(profile_name(self.ctx), f"REVOKE CREATE SCHEMA FROM {self.db_user.upper()}")
             pump.sql(profile_name(self.ctx), f"REVOKE CREATE TABLE FROM {self.db_user.upper()}")
         self.record(bootstrap_revoked=True)
 

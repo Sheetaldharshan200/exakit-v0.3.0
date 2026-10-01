@@ -12,7 +12,12 @@ name: pkg / exasol-scheduler
 # every asset on it, so rewriting them would turn every pinned install into a
 # checksum failure. "Already published" is the change gate, and a forced
 # rebuild of the same upstream version gets a NEW suffixed tag.
-
+#
+# Since D36 this release is the kit's MIRROR: the installer downloads from the
+# exasol-labs release first (the upstream archives, verified by the digests
+# upstream publishes) and falls back to the assets published here only when
+# that download cannot complete, or for a platform upstream does not publish.
+# The immutability rule above is unchanged: versions.json pins these digests.
 on:
   schedule:
     - cron: "40 7 * * *" # daily 07:40 UTC (the check job is change-gated)

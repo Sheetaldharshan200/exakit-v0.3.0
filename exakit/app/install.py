@@ -213,7 +213,8 @@ def autostart_default_on(ctx: Context) -> None:
 def marketplace_offer(session: steps.Session) -> None:
     """Offer the add-ons (the persona's answer, or the menu)."""
     ctx = session.ctx
-    pending = [r for r in marketplace_rows(ctx) if r.state == "available"]
+    with ctx.ui.busy("Checking which add-ons can run here"):
+        pending = [r for r in marketplace_rows(ctx) if r.state == "available"]
     if not pending:
         return
     if ctx.env.get("EXAKIT_MARKETPLACE_ADDONS"):

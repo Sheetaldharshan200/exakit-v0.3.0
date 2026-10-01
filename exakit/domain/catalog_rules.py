@@ -55,6 +55,31 @@ def _check_source(source: Any, problems: Problems) -> None:
         problems.append("source.repo is required for a GitHub source")
     if kind == "pypi" and not _is_str(source.get("package")):
         problems.append("source.package is required for a PyPI source")
+    _check_release_sites(source.get("releases"), problems)
+
+
+def _check_release_sites(sites: Any, problems: Problems) -> None:
+    """``source.releases``: each site a repository or ``mirror: kit``, a tag template, an assets map; optional checksums, member, pins."""
+    if sites is None:
+        return
+    if not isinstance(sites, list) or not sites:
+        problems.append("source.releases must be a non-empty list of release sites")
+        return
+    for index, site in enumerate(sites):
+        where = f"source.releases[{index}]"
+        if not isinstance(site, dict):
+            problems.append(f"{where} must be an object")
+            continue
+        if site.get("mirror") not in (None, "kit") or (site.get("mirror") is None and not _is_str(site.get("repo"))):
+            problems.append(f"{where} needs repo (owner/name) or mirror: kit")
+        assets = site.get("assets")
+        if not isinstance(assets, dict) or not assets or not all(_is_str(k) and _is_str(v) for k, v in assets.items()):
+            problems.append(f"{where}.assets must map platform keys (or wheel) to asset name templates")
+        elif any(k not in PLATFORM_KEYS and k != "wheel" for k in assets):
+            problems.append(f"{where}.assets keys must be platform keys or wheel")
+        for key in ("tag", "checksums", "member", "pins"):
+            if key in site and not _is_str(site[key]):
+                problems.append(f"{where}.{key} must be a string")
 
 
 def _check_platforms(doc: dict[str, Any], problems: Problems) -> None:

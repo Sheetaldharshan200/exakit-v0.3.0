@@ -1,4 +1,4 @@
-"""JSON Tables: a Python package from a verified wheel plus a prebuilt ingest engine, both from the kit's own release."""
+"""JSON Tables: a Python package from a verified wheel plus a prebuilt ingest engine, from the add-on's own release (the kit's mirror after it)."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import json
 import tarfile
 from pathlib import Path
 
-from exakit.adapters.net.github import download_url, release_assets
 from exakit.domain.errors import Failed
+from exakit.lifecycles import releases
 from exakit.lifecycles.base import make_executable, temp_dir
 from exakit.lifecycles.python_venv import PythonVenvLifecycle
 
@@ -71,14 +71,13 @@ class Lifecycle(PythonVenvLifecycle):
 
     # --- platform and versions ------------------------------------------------------
 
-    def engine_asset(self) -> str | None:
-        """The prebuilt ingest engine for this platform, named by the catalog; None where none is published."""
-        name = (self.addon.source.get("engine_assets") or {}).get(self.ctx.platform.platform_key)
-        return str(name) if name else None
+    def engine_asset(self, version: str) -> str | None:
+        """The prebuilt ingest engine for this platform on the first release site that publishes one; None where none does."""
+        return releases.asset_for(self, version, self.ctx.platform.platform_key)
 
     def applicable(self) -> tuple[bool, str]:
-        """(True, '') where the catalog names an engine for this platform, else the reason."""
-        if self.engine_asset() is None:
+        """(True, '') where some release site publishes an engine for this platform, else the reason."""
+        if not self.addon.supports(self.ctx.platform.platform_key) or not releases.has_asset(self, self.ctx.platform.platform_key):
             return False, f"no prebuilt ingest engine is published for this platform ({self.ctx.platform.os}/{self.ctx.platform.arch})"
         return True, ""
 
@@ -101,35 +100,9 @@ class Lifecycle(PythonVenvLifecycle):
             return self.ctx.runner.run([ambient, "-c", "import exasol_json_tables"], timeout=30).ok
         return False
 
-    def mirror_repo(self) -> str:
-        """The repository the prebuilt release lives in: the override, the kit this copy came from, or the catalog's mirror."""
-        explicit = self.ctx.env.get("EXAKIT_JSON_TABLES_MIRROR_REPO")
-        if explicit:
-            return explicit
-        manifest = self.ctx.manifest_or_none()
-        source = manifest.get("kit.source") if manifest else None
-        if isinstance(source, str) and "@" in source and "/" in source.split("@")[0]:
-            return source.split("@")[0]
-        return self.ctx.kit_repo if self.addon.source.get("mirror") == "kit" else str(self.addon.source["repo"])
-
-    def release_tag(self, version: str) -> str:
-        """The release tag: EXAKIT_JSON_TABLES_MIRROR_TAG, else the pin in versions.json, else the catalog's template."""
-        explicit = self.ctx.env.get("EXAKIT_JSON_TABLES_MIRROR_TAG")
-        if explicit:
-            return explicit
-        doc = self.ctx.versions.current()
-        pinned = doc.value("components.json-tables.release") if doc and self.pin_applies(version) else None
-        return pinned or str(self.addon.source.get("tag", "json-tables-{version}")).format(version=version)
-
     def wheel_name(self, version: str) -> str | None:
-        """The wheel's file name: the pin in versions.json, else the first wheel the release lists."""
-        doc = self.ctx.versions.current()
-        if doc and self.pin_applies(version) and doc.value("components.json-tables.wheel"):
-            return str(doc.value("components.json-tables.wheel"))
-        assets = release_assets(self.mirror_repo(), self.release_tag(version), self.ctx.net, endpoints=self.ctx.catalog.kit.endpoints,
-                                token=self.ctx.env.get("GITHUB_TOKEN"), cache_dir=self.ctx.paths.releases_cache) or []
-        wheels = [a.name for a in assets if a.name.endswith(".whl")]
-        return wheels[0] if wheels else None
+        """The wheel's file name: the pin in versions.json, else what the first release site names."""
+        return releases.asset_for(self, version, "wheel")
 
     # --- install ----------------------------------------------------------------------------
 
@@ -171,23 +144,17 @@ class Lifecycle(PythonVenvLifecycle):
         ok, reason = self.applicable()
         if not ok:
             raise Failed(reason)
-        wheel = self.wheel_name(version)
-        if not wheel:
-            raise Failed(f"the prebuilt release '{self.release_tag(version)}' was not found in {self.mirror_repo()} - "
-                         "check the network (GITHUB_TOKEN raises the API limit), then run: exakit marketplace json-tables")
+        if not self.wheel_name(version):
+            raise Failed("the catalog names no wheel for JSON Tables - update the kit first: exakit update", remedy="exakit update")
         self.ctx.ui.info(f"Installing JSON Tables {version} (prebuilt)")
         self.ensure_venv()
-        repo, tag = self.mirror_repo(), self.release_tag(version)
         with temp_dir("exakit-jt-") as tmp:
-            wheel_path = Path(tmp) / wheel
-            self.fetch_verified(download_url(repo, tag, wheel, endpoints=self.ctx.catalog.kit.endpoints), wheel_path, digest=self.published_digest(version, "wheel"),
-                                what=wheel, repo=repo, tag=tag, asset=wheel)
-            self.uv().pip_install(self.python, str(wheel_path))
+            wheel = releases.fetch_asset(self, version, "wheel", Path(tmp) / "wheel", what=f"JSON Tables {version} wheel", pin_key="wheel")
+            self.uv().pip_install(self.python, str(wheel.path))
             self.restore_package_data(version)
-            asset = self.engine_asset() or ""
             staged = Path(tmp) / "engine"
-            self.fetch_verified(download_url(repo, tag, asset, endpoints=self.ctx.catalog.kit.endpoints), staged, digest=self.published_digest(version, self.ctx.platform.platform_key),
-                                what=asset, repo=repo, tag=tag, asset=asset)
+            releases.fetch_binary(self, version, self.ctx.platform.platform_key, staged, what=f"JSON Tables {version} engine",
+                                  pin_key=self.ctx.platform.platform_key)
             self.engine.parent.mkdir(parents=True, exist_ok=True)
             staged.replace(self.engine)
         make_executable(self.engine)

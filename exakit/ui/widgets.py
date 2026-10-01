@@ -139,3 +139,21 @@ class Option:
     label: str
     hint: str = ""
     disabled: bool = False
+
+
+def human_size(count: int) -> str:
+    """``118 KB``, ``12.4 MB``, ``1.2 GB``."""
+    if count < 1024 * 1024:
+        return f"{max(1, count // 1024)} KB"
+    if count < 1024 * 1024 * 1024:
+        return f"{count / (1024 * 1024):.1f} MB"
+    return f"{count / (1024 * 1024 * 1024):.2f} GB"
+
+
+def progress_bar(done: int, total: int | None, width: int = 20) -> str:
+    """``[########............] 42%  12.4/29.0 MB``; the bytes alone when the total is unknown."""
+    if not total:
+        return human_size(done)
+    share = min(1.0, done / total)
+    filled = round(share * width)
+    return f"[{'#' * filled}{'.' * (width - filled)}] {int(share * 100):3d}%  {human_size(done)}/{human_size(total)}"

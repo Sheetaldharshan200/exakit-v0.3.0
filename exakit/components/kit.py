@@ -57,7 +57,8 @@ class Lifecycle(ComponentBase):
         for ref in ("main", f"v{latest}", latest):
             url = self.ctx.catalog.kit.endpoints.url("archive_branch" if ref == "main" else "archive_tag", repo=self.ctx.kit_repo, ref=ref)
             try:
-                self.ctx.net.fetch(url, archive, what=f"starter kit ({ref})")
+                with self.ctx.ui.progress(f"Downloading the starter kit ({ref})") as report:
+                    self.ctx.net.fetch(url, archive, what=f"starter kit ({ref})", progress=report)
             except Failed:
                 continue
             try:

@@ -23,7 +23,8 @@ class FakeDownloader:
             raise Failed(f"Could not download {url}.")
         return self.pages[url]
 
-    def fetch(self, url: str, dest: Path, *, sha256: str | None = None, token: str | None = None, what: str = "file") -> Path:
+    def fetch(self, url: str, dest: Path, *, sha256: str | None = None, token: str | None = None, what: str = "file",
+              progress=None) -> Path:
         self.calls.append(url)
         if url not in self.pages:
             raise Failed(f"Could not download {url}.")
@@ -33,6 +34,8 @@ class FakeDownloader:
             dest.write_bytes(body)
         else:
             dest.write_text(body)
+        if progress:
+            progress(len(body), len(body))
         if sha256:
             from exakit.adapters.net.digest import verify_sha256
             verify_sha256(dest, sha256, what=what)

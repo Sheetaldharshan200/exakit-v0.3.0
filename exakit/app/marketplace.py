@@ -168,7 +168,8 @@ def _menu_answer(ctx: Context, table: list[Row]) -> list[str] | None:
 
 def choose(ctx: Context, explicit: list[str] | None = None) -> list[str] | None:
     """The add-on ids to install: the explicit list, the persona's or environment's answer, or the menu."""
-    table = rows(ctx)
+    with ctx.ui.busy("Checking which add-ons can run here"):
+        table = rows(ctx)
     answer = ",".join(explicit) if explicit else ctx.env.get("EXAKIT_MARKETPLACE_ADDONS", "")
     if answer:
         return _env_answer(ctx, answer, table)

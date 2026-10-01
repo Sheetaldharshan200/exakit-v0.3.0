@@ -22,7 +22,12 @@ name: pkg / json-tables
 # tag was overwritten with the v0.3 binaries while versions.json still pinned
 # v0.2. The change gate is therefore "is this build already published", and a
 # forced rebuild of the same upstream version gets a NEW suffixed tag.
-
+#
+# Since D36 this release is the kit's MIRROR: the installer downloads from the
+# exasol-labs release first (the upstream archives, verified by the digests
+# upstream publishes) and falls back to the assets published here only when
+# that download cannot complete, or for a platform upstream does not publish.
+# The immutability rule above is unchanged: versions.json pins these digests.
 on:
   schedule:
     - cron: "30 7 * * *" # daily 07:30 UTC (the check job is change-gated)

@@ -208,6 +208,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python3 - <<'PY'
+          import glob
           import json
           import os
           import sys
@@ -396,6 +397,36 @@ jobs:
                                               % (key, pinned, name, release, published or "unknown"))
               if len(problems) == before:
                   print("  ok  exasol-scheduler: the pinned release checks out")
+
+          # --- the add-ons' SOURCE releases (D36) ---------------------------------
+          # The kit is a bundler: json-tables and exasol-scheduler install from
+          # the exasol-labs release of the advertised version first, the kit's
+          # mirror (checked above) only when that cannot be reached. So the
+          # source release must exist and carry every asset the catalog's first
+          # release site names for it, or the first path fails on every machine.
+          for addon_dir in sorted(glob.glob("catalog/addons/*/addon.json")):
+              doc = json.load(open(addon_dir))
+              sites = (doc.get("source") or {}).get("releases") or []
+              block = components.get(doc["id"]) or {}
+              if not sites or sites[0].get("mirror") or not block.get("version"):
+                  continue
+              version = block["version"]
+              site = sites[0]
+              tag = site.get("tag", "{version}").format(version=version, bare=version.lstrip("v"))
+              body, reason = fetch("https://api.github.com/repos/%s/releases/tags/%s" % (site["repo"], tag), token=True)
+              if body is None:
+                  problems.append("%s: source release %s@%s does not exist (%s)" % (doc["id"], site["repo"], tag, reason))
+                  continue
+              names = {a.get("name", "") for a in body.get("assets") or []}
+              for key, template in sorted(site["assets"].items()):
+                  name = template.format(version=version, bare=version.lstrip("v"))
+                  if name not in names:
+                      problems.append("%s: source release %s@%s has no asset %s (for %s)" % (doc["id"], site["repo"], tag, name, key))
+                  elif site.get("checksums") == "sidecar" and name + ".sha256" not in names:
+                      problems.append("%s: source release %s@%s has no %s.sha256 beside the asset" % (doc["id"], site["repo"], tag, name))
+              if site.get("checksums") not in (None, "sidecar") and site["checksums"] not in names:
+                  problems.append("%s: source release %s@%s has no %s" % (doc["id"], site["repo"], tag, site["checksums"]))
+              print("  ok  %s: source release %s@%s carries every asset the catalog names" % (doc["id"], site["repo"], tag))
 
           for addon in ("dash-server", "exasol-vscode"):
               block = components.get(addon) or {}

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from exakit.adapters.net.github import download_url
 from exakit.domain.errors import Failed
 
+from . import releases
 from .base import LifecycleBase, make_executable, temp_dir
 
 
@@ -22,25 +22,21 @@ class BinaryLifecycle(LifecycleBase):
         exe = ".exe" if self.ctx.platform.os == "windows" else ""
         return self.home / "libexec" / f"{self.addon.id.replace('-', '_')}{exe}"
 
-    def asset_name(self, version: str) -> str:
-        """The release asset for this platform: the catalog's ``assets`` map, else ``<id>-<os>-<arch>``."""
-        assets = self.addon.source.get("assets") or {}
-        return str(assets.get(self.ctx.platform.platform_key) or f"{self.addon.id}-{self.ctx.platform.os}-{self.ctx.platform.arch}")
-
-    def release_tag(self, version: str) -> str:
-        """The release tag for a version, from the catalog's template."""
-        return str(self.addon.source.get("tag", "{version}")).format(version=version)
-
-    def repo(self) -> str:
-        """The repository the release lives in: the kit's own when the catalog says ``mirror: kit``."""
-        if self.addon.source.get("mirror") == "kit":
-            return self.ctx.kit_repo
-        return str(self.addon.source["repo"])
+    def asset_name(self, version: str) -> str | None:
+        """The release asset for this platform on the first site that publishes one; None where none does."""
+        return releases.asset_for(self, version, self.ctx.platform.platform_key)
 
     def digest_key(self, version: str) -> str:
         """The platform's key in versions.json's digests."""
         keys = self.addon.source.get("digest_keys") or {}
         return str(keys.get(self.ctx.platform.platform_key) or self.ctx.platform.platform_key)
+
+    def applicable(self) -> tuple[bool, str]:
+        """(True, '') where the add-on's platforms and some release site name this platform, else the reason."""
+        ok, reason = super().applicable()
+        if ok and not releases.has_asset(self, self.ctx.platform.platform_key):
+            return False, f"no prebuilt {self.addon.id} binary is published for this platform ({self.ctx.platform.os}/{self.ctx.platform.arch})"
+        return ok, reason
 
     def installed_version(self) -> str | None:
         """The recorded version while the engine is on disk; else None."""
@@ -48,11 +44,9 @@ class BinaryLifecycle(LifecycleBase):
         return str(recorded) if recorded and self.engine.exists() else None
 
     def fetch_engine(self, version: str, dest: Path) -> None:
-        """Download the engine for this version into ``dest``, verified."""
-        asset = self.asset_name(version)
-        tag = self.release_tag(version)
-        self.fetch_verified(download_url(self.repo(), tag, asset, endpoints=self.ctx.catalog.kit.endpoints), dest, digest=self.published_digest(version, self.digest_key(version)),
-                            what=f"{self.addon.id} {version}", repo=self.repo(), tag=tag, asset=asset)
+        """Download the engine for this version into ``dest``, verified: the source release first, the kit's mirror after it."""
+        releases.fetch_binary(self, version, self.ctx.platform.platform_key, dest, what=f"{self.addon.id} {version}",
+                              pin_key=self.digest_key(version))
 
     def launcher_content(self) -> str | None:
         """The launcher script, or None when the add-on has no launcher."""

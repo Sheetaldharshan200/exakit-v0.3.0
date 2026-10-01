@@ -100,7 +100,8 @@ class LifecycleBase:
             raise Failed(f"No checksum is available for {what}; refusing an unverified download "
                          f"(components.{self.addon.id}.sha256 in versions.json, or the release's own digest).",
                          hint=f"{hatch}=1 overrides")
-        self.ctx.net.fetch(url, dest, sha256=digest, token=self.ctx.env.get("GITHUB_TOKEN"), what=what)
+        with self.ctx.ui.progress(f"Downloading {what}") as report:
+            self.ctx.net.fetch(url, dest, sha256=digest, token=self.ctx.env.get("GITHUB_TOKEN"), what=what, progress=report)
         return dest
 
     # --- tools ----------------------------------------------------------------------------------
