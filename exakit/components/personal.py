@@ -87,7 +87,7 @@ class Lifecycle(ComponentBase):
         self.refuse_downgrade(version)
         asset = self.asset_name(version)
         started = time.monotonic()
-        self.ctx.ui.info(f"Downloading Exasol launcher v{version} ({asset})")
+        self.ctx.ui.working(f"Downloading Exasol launcher v{version} ({asset})")
         with temp_dir("exakit-personal-") as tmp:
             archive = Path(tmp) / asset
             with self.ctx.ui.progress(f"Downloading {asset}") as report:
@@ -98,7 +98,7 @@ class Lifecycle(ComponentBase):
             if not digest:
                 raise Failed(f"The release's checksums file does not list {asset}; refusing an unverified launcher.")
             verify_sha256(archive, digest, what=asset)
-            self.ctx.ui.info(f"Installing launcher to {self.bin}")
+            self.ctx.ui.working(f"Installing launcher to {self.bin}")
             with tarfile.open(archive) as tar:
                 tar.extractall(tmp, filter="data")
             binaries = [p for p in Path(tmp).rglob("exasol") if p.is_file()]
@@ -150,7 +150,7 @@ class Lifecycle(ComponentBase):
                              "migrates database content, so there is nothing to back up first.")
             self.ctx.ui.info("Apply it with: exakit update runtime")
             return
-        self.ctx.ui.info(f"Updating Exasol Personal launcher {current or 'unknown'} -> {latest}")
+        self.ctx.ui.working(f"Updating Exasol Personal launcher {current or 'unknown'} -> {latest}")
         self.ctx.env = {**dict(self.ctx.env), "EXAKIT_FORCE_COMPONENT_INSTALL": "1", "EXAKIT_PERSONAL_VERSION": latest}
         self.bin.unlink(missing_ok=True)
         self.install(latest)
@@ -177,7 +177,7 @@ class Lifecycle(ComponentBase):
             raise Failed("Create a backup first.", remedy="exakit update runtime --backup")
         if manifest.get("backups.personal_upgrade.from") != (current or "unknown") or manifest.get("backups.personal_upgrade.to") != latest:
             raise Failed(f"The latest recorded Personal backup does not match this upgrade ({current or 'unknown'} -> {latest}).")
-        self.ctx.ui.info(f"Updating Exasol Personal launcher {current or 'unknown'} -> {latest}")
+        self.ctx.ui.working(f"Updating Exasol Personal launcher {current or 'unknown'} -> {latest}")
         self.ctx.env = {**dict(self.ctx.env), "EXAKIT_FORCE_COMPONENT_INSTALL": "1", "EXAKIT_PERSONAL_VERSION": latest}
         self.bin.unlink(missing_ok=True)
         self.install(latest)
@@ -216,7 +216,7 @@ class Lifecycle(ComponentBase):
         if dry_run:
             self.ctx.ui.info("  will remove: the local Exasol personal deployment and ALL its data")
             return ["deployment"]
-        self.ctx.ui.info("Removing the local Exasol personal deployment and all data")
+        self.ctx.ui.working("Removing the local Exasol personal deployment and all data")
         if rt.deployment_exists():
             self.ctx.ui.info("Destroying the local Exasol Personal deployment")
             if hasattr(rt, "destroy") and not rt.destroy():

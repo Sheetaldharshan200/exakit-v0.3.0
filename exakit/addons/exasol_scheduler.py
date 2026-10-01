@@ -269,7 +269,7 @@ class Lifecycle(BinaryLifecycle):
             if was_running:
                 self.start()
             return
-        self.ctx.ui.info(f"Updating exasol-scheduler {self.installed_version() or 'not installed'} -> {target}")
+        self.ctx.ui.working(f"Updating exasol-scheduler {self.installed_version() or 'not installed'} -> {target}")
         self.ctx.env = {**dict(self.ctx.env), "EXAKIT_FORCE_COMPONENT_INSTALL": "1"}
         self.install(target)
         if was_running or not had_install:

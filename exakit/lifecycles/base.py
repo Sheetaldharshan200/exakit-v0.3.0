@@ -186,7 +186,7 @@ class LifecycleBase:
             self.repair()
             self.ctx.ui.ok(f"{self.addon.id} is already current ({target})")
             return
-        self.ctx.ui.info(f"Updating {self.addon.id} {current or 'not installed'} -> {target}")
+        self.ctx.ui.working(f"Updating {self.addon.id} {current or 'not installed'} -> {target}")
         self.install(target)
         self.validate()
         self.ctx.manifest_store.update(lambda m: m.set(f"desired.{self.key}", target))

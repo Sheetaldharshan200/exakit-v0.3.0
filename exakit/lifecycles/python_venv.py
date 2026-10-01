@@ -86,7 +86,7 @@ class PythonVenvLifecycle(LifecycleBase):
         if self.package_version() == version.lstrip("v") and not force:
             self.ctx.ui.ok(f"{self.addon.id} {version} already installed: {self.venv}")
         else:
-            self.ctx.ui.info(f"Installing {self.addon.id} {version}")
+            self.ctx.ui.working(f"Installing {self.addon.id} {version}")
             self.install_package(version)
             self.ctx.ui.ok(f"{self.addon.id} installed: {self.venv}")
         self.write_launchers()

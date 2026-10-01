@@ -146,7 +146,7 @@ def _deploy_fresh(ctx: Context) -> bool:
         note_failure(ctx, f"Port {rt.db_port()} is held by something that is not an Exasol Personal deployment")
         return False
     ctx.ui.info("Exasol Personal is free to use and ships under Exasol's own licence terms, not the kit's MIT licence. The launcher shows them below.")
-    ctx.ui.info("Deploying Exasol Personal locally - about 2 minutes")
+    ctx.ui.working("Deploying Exasol Personal locally - about 2 minutes")
     started = time.monotonic()
     with ctx.ui.progress("Deploying the local database", unit="percent") as bar:
         ok, tail = rt.install_local(_milestone_reader(ctx, bar))

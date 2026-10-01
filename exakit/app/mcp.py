@@ -64,7 +64,7 @@ def _select_from_env(ctx: Context, raw: str) -> list[str] | None:
             chosen = present
             if skipped:
                 ctx.ui.info(f"EXAKIT_MCP_CLIENTS=all - not installed here, skipped: {','.join(skipped)} (name one explicitly to configure it anyway)")
-    ctx.ui.info(f"Configuring MCP clients from EXAKIT_MCP_CLIENTS: {','.join(chosen)}")
+    ctx.ui.working(f"Configuring MCP clients from EXAKIT_MCP_CLIENTS: {','.join(chosen)}")
     return chosen
 
 
@@ -99,7 +99,7 @@ def setup(ctx: Context) -> Result:
     if chosen is None:
         return Result(True, "skipped", data={"configured_clients": [], "skipped_clients": []})
     configure_readonly_access(ctx)
-    ctx.ui.info("Applying MCP setup")
+    ctx.ui.working("Applying MCP setup")
     call = _clients(ctx).setup(ctx.paths.home, chosen)
     return _report_setup(ctx, call)
 
@@ -328,7 +328,7 @@ def refresh_client_pins(ctx: Context, version: str) -> bool:
     if not clients:
         ctx.ui.info("No AI client is connected yet - connect one any time with: exakit mcp-setup")
         return True
-    ctx.ui.info(f"Refreshing AI client configs to exasol-mcp-server@{version}")
+    ctx.ui.working(f"Refreshing AI client configs to exasol-mcp-server@{version}")
     configure_readonly_access(ctx)
     call = _clients(ctx).setup(ctx.paths.home, clients)
     if call.code != 0:

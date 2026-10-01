@@ -127,7 +127,7 @@ class Lifecycle(ComponentBase):
         if kit_root(self.ctx) != self.ctx.paths.kit:
             self.ctx.ui.info("This kit runs from a source checkout; update it with git, not exakit update.")
             return
-        self.ctx.ui.info(f"Updating starter kit {current or 'unknown'} -> {latest}")
+        self.ctx.ui.working(f"Updating starter kit {current or 'unknown'} -> {latest}")
         self.ctx.paths.home.mkdir(parents=True, exist_ok=True)
         stage = self.ctx.paths.home / f".kit-stage.{int(time.time())}"
         stage.mkdir()

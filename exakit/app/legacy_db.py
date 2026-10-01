@@ -114,7 +114,7 @@ def stop_container(ctx: Context, db: LegacyDb) -> bool:
     """Stop the legacy container when it runs."""
     if not db.container or db.state(ctx) != "running" or not db.engine:
         return True
-    ctx.ui.info(f"Stopping the old database container ({db.container}) so the new deployment can take the port")
+    ctx.ui.working(f"Stopping the old database container ({db.container}) so the new deployment can take the port")
     if not containers.stop_container(ctx.runner, db.engine, db.container, timeout=ctx.catalog.kit.container_action_timeout):
         ctx.ui.warn(f"Could not stop the container {db.container} - the new deployment may find its port busy")
         return False

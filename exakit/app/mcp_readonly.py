@@ -82,21 +82,21 @@ def _provision(ctx: Context, pump: Exapump, config, ro_user: str, ro_password: s
                   "THEN 'EXAKIT_MCP_USER_PRESENT' ELSE 'EXAKIT_MCP_USER_MISSING' END AS STATUS")
     must(probe, "Could not read the database's user list.")
     if "EXAKIT_MCP_USER_PRESENT" not in probe.out:
-        ctx.ui.info(f"Creating the dedicated MCP read-only database user ({ro_user.lower()})")
+        ctx.ui.working(f"Creating the dedicated MCP read-only database user ({ro_user.lower()})")
         must(admin(f"CREATE USER {ro_user} IDENTIFIED BY \"{ro_password}\""), "Could not create the MCP read-only database user.")
     must(admin(f"ALTER USER {ro_user} IDENTIFIED BY \"{ro_password}\""), "Could not refresh the MCP read-only database password.")
     must(admin(f"GRANT CREATE SESSION TO {ro_user}"), "Could not grant CREATE SESSION to the MCP read-only user.")
     schema_probe = admin(f"SELECT CASE WHEN EXISTS (SELECT 1 FROM EXA_ALL_SCHEMAS WHERE SCHEMA_NAME = '{schema}') "
                          "THEN 'EXAKIT_SCHEMA_PRESENT' ELSE 'EXAKIT_SCHEMA_MISSING' END AS STATUS")
     if "EXAKIT_SCHEMA_PRESENT" not in schema_probe.out:
-        ctx.ui.info(f"Creating default schema {schema} for MCP-safe querying")
+        ctx.ui.working(f"Creating default schema {schema} for MCP-safe querying")
         must(admin(f"CREATE SCHEMA {schema}"), f"Could not create the default schema {schema}.")
     must(admin(f"GRANT USE ANY SCHEMA TO {ro_user}"), "Could not grant USE ANY SCHEMA to the MCP read-only user.")
     must(admin(f"GRANT SELECT ANY TABLE TO {ro_user}"), "Could not grant SELECT ANY TABLE to the MCP read-only user.")
 
 
 def _validate_login(ctx: Context, pump: Exapump, config, ro_user: str) -> None:
-    ctx.ui.info("Validating dedicated MCP read-only login")
+    ctx.ui.working("Validating dedicated MCP read-only login")
     login = pump.sql("mcp_readonly", "SELECT CURRENT_USER AS EXAKIT_CURRENT_USER", config=config)
     if not login.ok or ro_user not in login.out.upper():
         raise Failed("The MCP read-only user could not log in with the generated credentials.", remedy="exakit mcp-setup")

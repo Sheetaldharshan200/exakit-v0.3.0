@@ -151,7 +151,7 @@ def crossing_after(ctx: Context, *, runtime_failed: bool) -> None:
             return
     else:
         ctx.ui.text("")
-        ctx.ui.info("Restoring your data into the new database")
+        ctx.ui.working("Restoring your data into the new database")
     imported = ldb.import_(ctx, directory)
     if imported is None:
         ctx.ui.warn(f"Your data could not be restored. The copy is kept at {directory}.")

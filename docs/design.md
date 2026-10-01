@@ -624,6 +624,11 @@ Ctrl-C (Option-drag selects through the terminal itself on a Mac); Ctrl-Q
 quits. A running job's progress is a live row right under the line that
 announced it, in the log, never in a footer.
 
+`working(text)` announces work in progress as a live line (a spinner, the
+text, the time so far) that the next line replaces, so "Downloading…",
+"Installing…", "Loading…" never remain on screen once the outcome is there;
+in a pipe it is an ordinary line, so the transcript keeps the record.
+
 ### 6.2 Progress (`ui/progress.py`)
 
 One `ProgressState` for every long job, drawn as the legacy kit drew it: a

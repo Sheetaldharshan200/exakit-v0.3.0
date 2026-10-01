@@ -120,7 +120,7 @@ class Lifecycle(ComponentBase):
         if digest is None:
             version, asset, digest = self.pinned_fallback(version, asset)
         started = time.monotonic()
-        self.ctx.ui.info(f"Downloading exapump v{version} ({asset})")
+        self.ctx.ui.working(f"Downloading exapump v{version} ({asset})")
         with temp_dir("exakit-exapump-") as tmp:
             staged = Path(tmp) / asset
             repo, tag = self.repo(), self.tag(version)
@@ -177,7 +177,7 @@ class Lifecycle(ComponentBase):
         if not self.recorded("profile"):
             raise Failed(f"No connection profile exists (no database password was available to write one). Create it manually with "
                          f"'exapump profile init {self.profile}', then re-run.")
-        self.ctx.ui.info("Validating the database connection (SELECT 1)")
+        self.ctx.ui.working("Validating the database connection (SELECT 1)")
         for attempt in range(6):
             if self.ctx.runner.run([self.cli(), "sql", "-p", self.profile, "SELECT 1"], timeout=120).ok:
                 self.ctx.ui.ok("Connection works")
@@ -200,7 +200,7 @@ class Lifecycle(ComponentBase):
                 self.record(version=current)
             self.ctx.ui.ok(f"exapump is already current ({current})")
             return
-        self.ctx.ui.info(f"Updating exapump {current or 'not installed'} -> {latest}")
+        self.ctx.ui.working(f"Updating exapump {current or 'not installed'} -> {latest}")
         self.ctx.env = {**dict(self.ctx.env), "EXAKIT_FORCE_COMPONENT_INSTALL": "1"}
         self.install(latest)
         self.create_profile()
@@ -218,7 +218,7 @@ class Lifecycle(ComponentBase):
         if dry_run:
             self.ctx.ui.info(f"  will remove: exapump ({self.bin} and the profiles at {self.config_path.parent})")
             return [str(t) for t in targets if t.exists()]
-        self.ctx.ui.info("Removing exapump and its profiles")
+        self.ctx.ui.working("Removing exapump and its profiles")
         removed = []
         for target in targets:
             if target.exists():

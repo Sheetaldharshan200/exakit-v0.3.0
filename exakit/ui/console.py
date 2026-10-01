@@ -18,6 +18,7 @@ from exakit.domain.log import Log, NullLog
 from exakit.domain.plan import Plan, Step, StepState
 
 from .progress import ProgressState
+from .menu import draw_menu, menu_key
 from .spinner import Milestones, Spinner
 from .widgets import FANCY, PLAIN, Option, Palette, term_cols, visible_len, wrap, wordmark_lines
 
@@ -46,6 +47,7 @@ class ConsoleRenderer:
         self._read = reader or (lambda: sys.stdin.readline())
         self.home = home
         self._spin: Spinner | None = None
+        self._transient = False                     # the live spinner is a working() line: the next line ends it
         self._step_t0 = 0.0
         self._steps_t0: dict[str, float] = {}       # the install steps' clocks, by id
 
@@ -57,6 +59,7 @@ class ConsoleRenderer:
     # --- lines -------------------------------------------------------------------
 
     def _w(self, text: str = "") -> None:
+        self._end_transient()
         self._clear_spinner_line()
         self.out.write(text + "\n")
         self.out.flush()
@@ -65,6 +68,26 @@ class ConsoleRenderer:
         """Make room for a line while a spinner is alive: it redraws itself below."""
         if self._spin is not None:
             self.out.write("\r\x1b[K")
+
+    def _end_transient(self) -> None:
+        """A working() line gives way to whatever comes next."""
+        if self._transient and self._spin is not None:
+            self._spin.stop()
+            self._spin = None
+        self._transient = False
+
+    def working(self, text: str) -> None:
+        """Announce work in progress: a live line that the next line replaces; a plain line where nothing can be redrawn."""
+        self.log.line("INFO", text)
+        self._end_transient()
+        if self.fancy and self.interactive and self._spin is None:
+            self._spin = Spinner(self.out, self._spinner_template(text), self.p)
+            self._spin.start()
+            self._transient = True
+            return
+        if self._spin is None:
+            self.out.write(f"    {self.p.dim}{self.p.bullet}{self.p.reset} {text}\n")
+            self.out.flush()
 
     def text(self, line: str) -> None:
         """Write a line as is."""
@@ -99,6 +122,7 @@ class ConsoleRenderer:
 
     def warn(self, text: str) -> None:
         """Write a warning to the error stream and the log."""
+        self._end_transient()
         self._clear_spinner_line()
         self.err.write(f"      {self.p.warn}!{self.p.reset} {text}\n")
         self.err.flush()
@@ -106,6 +130,7 @@ class ConsoleRenderer:
 
     def error(self, text: str) -> None:
         """Write an error to the error stream and the log."""
+        self._end_transient()
         self._clear_spinner_line()
         self.err.write(f"      {self.p.err}{self.p.cross}{self.p.reset} {text}\n")
         self.err.flush()
@@ -183,6 +208,7 @@ class ConsoleRenderer:
     def busy(self, label: str) -> Iterator[None]:
         """A spinner with the label and the time it has taken while a slow call runs; a log line elsewhere."""
         self.log.line("INFO", label)
+        self._end_transient()
         if self.fancy and self.interactive and self._spin is None:
             self._spin = Spinner(self.out, self._spinner_template(label), self.p)
             self._spin.start()
@@ -198,6 +224,7 @@ class ConsoleRenderer:
     def progress(self, label: str, *, unit: str = "bytes") -> Iterator[ProgressState]:
         """The job's progress line while it runs (bytes, items or stages with the creep between them); plain lines elsewhere."""
         self.log.line("INFO", label)
+        self._end_transient()
         state = ProgressState(label, unit=unit)
         if not (self.fancy and self.interactive):
             Milestones(self, state)
@@ -321,58 +348,19 @@ class ConsoleRenderer:
         hint = "Up/Down move, Enter chooses, Esc backs out" if single else "Up/Down move, Space toggles, Enter continues, a all, n none"
         self.out.write("\x1b[?25l")
         try:
-            self._draw_menu(options, chosen, cursor, hint, single, first=True)
+            draw_menu(self.out, self.p, options, chosen, cursor, hint, single, first=True)
             while True:
-                action, cursor = self._menu_key(self._key(), options, chosen, cursor, single)
+                action, cursor = menu_key(self._key(), options, chosen, cursor, single)
                 if action == "enter":
                     if single and not options[cursor].disabled:
                         return {options[cursor].id}
                     return chosen
                 if action == "esc":
                     return None
-                self._draw_menu(options, chosen, cursor, hint, single, first=False)
+                draw_menu(self.out, self.p, options, chosen, cursor, hint, single, first=False)
         finally:
             self.out.write("\x1b[?25h")
             self.out.flush()
-
-    def _menu_key(self, key: str, options: Sequence[Option], chosen: set[str], cursor: int, single: bool) -> tuple[str, int]:
-        """Apply one key to the menu state: (``move``/``enter``/``esc``, the cursor)."""
-        if key == "enter":
-            return "enter", cursor
-        if key in ("esc", "q"):
-            return "esc", cursor
-        if key in ("up", "k"):
-            return "move", (cursor - 1) % len(options)
-        if key in ("down", "j"):
-            return "move", (cursor + 1) % len(options)
-        if key == "a" and not single:
-            chosen.update(o.id for o in options if not o.disabled)
-        elif key == "n" and not single:
-            chosen.clear()
-        elif key == "space" or (key.isdigit() and 1 <= int(key) <= len(options)):
-            index = cursor if key == "space" else int(key) - 1
-            if single:
-                return ("enter" if key.isdigit() else "move"), index
-            if not options[index].disabled:
-                chosen.symmetric_difference_update({options[index].id})
-            return "move", index
-        return "move", cursor
-
-    def _draw_menu(self, options: Sequence[Option], chosen: set[str], cursor: int, hint: str, single: bool, *, first: bool) -> None:
-        p = self.p
-        if not first:
-            self.out.write(f"\x1b[{len(options) + 1}A")
-        for i, option in enumerate(options):
-            box = ("(*)" if i == cursor else "( )") if single else ("[x]" if option.id in chosen else "[ ]")
-            if option.disabled:
-                box = f"{p.dim}[-]"
-            pointer = f"{p.accent}{p.arrow}{p.reset}" if i == cursor else " "
-            label = f"{p.bold}{option.label}{p.reset}" if i == cursor else option.label
-            extra = f"  {p.dim}{option.hint}{p.reset}" if option.hint else ""
-            self.out.write(f"\r\x1b[2K    {pointer} {box} {label}{extra}{p.reset}\n")
-        self.out.write(f"\r\x1b[2K      {p.dim}{hint}{p.reset}\n")
-        self.out.flush()
-
 
 def plain(out: IO[str] = sys.stdout, *, interactive: bool = False, log: Log | None = None) -> ConsoleRenderer:
     """A renderer without colour or glyphs."""

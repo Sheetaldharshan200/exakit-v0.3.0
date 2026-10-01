@@ -79,7 +79,7 @@ class Lifecycle(ComponentBase):
             self.ctx.ui.info("This kit runs from a source checkout; placing the skills it carries.")
             skills.install(self.ctx)
             return
-        self.ctx.ui.info(f"Updating AI skills {current or 'not installed'} -> {latest}")
+        self.ctx.ui.working(f"Updating AI skills {current or 'not installed'} -> {latest}")
         stage = self._stage(latest, current)
         if stage is None:
             return

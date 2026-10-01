@@ -200,7 +200,7 @@ def sample_data(session: Session) -> None:
             ctx.ui.info("Skipping the sample data (EXAKIT_LOAD_SAMPLE=0). Load it any time with: exakit data-load")
             return
         if ctx.env.get("EXAKIT_DATA_FILE"):
-            ctx.ui.info("Loading a local file (EXAKIT_DATA_FILE).")
+            ctx.ui.working("Loading a local file (EXAKIT_DATA_FILE).")
             data.load_local_path(ctx, Path(ctx.env["EXAKIT_DATA_FILE"]).expanduser())
             return
         if "datasets" in answers.explicit or not ctx.ui.interactive or ctx.env.get("EXAKIT_PERSONA"):
@@ -223,7 +223,7 @@ def _load_named(ctx: Context, ids: list[str]) -> None:
         if ds_id in done:
             ctx.ui.ok(f"Dataset '{ds_id}' is already loaded")
             continue
-        ctx.ui.info(f"Loading dataset '{ds_id}'.")
+        ctx.ui.working(f"Loading dataset '{ds_id}'.")
         try:
             data.load(ctx, data.dataset(ctx, ds_id))
         except ExakitError as err:

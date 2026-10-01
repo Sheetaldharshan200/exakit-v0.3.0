@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+**Nothing stale stays on screen.** "Downloading…", "Installing…",
+"Loading…" and their kind are live lines now: they show the time they take
+and give way to the outcome, so a finished install reads as what was done,
+not as a log of what was being done.
+
 **The uninstall says goodbye properly.** It thanks you and names the
 address to write to with feedback (`feedback.email` in `catalog/kit.json`).
 Nothing is sent: the kit has no telemetry, and it says so.

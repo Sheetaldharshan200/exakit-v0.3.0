@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 EIGHTHS = " ▏▎▍▌▋▊▉"
-UNITS = ("bytes", "items", "percent")
+UNITS = ("bytes", "items", "percent", "spinner")      # spinner: a working line, the label and the time so far, no bar
 
 
 def human_size(count: int) -> str:
@@ -131,6 +131,9 @@ def elapsed_text(seconds: float) -> str:
 def progress_parts(state: ProgressState, *, frame: str, cols: int, fancy: bool, now: float | None = None) -> list[tuple[str, str]]:
     """The line as (text, style) parts; styles are accent, dim, bold or empty."""
     now = time.monotonic() if now is None else now
+    if state.unit == "spinner":
+        took = elapsed_text(state.elapsed(now))
+        return [(frame, "accent"), (" " + state.text(), ""), ("  " + took if took else "", "dim")]
     text_w, gap, bar_w, num_w, el_w = layout(cols)
     pct = state.position(now)
     phase = state.text()

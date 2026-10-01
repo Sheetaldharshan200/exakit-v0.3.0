@@ -69,7 +69,7 @@ class BinaryLifecycle(LifecycleBase):
         if self.installed_version() == version and not force:
             self.ctx.ui.ok(f"{self.addon.id} {version} is already installed")
             return
-        self.ctx.ui.info(f"Installing {self.addon.id} {version} (prebuilt)")
+        self.ctx.ui.working(f"Installing {self.addon.id} {version} (prebuilt)")
         with temp_dir(f"exakit-{self.addon.id}-") as tmp:
             staged = Path(tmp) / "engine"
             self.fetch_engine(version, staged)

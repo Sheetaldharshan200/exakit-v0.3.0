@@ -27,20 +27,37 @@ class TuiRenderer:
     def __init__(self, app: KitApp, mirror: ConsoleRenderer) -> None:
         self.app = app
         self.mirror = mirror        # the plain transcript (and the log): what the console would have printed
+        self._working = None        # the live row of a working() line, removed by whatever comes next
 
     def _call(self, fn: Callable, *args, **kwargs):
         return self.app.call_from_thread(fn, *args, **kwargs)
 
     def _line(self, kind: str, text: str) -> None:
         glyph, style = STYLES[kind]
-        self._call(self.app.write, Text.assemble((glyph, style), " ", text))
+        self._write(Text.assemble((glyph, style), " ", text))
+
+    def _write(self, text: Text) -> None:
+        """A line into the log; a working() line before it gives way."""
+        self._end_working()
+        self._call(self.app.write, text)
+
+    def _end_working(self) -> None:
+        if self._working is not None:
+            row, self._working = self._working, None
+            self._call(self.app.live_end, row)
+
+    def working(self, text: str) -> None:
+        """Announce work in progress: a live row under the text that the next line replaces."""
+        self.mirror.working(text)
+        self._end_working()
+        self._working = self._call(self.app.live_begin, ProgressState(text, unit="spinner"))
 
     # --- lines -------------------------------------------------------------------------
 
     def text(self, line: str) -> None:
         """A line as is."""
         self.mirror.text(line)
-        self._call(self.app.write, Text(line))
+        self._write(Text(line))
 
     def banner(self, title: str, subtitle: str = "") -> None:
         """The header's title and subtitle."""
@@ -50,8 +67,8 @@ class TuiRenderer:
     def heading(self, text: str) -> None:
         """A bold line, with a blank line before it."""
         self.mirror.heading(text)
-        self._call(self.app.write, Text(""))
-        self._call(self.app.write, Text(text, style="bold"))
+        self._write(Text(""))
+        self._write(Text(text, style="bold"))
 
     def info(self, text: str) -> None:
         """An informational line."""
@@ -76,42 +93,44 @@ class TuiRenderer:
     def card(self, message: str, *, log_path: str | None = None, remedy: str | None = None) -> None:
         """The failure card."""
         self.mirror.card(message, log_path=log_path, remedy=remedy)
-        self._call(self.app.write, Text.assemble(("✗ ", "bold red"), (message, "bold")))
+        self._write(Text.assemble(("✗ ", "bold red"), (message, "bold")))
         if remedy:
-            self._call(self.app.write, Text(f"  Fix: {remedy}"))
+            self._write(Text(f"  Fix: {remedy}"))
         if log_path:
-            self._call(self.app.write, Text(f"  Log: {log_path}", style="dim"))
+            self._write(Text(f"  Log: {log_path}", style="dim"))
 
     def rule(self) -> None:
         """A separator."""
         self.mirror.rule()
-        self._call(self.app.write, Text("─" * 60, style="dim"))
+        self._write(Text("─" * 60, style="dim"))
 
     def panel(self, title: str, lines: Sequence[str]) -> None:
         """A titled block of lines."""
         self.mirror.panel(title, lines)
-        self._call(self.app.write, Text(title, style="bold"))
+        self._write(Text(title, style="bold"))
         for line in lines:
-            self._call(self.app.write, Text(f"  {line}"))
+            self._write(Text(f"  {line}"))
 
     # --- the plan and its steps --------------------------------------------------------------
 
     def plan(self, plan: Plan) -> None:
         """The plan panel."""
         self.mirror.plan(plan)
+        self._end_working()
         self._call(self.app.set_plan, plan)
 
     def step_begin(self, step: Step | str) -> None:
         """A step starts: the plan row runs, and an install step's heading goes into the log."""
         self.mirror.step_begin(step)
         if isinstance(step, Step) and step.section == "install":
-            self._call(self.app.write, Text(""))
-            self._call(self.app.write, Text(step.label or step.id, style="bold"))
+            self._write(Text(""))
+            self._write(Text(step.label or step.id, style="bold"))
         self._call(self.app.step_begin, step)
 
     def step_end(self, step: Step | str, *, ok: bool = True, detail: str = "") -> None:
         """A step ends."""
         self.mirror.step_end(step, ok=ok, detail=detail)
+        self._end_working()
         if isinstance(step, Step):
             ok, detail = ok and step.state is not StepState.FAILED, detail or step.reason
         self._call(self.app.step_end, step, ok=ok, detail=detail)
@@ -153,6 +172,7 @@ class TuiRenderer:
     @contextmanager
     def progress(self, label: str, *, unit: str = "bytes") -> Iterator[ProgressState]:
         """A live progress row under the text that announced the job; the transcript gets the plain lines."""
+        self._end_working()
         with self.mirror.progress(label, unit=unit) as state:
             row = self._call(self.app.live_begin, state)
             try:

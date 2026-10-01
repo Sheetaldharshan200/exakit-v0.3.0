@@ -155,7 +155,7 @@ def _remove_bins(ctx: Context, dry: bool, gone: list[str]) -> None:
 def remove_component(ctx: Context, key: str) -> None:
     """Remove one piece from the uninstall menu."""
     if key == "database":
-        ctx.ui.info("Removing the local Exasol personal deployment and all data")
+        ctx.ui.working("Removing the local Exasol personal deployment and all data")
         for_component(ctx, "personal").uninstall(dry_run=False)
     elif key == "mcp_configs":
         for_component(ctx, "mcp").uninstall(dry_run=False)

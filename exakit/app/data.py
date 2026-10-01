@@ -146,7 +146,7 @@ def load(ctx: Context, ds: Dataset, *, force: bool = False) -> Result:
     if not force and ds.id in loaded(ctx):
         ctx.ui.ok(f"Dataset '{ds.id}' already loaded (pass --force to REPLACE it: its tables are dropped and rebuilt)")
         return Result(True, "already loaded", data={"dataset": ds.id})
-    ctx.ui.info(f"Loading the '{ds.id}' dataset into schema {ds.schema}")
+    ctx.ui.working(f"Loading the '{ds.id}' dataset into schema {ds.schema}")
     started = time.monotonic()
     csvs = sorted(p for p in (ds.directory / "data").glob("*.csv") if p.stat().st_size)
     load_sql = ds.directory / "02_load_data.sql"
@@ -291,7 +291,7 @@ def data_load(ctx: Context, args: list[str]) -> Result:
     if chosen is not None and not ctx.env.get("EXAKIT_DATA_FILE"):
         return _load_datasets(ctx, chosen, force=False)
     if ctx.env.get("EXAKIT_DATA_FILE"):
-        ctx.ui.info("Loading a local file (EXAKIT_DATA_FILE).")
+        ctx.ui.working("Loading a local file (EXAKIT_DATA_FILE).")
         return load_local_path(ctx, Path(ctx.env["EXAKIT_DATA_FILE"]).expanduser())
     return menu(ctx)
 
@@ -319,7 +319,7 @@ def _load_datasets(ctx: Context, chosen: list[Dataset], *, force: bool) -> Resul
             ctx.ui.ok(f"Dataset '{ds.id}' is already loaded - nothing to do (replace it with: exakit data-load --force)")
             continue
         if force:
-            ctx.ui.info(f"Reloading dataset '{ds.id}' (--force)")
+            ctx.ui.working(f"Reloading dataset '{ds.id}' (--force)")
         try:
             load(ctx, ds, force=force)
         except Failed as err:

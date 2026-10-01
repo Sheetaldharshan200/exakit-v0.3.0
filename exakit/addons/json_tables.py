@@ -146,7 +146,7 @@ class Lifecycle(PythonVenvLifecycle):
             raise Failed(reason)
         if not self.wheel_name(version):
             raise Failed("the catalog names no wheel for JSON Tables - update the kit first: exakit update", remedy="exakit update")
-        self.ctx.ui.info(f"Installing JSON Tables {version} (prebuilt)")
+        self.ctx.ui.working(f"Installing JSON Tables {version} (prebuilt)")
         self.ensure_venv()
         with temp_dir("exakit-jt-") as tmp:
             wheel = releases.fetch_asset(self, version, "wheel", Path(tmp) / "wheel", what=f"JSON Tables {version} wheel", pin_key="wheel")

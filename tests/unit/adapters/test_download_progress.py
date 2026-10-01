@@ -138,6 +138,21 @@ class RendererProgressTest(unittest.TestCase):
         self.assertEqual(lines[1], "  [ok] Step 1/6  Exasol launcher")
         self.assertEqual(lines[2], "  [ok] Step 2/6  Local database deployment already done, skipping")
 
+    def test_a_working_line_is_replaced_by_the_outcome_in_fancy_mode_and_printed_in_plain_mode(self):
+        out = io.StringIO()
+        r = ConsoleRenderer(palette=FANCY, out=out, interactive=True)
+        r.working("Downloading exapump v0.13.0")
+        self.assertIsNotNone(r._spin)
+        self.assertTrue(r._transient)
+        r.ok("exapump v0.13.0 installed")
+        self.assertIsNone(r._spin)
+        text = out.getvalue()
+        self.assertIn("exapump v0.13.0 installed\n", text)
+        self.assertNotIn("Downloading exapump v0.13.0\n", text)              # never a permanent line
+        plain = io.StringIO()
+        ConsoleRenderer(palette=PLAIN, out=plain, interactive=False).working("Downloading exapump v0.13.0")
+        self.assertEqual(plain.getvalue().strip(), "- Downloading exapump v0.13.0")
+
     def test_the_silent_renderer_logs_the_label_and_draws_nothing(self):
         from tests.unit.fakes import ListLog
         log = ListLog()

@@ -226,7 +226,7 @@ def apply(ctx: Context, ids: list[str]) -> Result:
     installed, failed = [], []
     for addon_id in ids:
         addon = ctx.catalog.addon(addon_id)
-        ctx.ui.info(f"Installing add-on: {addon_id}")
+        ctx.ui.working(f"Installing add-on: {addon_id}")
         if install_one(ctx, addon):
             note = for_addon(ctx, addon).summary()
             ctx.ui.ok(f"{addon_id} installed{' - ' + note if note else ''}")

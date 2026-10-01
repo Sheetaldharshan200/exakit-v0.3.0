@@ -164,7 +164,7 @@ class Lifecycle(PythonVenvLifecycle):
         if self.package_version() == version.lstrip("v") and not force:
             self.ctx.ui.ok(f"dash-server {version} already installed: {self.venv}")
         else:
-            self.ctx.ui.info(f"Installing dash-server {version}")
+            self.ctx.ui.working(f"Installing dash-server {version}")
             self.install_package(version)
             self.restore_package_data(version)
             self.ctx.ui.ok(f"dash-server installed: {self.venv}")
@@ -259,7 +259,7 @@ class Lifecycle(PythonVenvLifecycle):
             self.ctx.ui.ok("dash-server is already stopped")
             self.pidfile.unlink(missing_ok=True)
             return
-        self.ctx.ui.info("Stopping dash-server")
+        self.ctx.ui.working("Stopping dash-server")
         for pid in pids:
             self.ctx.runner.run(["pkill", "-P", str(pid)], timeout=5)
             self.ctx.runner.run(["kill", str(pid)], timeout=5)

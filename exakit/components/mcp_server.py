@@ -65,7 +65,7 @@ class Lifecycle(ComponentBase):
                          remedy="exakit update mcp")
         started = time.monotonic()
         spec = f"{self.package}@{version}"
-        self.ctx.ui.info(f"Priming {spec} (downloads on first use)")
+        self.ctx.ui.working(f"Priming {spec} (downloads on first use)")
         self.ctx.log.line("CMD", f"{self.uvx()} {spec} --help")
         done = self.ctx.runner.run([self.uvx(), spec, "--help"], timeout=900)
         if done.ok or PRIMED.search(done.out + done.err):
@@ -97,7 +97,7 @@ class Lifecycle(ComponentBase):
 
     def validate(self) -> None:
         """The server answers the stdio handshake; records validated."""
-        self.ctx.ui.info("Validating the MCP server (stdio handshake)")
+        self.ctx.ui.working("Validating the MCP server (stdio handshake)")
         host, port, _, _ = self.runtime_connection()
         user, pw_file = self.credentials()
         env = {**dict(self.ctx.env), "EXA_DSN": f"{host}:{port}", "EXA_USER": user or "", "EXA_PASSWORD": self.password(pw_file) or "",
@@ -140,7 +140,7 @@ class Lifecycle(ComponentBase):
         if latest == current:
             self.ctx.ui.ok(f"MCP server is already current ({current})")
             return
-        self.ctx.ui.info(f"Updating MCP server {current or 'unknown'} -> {latest}")
+        self.ctx.ui.working(f"Updating MCP server {current or 'unknown'} -> {latest}")
         self.snapshot()
         self.install(latest)
         try:
@@ -157,7 +157,7 @@ class Lifecycle(ComponentBase):
         if dry_run:
             self.ctx.ui.info("  will remove: the managed MCP configuration from the AI clients")
             return ["mcp configs"]
-        self.ctx.ui.info("Removing the managed MCP configuration from the AI clients")
+        self.ctx.ui.working("Removing the managed MCP configuration from the AI clients")
         clients = mcp_app.managed(self.ctx)
         if clients and mcp_app._clients(self.ctx).operation("uninstall", self.ctx.paths.home, clients).code != 0:
             self.ctx.ui.warn("Removing the managed AI client config reported issues")

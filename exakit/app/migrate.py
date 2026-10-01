@@ -116,7 +116,7 @@ def migrate_now(ctx: Context, db: ldb.LegacyDb, *, yes: bool) -> MigrateOutcome:
     clash = db.dsn.rpartition(":")[2] == str(rt.db_port())
     db_running = rt.running()
     ctx.ui.text("")
-    ctx.ui.info(f"Copying the tables of the container '{db.container}' ({db.engine_name}, {state}) into your database.")
+    ctx.ui.working(f"Copying the tables of the container '{db.container}' ({db.engine_name}, {state}) into your database.")
     ctx.ui.info("The kit's bundled sample data is left out - the kit loads that itself. Nothing in the container is changed or removed.")
     ctx.ui.info("One caveat worth knowing: a text column that held an empty string arrives as NULL.")
     if clash and db_running:
@@ -137,7 +137,7 @@ def _copy_and_restore(ctx: Context, db: ldb.LegacyDb, state: str, directory: Pat
         db_stopped = True
     started = False
     if state != "running":
-        ctx.ui.info(f"Starting the container '{db.container}'")
+        ctx.ui.working(f"Starting the container '{db.container}'")
         if not ldb.start_container(ctx, db):
             if db_stopped:
                 runtime(ctx).start(ctx.ui.info)
@@ -180,7 +180,7 @@ def _export_then_restore(ctx: Context, db: ldb.LegacyDb, directory: Path, outcom
                          started: bool, clash: bool, db_stopped: bool) -> MigrateOutcome:
     shutil.rmtree(directory, ignore_errors=True)
     ctx.manifest_store.update(lambda m: [m.delete(k) for k in ("legacy.restored", "legacy.restore_skipped", "legacy.restore_failed")])
-    ctx.ui.info(f"Copying {len(found.own)} table(s) out of the old database")
+    ctx.ui.working(f"Copying {len(found.own)} table(s) out of the old database")
     outcome.exported = ldb.export(ctx, directory, found.own)
     if not outcome.exported:
         _settle(ctx, db, started, clash, db_stopped)
@@ -189,7 +189,7 @@ def _export_then_restore(ctx: Context, db: ldb.LegacyDb, directory: Path, outcom
     ctx.ui.ok(f"Copied {outcome.exported} table(s) out; they are saved at {directory}")
     if not _settle(ctx, db, started, clash, db_stopped):
         return _fail(ctx, outcome, f"Your database did not come back, so the copy is not restored yet. It is kept at {directory}.", "exakit start, then exakit migrate docker-nano")
-    ctx.ui.info("Restoring your data into the new database")
+    ctx.ui.working("Restoring your data into the new database")
     imported = ldb.import_(ctx, directory)
     if imported is None:
         return _fail(ctx, outcome, f"Your data could not be restored. The copy is kept at {directory}.", "exakit migrate docker-nano")

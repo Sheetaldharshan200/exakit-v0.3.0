@@ -77,7 +77,7 @@ class HostExtensionLifecycle(LifecycleBase):
             self.ctx.ui.ok(f"{self.addon.id} {version} already installed")
         else:
             asset = self.asset_name(version)
-            self.ctx.ui.info(f"Downloading {self.addon.title} v{version} ({asset})")
+            self.ctx.ui.working(f"Downloading {self.addon.title} v{version} ({asset})")
             with temp_dir("exakit-vsix-") as tmp:
                 vsix = Path(tmp) / asset
                 self.fetch_verified(download_url(self.addon.source["repo"], f"v{version}", asset, endpoints=self.ctx.catalog.kit.endpoints), vsix,

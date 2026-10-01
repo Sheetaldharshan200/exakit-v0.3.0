@@ -40,6 +40,10 @@ class SilentRenderer:
         """Log the line."""
         self.log.line("INFO", text)
 
+    def working(self, text: str) -> None:
+        """Log the announcement; nothing is drawn."""
+        self.log.line("INFO", text)
+
     def ok(self, text: str) -> None:
         """Log the success."""
         self.log.line("OK", text)

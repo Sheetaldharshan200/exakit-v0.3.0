@@ -87,6 +87,23 @@ class ScreensTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("✓ Step 1/6  Exasol launcher", rows["install/launcher"])
         self.assertIn("Step 1/6  Exasol launcher", log)
 
+    async def test_a_working_line_is_a_live_row_that_the_next_line_removes(self):
+        from exakit.ui.tui.panels import ProgressRow
+        seen = {}
+
+        def job(ui):
+            ui.working("Downloading exapump v0.13.0")
+            seen["live"] = ui.app.call_from_thread(lambda: len(ui.app.query(ProgressRow)))
+            ui.ok("exapump v0.13.0 installed")
+            seen["after"] = ui.app.call_from_thread(lambda: len(ui.app.query(ProgressRow)))
+            return Result(True, "ok")
+
+        _app, transcript, _rows, log = await self._run(job)
+        self.assertEqual(seen, {"live": 1, "after": 0})
+        self.assertNotIn("Downloading exapump v0.13.0", log)
+        self.assertIn("✓ exapump v0.13.0 installed", log)
+        self.assertIn("- Downloading exapump v0.13.0", transcript)          # the plain transcript keeps the record
+
     async def test_select_answers_with_the_arrow_keys(self):
         answers = []
 

@@ -71,7 +71,7 @@ class Lifecycle(ComponentBase):
         if current == version and not self.force():
             self.ctx.ui.ok(f"pyexasol {current} already installed: {self.venv}")
         else:
-            self.ctx.ui.info(f"Installing pyexasol {version} (Exasol Python driver)")
+            self.ctx.ui.working(f"Installing pyexasol {version} (Exasol Python driver)")
             uv = self.uv()
             if not self.python.exists():
                 uv.venv(self.venv, seed=True)
@@ -93,7 +93,7 @@ class Lifecycle(ComponentBase):
             self.ctx.ui.warn("Runtime connection details are incomplete; skipping the pyexasol live check. Re-run setup to retry.")
             self.record(validated=False)
             return
-        self.ctx.ui.info("Validating pyexasol against the database (SELECT 1)")
+        self.ctx.ui.working("Validating pyexasol against the database (SELECT 1)")
         done = self.ctx.runner.run([str(self.python), "-c", LIVE_CHECK], timeout=120,
                                    env={"EXAKIT_PYX_DSN": f"{host}:{port}", "EXAKIT_PYX_USER": user, "EXAKIT_PYX_PWFILE": pw_file})
         if done.ok:
@@ -111,7 +111,7 @@ class Lifecycle(ComponentBase):
         if current and current == latest:
             self.ctx.ui.ok(f"pyexasol is already current ({current})")
             return
-        self.ctx.ui.info(f"Updating pyexasol {current or 'not installed'} -> {latest}")
+        self.ctx.ui.working(f"Updating pyexasol {current or 'not installed'} -> {latest}")
         self.install(latest)
         self.validate()
         self.record_desired(latest)
@@ -122,7 +122,7 @@ class Lifecycle(ComponentBase):
         if dry_run:
             self.ctx.ui.info(f"  will remove: pyexasol (the managed venv at {self.venv})")
             return [str(self.venv)] if self.venv.exists() else []
-        self.ctx.ui.info("Removing the pyexasol venv")
+        self.ctx.ui.working("Removing the pyexasol venv")
         existed = self.venv.exists()
         shutil.rmtree(self.venv, ignore_errors=True)
         self.forget()
