@@ -37,6 +37,7 @@ class Step:
     remedy: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """The step as the plan document prints it."""
         doc: dict[str, Any] = {"id": self.id, "state": self.state.value}
         if self.reason:
             doc["reason"] = self.reason
@@ -52,9 +53,11 @@ class Plan:
     remedy_command: str = ""   # the command that applies this plan, without --yes
 
     def pending(self, section: str | None = None) -> list[Step]:
+        """The pending steps, in one section when named."""
         return [s for s in self.steps if s.state is StepState.PENDING and (section is None or s.section == section)]
 
     def failed(self) -> list[Step]:
+        """The failed steps."""
         return [s for s in self.steps if s.state is StepState.FAILED]
 
     def by_section(self) -> dict[str, list[Step]]:
@@ -66,6 +69,7 @@ class Plan:
 
     @property
     def complete(self) -> bool:
+        """True when nothing is pending."""
         return not self.pending()
 
     def to_dict(self) -> dict[str, Any]:

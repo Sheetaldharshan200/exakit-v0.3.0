@@ -42,6 +42,7 @@ class ConsoleRenderer:
 
     @property
     def fancy(self) -> bool:
+        """True when the palette draws colour and glyphs."""
         return self.p.fancy
 
     # --- lines -------------------------------------------------------------------
@@ -51,9 +52,11 @@ class ConsoleRenderer:
         self.out.flush()
 
     def text(self, line: str) -> None:
+        """Write a line as is."""
         self._w(line)
 
     def banner(self, title: str, subtitle: str = "") -> None:
+        """Draw the kit's banner with a title and subtitle."""
         self._w()
         self._w(f"  {self.p.bold}{title}{self.p.reset}")
         if subtitle:
@@ -61,23 +64,28 @@ class ConsoleRenderer:
         self._w()
 
     def heading(self, text: str) -> None:
+        """Write a step heading."""
         self._w(f"  {self.p.ok}{self.p.arrow}{self.p.reset} {text}")
         self.log.line("INFO", text)
 
     def info(self, text: str) -> None:
+        """Write an informational line."""
         self._w(f"    {self.p.dim}{self.p.bullet}{self.p.reset} {text}")
         self.log.line("INFO", text)
 
     def ok(self, text: str) -> None:
+        """Write a success line."""
         self._w(f"      {self.p.ok}{self.p.tick}{self.p.reset} {text}")
         self.log.line("OK", text)
 
     def warn(self, text: str) -> None:
+        """Write a warning to the error stream and the log."""
         self.err.write(f"      {self.p.warn}!{self.p.reset} {text}\n")
         self.err.flush()
         self.log.line("WARN", text)
 
     def error(self, text: str) -> None:
+        """Write an error to the error stream and the log."""
         self.err.write(f"      {self.p.err}{self.p.cross}{self.p.reset} {text}\n")
         self.err.flush()
         self.log.line("ERROR", text)
@@ -93,6 +101,7 @@ class ConsoleRenderer:
         self.err.flush()
 
     def rule(self) -> None:
+        """Draw a horizontal rule."""
         width = min(76, max(8, term_cols() - 4))
         self._w()
         self._w(f"  {self.p.dim}{self.p.hr * width}{self.p.reset}")
@@ -161,6 +170,7 @@ class ConsoleRenderer:
         yield
 
     def step_begin(self, step: Step | str) -> None:
+        """Announce a plan step as it starts."""
         label = step if isinstance(step, str) else f"{SECTION_LABELS.get(step.section, step.section)}: {step.id}"
         self._step_t0 = time.monotonic()
         if self.fancy and self.interactive:
@@ -170,6 +180,7 @@ class ConsoleRenderer:
             self._w(f"  {self.p.arrow} {label}...")
 
     def step_end(self, step: Step | str, *, ok: bool = True, detail: str = "") -> None:
+        """Close a plan step with its outcome."""
         label = step if isinstance(step, str) else f"{SECTION_LABELS.get(step.section, step.section)}: {step.id}"
         if isinstance(step, Step):
             ok = step.state is not StepState.FAILED
@@ -192,6 +203,7 @@ class ConsoleRenderer:
         return self._read().strip()
 
     def confirm(self, question: str, default: bool = True) -> bool:
+        """Ask a yes/no question; the default answers when there is no terminal."""
         if not self.interactive:
             return default
         answer = self._ask(question, "[Y/n]" if default else "[y/N]")
@@ -200,6 +212,7 @@ class ConsoleRenderer:
         return answer.lower() in ("y", "yes")
 
     def prompt(self, question: str, default: str = "") -> str:
+        """Ask for a line of text; the default answers when there is no terminal."""
         if not self.interactive:
             return default
         answer = self._ask(question, f"[{default}]" if default else "")
@@ -251,6 +264,7 @@ class _Spinner:
         self._thread = threading.Thread(target=self._run, daemon=True)
 
     def start(self) -> None:
+        """Start the spinner."""
         self.out.write("\x1b[?25l")
         self._thread.start()
 
@@ -263,6 +277,7 @@ class _Spinner:
             self._stop.wait(0.1)
 
     def stop(self) -> None:
+        """Stop the spinner and clear its line."""
         self._stop.set()
         self._thread.join(timeout=1)
         self.out.write("\r\x1b[K\x1b[?25h")
@@ -270,8 +285,10 @@ class _Spinner:
 
 
 def plain(out: IO[str] = sys.stdout, *, interactive: bool = False, log: Log | None = None) -> ConsoleRenderer:
+    """A renderer without colour or glyphs."""
     return ConsoleRenderer(palette=PLAIN, out=out, interactive=interactive, log=log)
 
 
 def fancy(out: IO[str] = sys.stdout, *, interactive: bool = True, log: Log | None = None) -> ConsoleRenderer:
+    """True when the palette draws colour and glyphs."""
     return ConsoleRenderer(palette=FANCY, out=out, interactive=interactive, log=log)

@@ -85,6 +85,7 @@ class UrllibDownloader:
             raise
 
     def text(self, url: str, *, token: str | None = None) -> str:
+        """The body of an https URL as text."""
         _require_https(url)
         with self._open(url, token) as response:
             return response.read().decode("utf-8")

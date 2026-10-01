@@ -27,6 +27,7 @@ LEGACY_RUNTIME_TYPES = ("nano",)
 
 
 def platform_fields(ctx: Context) -> dict[str, Any]:
+    """The platform keys of the status document."""
     return {"platform": "wsl" if ctx.platform.is_wsl else ctx.platform.os, "wsl_version": ctx.platform.wsl_version}
 
 
@@ -110,6 +111,7 @@ def _missing_steps(steps: list[str], remedies: dict[str, str], hints: dict[str, 
 
 
 def legacy_database(manifest: Manifest, install_cmd: str) -> dict[str, Any] | None:
+    """The legacy database block of the document, or None."""
     container = manifest.get("legacy.container")
     if not container:
         return None
@@ -129,6 +131,7 @@ def legacy_database(manifest: Manifest, install_cmd: str) -> dict[str, Any] | No
 
 
 def service_rows(ctx: Context) -> tuple[dict[str, str], dict[str, str]]:
+    """(states, urls) of the add-on services."""
     states, urls = {}, {}
     for service in services.service_ids(ctx):
         if service.id == "database":
@@ -141,17 +144,20 @@ def service_rows(ctx: Context) -> tuple[dict[str, str], dict[str, str]]:
 
 
 def autostart_on(ctx: Context) -> bool:
+    """True when every service's login item is registered."""
     ids = services.service_ids(ctx)
     return bool(ids) and all(services.autostart_registered(ctx, s.id) for s in ids)
 
 
 def stray_launchers(ctx: Context) -> list[str]:
+    """Launchers in the bin dir that belong to no installed add-on."""
     if not ctx.paths.bin_dir.is_dir():
         return []
     return sorted(str(p) for p in ctx.paths.bin_dir.glob("exasol.backup-*") if p.is_file())
 
 
 def run(ctx: Context) -> Result:
+    """``exakit status``: the state, exit 3 when the database is not running."""
     manifest = ctx.manifest_or_none()
     if manifest is None:
         raise not_installed(ctx)

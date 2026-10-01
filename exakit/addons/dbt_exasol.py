@@ -57,15 +57,18 @@ exec "{dbt}" "$@"
 class Lifecycle(PythonVenvLifecycle):
     @property
     def profile(self) -> str:
+        """The dbt profile name the kit writes (catalog config)."""
         return str(self.addon.config["profile"])
 
     seed = False
 
     @property
     def home(self) -> Path:
+        """The folder the profiles live in."""
         return self.ctx.paths.home / "dbt"
 
     def write_profile(self) -> None:
+        """Write profiles.yml with the runtime's connection details, owner-only."""
         dsn, user, _ = self.runtime_credentials()
         if not dsn:
             self.ctx.ui.warn("No database DSN is recorded yet - the dbt profile has no address until the kit install completes.")
@@ -73,18 +76,22 @@ class Lifecycle(PythonVenvLifecycle):
         atomic_write_text(self.home / "profiles.yml", PROFILES.format(profile=self.profile, dsn=dsn, user=user, schema=self.addon.config["schema"]), mode=0o600)
 
     def launcher_content(self) -> str | None:
+        """The dbt launcher script, or None before the credentials exist."""
         _, _, pw_file = self.runtime_credentials()
         return LAUNCHER.format(profile=self.profile, pwfile=pw_file or "", profiles_dir=self.home, dbt=self.uv().bin_of(self.venv, "dbt"))
 
     def write_launchers(self) -> None:
+        """Write the profile and the launcher."""
         self.write_profile()
         super().write_launchers()
 
     def install(self, version: str) -> None:
+        """Install the package into its venv, then the profile and the launcher."""
         super().install(version)
         self.record(profiles_dir=str(self.home), profile=self.profile)
 
     def db_reachable(self) -> bool:
+        """True when the database port answers."""
         dsn, _, _ = self.runtime_credentials()
         host, _, port = dsn.rpartition(":")
         if not host or not port.isdigit():
@@ -96,6 +103,7 @@ class Lifecycle(PythonVenvLifecycle):
             return False
 
     def validate(self) -> None:
+        """dbt imports and connects with the kit's profile; records validated."""
         if not self.python.exists():
             return
         if not self.ctx.runner.run([str(self.python), "-c", "import dbt.adapters.exasol"], timeout=60).ok:
@@ -119,9 +127,11 @@ class Lifecycle(PythonVenvLifecycle):
             self.ctx.ui.warn("dbt could not connect to the database - check with: dbt-exasol debug --connection")
 
     def summary(self) -> str | None:
+        """The closing line naming the command."""
         return "build SQL models: dbt-exasol"
 
     def system_present(self) -> bool:
+        """True when a dbt that is not the kit's is on PATH."""
         found = self.ctx.runner.which("dbt")
         if found and str(self.venv) not in found and str(self.ctx.paths.home) not in found:
             done = self.ctx.runner.run([found, "--version"], timeout=60)
@@ -130,6 +140,7 @@ class Lifecycle(PythonVenvLifecycle):
         return False
 
     def uninstall(self, *, dry_run: bool) -> list[str]:
+        """Remove the venv, the launcher and the profiles folder."""
         removed = self.remove_paths([self.venv, self.ctx.paths.bin_dir / "dbt-exasol", self.home / "profiles.yml"], dry_run=dry_run)
         if dry_run:
             self.ctx.ui.text("  (anything else in that folder is left alone)")

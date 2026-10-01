@@ -25,6 +25,7 @@ def confirm_env(ctx: Context, name: str, question: str, *, default: bool) -> boo
 
 
 def record(ctx: Context, status: str | None = None) -> None:
+    """Write the runtime's details into the record."""
     rt = runtime(ctx)
     warning = None
     def change(m):
@@ -40,6 +41,7 @@ def record(ctx: Context, status: str | None = None) -> None:
 
 
 def foreign_db_hint(ctx: Context) -> str:
+    """A hint when another Exasol listens on the port."""
     rt = runtime(ctx)
     if not rt.tls_answers():
         return ""

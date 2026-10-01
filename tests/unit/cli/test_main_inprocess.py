@@ -26,8 +26,8 @@ class _Run:
         out, err = io.StringIO(), io.StringIO()
         # No terminal, whatever the developer's shell has: a menu must never read /dev/tty from a test.
         with mock.patch.dict(os.environ, base, clear=True), mock.patch("exakit.ui.has_terminal", return_value=False), \
-                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            self.code = cli.main(list(argv))
+                mock.patch("sys.stdin", io.StringIO()), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            self.code = cli.main(list(argv))     # an empty stdin: `exakit sql` reads it when no statement is given
         self.out, self.err = out.getvalue(), err.getvalue()
 
     def doc(self) -> dict:

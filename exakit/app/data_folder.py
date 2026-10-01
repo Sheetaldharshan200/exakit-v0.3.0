@@ -30,6 +30,7 @@ class ScanEntry:
 
 
 def scan_folder(folder: Path) -> list[ScanEntry]:
+    """What the folder holds, file by file, with the decision for each."""
     entries: list[ScanEntry] = []
     seen_tables: dict[str, Path] = {}
     seen_sizes: dict[int, list[tuple[Path, str]]] = {}
@@ -79,6 +80,7 @@ def _looks_tabular(path: Path) -> bool:
 
 
 def load_folder(ctx: Context, folder: Path) -> Result:
+    """Load a folder's files, skipping what already landed."""
     pump = exapump(ctx)
     if pump is None:
         raise Failed("exapump (the data-loading CLI) is not installed", remedy="exakit update")

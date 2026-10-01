@@ -37,9 +37,11 @@ class Row:
 
     @property
     def status(self) -> str:
+        """The status word the listing shows."""
         return STATUS_WORDS[self.state]
 
     def to_dict(self) -> dict[str, Any]:
+        """The row as ``marketplace --list --json`` prints it."""
         doc: dict[str, Any] = {"id": self.addon.id, "status": self.status, "installed": self.state == ADDON_INSTALLED}
         if self.version:
             doc["version"] = self.version
@@ -49,10 +51,12 @@ class Row:
 
 
 def known_ids(ctx: Context) -> str:
+    """The add-on ids, space-separated, for messages."""
     return " ".join(ctx.catalog.addon_ids())
 
 
 def row_for(ctx: Context, addon: Addon) -> Row:
+    """The listing row of one add-on: state, reason, versions."""
     state, reason = addon_state(ctx, addon, ctx.manifest_or_none())
     version = None
     if state == ADDON_INSTALLED:
@@ -66,6 +70,7 @@ def row_for(ctx: Context, addon: Addon) -> Row:
 
 
 def rows(ctx: Context) -> list[Row]:
+    """Every add-on's listing row."""
     return [row_for(ctx, a) for a in ctx.catalog.addons()]
 
 
@@ -162,6 +167,7 @@ def _menu_answer(ctx: Context, table: list[Row]) -> list[str] | None:
 
 
 def choose(ctx: Context, explicit: list[str] | None = None) -> list[str] | None:
+    """The add-on ids to install: the explicit list, the persona's or environment's answer, or the menu."""
     table = rows(ctx)
     answer = ",".join(explicit) if explicit else ctx.env.get("EXAKIT_MARKETPLACE_ADDONS", "")
     if answer:
@@ -204,6 +210,7 @@ def install_one(ctx: Context, addon: Addon) -> bool:
 
 
 def apply(ctx: Context, ids: list[str]) -> Result:
+    """Install the chosen add-ons one by one; the answer names what landed and what failed."""
     installed, failed = [], []
     for addon_id in ids:
         addon = ctx.catalog.addon(addon_id)

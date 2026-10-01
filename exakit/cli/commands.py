@@ -43,6 +43,7 @@ def _help_color(ctx: Context) -> bool:
 
 
 def help_command(args: list[str], ctx: Context) -> Result:
+    """``exakit help``: the overview, a topic's page, every command, or the JSON document."""
     positional, flags = _split(args, (*JSON_FLAGS, "--all", "-a", "--help", "-h"), "help")
     docs = _help_docs(ctx)
     topic = positional[0] if positional else ""
@@ -73,10 +74,12 @@ def topic_help(topic: str, ctx: Context) -> Result:
 
 
 def is_help_topic(topic: str, ctx: Context) -> bool:
+    """True when ``topic`` is the id of a help document (a component or tool)."""
     return topic in _help_docs(ctx)
 
 
 def catalog_command(args: list[str], ctx: Context) -> Result:
+    """``exakit catalog [search]``: every command in one screen, or the JSON surface."""
     positional, _ = _split(args, JSON_FLAGS, "catalog")
     docs = _help_docs(ctx)
     search = " ".join(positional)
@@ -88,6 +91,7 @@ def catalog_command(args: list[str], ctx: Context) -> Result:
 
 
 def whats_new_command(args: list[str], ctx: Context) -> Result:
+    """``exakit whats-new [version]``: the cards from help/whats-new.json."""
     positional, _ = _split(args, JSON_FLAGS, "whats-new")
     return whats_new.run(ctx, positional[0] if positional else None)
 
@@ -96,6 +100,7 @@ def whats_new_command(args: list[str], ctx: Context) -> Result:
 
 
 def version_command(args: list[str], ctx: Context) -> Result:
+    """``exakit version``: installed and advertised versions per component and add-on."""
     _split(args, JSON_FLAGS, "version")
     return version_app.run(ctx)
 
@@ -104,6 +109,7 @@ def version_command(args: list[str], ctx: Context) -> Result:
 
 
 def persona_command(args: list[str], ctx: Context) -> Result:
+    """``exakit persona list|show|plan|apply``: the persona use cases behind one entry."""
     positional, flags = _split(args, (*JSON_FLAGS, "--yes", "-y"), "persona")
     sub = positional[0] if positional else ""
     pid = positional[1] if len(positional) > 1 else ""
@@ -136,30 +142,36 @@ def persona_command(args: list[str], ctx: Context) -> Result:
 
 
 def status_command(args: list[str], ctx: Context) -> Result:
+    """``exakit status``: the kit's state, exit 3 when the database is not running."""
     _split(args, JSON_FLAGS, "status")
     return status_app.run(ctx)
 
 
 def info_command(args: list[str], ctx: Context) -> Result:
+    """``exakit info``: the connection panel, or the install record under --json."""
     _split(args, JSON_FLAGS, "info")
     return info_app.run(ctx)
 
 
 def start_command(args: list[str], ctx: Context) -> Result:
+    """``exakit start``: the database and the add-on services."""
     _split(args, (), "start")
     return runtime_app.start(ctx)
 
 
 def stop_command(args: list[str], ctx: Context) -> Result:
+    """``exakit stop``: the database and the add-on services; the data is kept."""
     _split(args, (), "stop")
     return runtime_app.stop(ctx)
 
 
 def autostart_command(args: list[str], ctx: Context) -> Result:
+    """``exakit autostart``: whether the kit's services start at login, and the offer to change it."""
     return runtime_app.autostart(ctx, args)
 
 
 def update_command(args: list[str], ctx: Context) -> Result:
+    """``exakit update [target]``: apply the advertised versions."""
     return update_app.run(ctx, args)
 
 
@@ -167,14 +179,17 @@ def update_command(args: list[str], ctx: Context) -> Result:
 
 
 def marketplace_command(args: list[str], ctx: Context) -> Result:
+    """``exakit marketplace``: list, install or offer the optional add-ons."""
     return marketplace_app.run(ctx, args)
 
 
 def uninstall_command(args: list[str], ctx: Context) -> Result:
+    """``exakit uninstall [addon]``: one add-on, the menu, or everything with --yes."""
     return uninstall_app.run(ctx, args)
 
 
 def install_command(args: list[str], ctx: Context) -> Result:
+    """``exakit install``: the whole install, resumable; --dry-run shows the plan."""
     for arg in args:
         if arg.startswith("-"):
             raise BadInput(f"Unknown option '{arg}' for install (supported: --dry-run; answers come from EXAKIT_* variables or EXAKIT_PERSONA).")
@@ -183,20 +198,24 @@ def install_command(args: list[str], ctx: Context) -> Result:
 
 
 def guide_command(args: list[str], ctx: Context) -> Result:
+    """``exakit guide``: how to connect AI clients, SQL clients and Python."""
     _split(args, (), "guide")
     return guide_app.run(ctx)
 
 
 def preflight_command(args: list[str], ctx: Context) -> Result:
+    """``exakit preflight``: this machine's requirements, nothing written."""
     _split(args, JSON_FLAGS, "preflight")
     return requirements_app.preflight(ctx)
 
 
 def repair_runtime_command(args: list[str], ctx: Context) -> Result:
+    """``exakit repair-runtime``: rebuild an interrupted deployment, with consent."""
     return repair_app.run(ctx, args)
 
 
 def migrate_command(args: list[str], ctx: Context) -> Result:
+    """``exakit migrate docker-nano``: bring a legacy database's tables over."""
     return migrate_app.migrate(ctx, args)
 
 
@@ -204,6 +223,7 @@ def migrate_command(args: list[str], ctx: Context) -> Result:
 
 
 def skills_command(args: list[str], ctx: Context) -> Result:
+    """``exakit skills``: the skill set and where each skill stands."""
     positional, _ = _split(args, JSON_FLAGS, "skills")
     if positional:
         raise BadInput(f"Unknown option '{positional[0]}' for skills (supported: --json).")
@@ -211,6 +231,7 @@ def skills_command(args: list[str], ctx: Context) -> Result:
 
 
 def skills_install_command(args: list[str], ctx: Context) -> Result:
+    """``exakit skills-install``: place the skills into the agents' folders."""
     _split(args, (), "skills-install")
     ctx.manifest()   # exit 4 without an install record
     return skills_app.skills_install_command(ctx)
@@ -220,6 +241,7 @@ def skills_install_command(args: list[str], ctx: Context) -> Result:
 
 
 def mcp_setup_command(args: list[str], ctx: Context) -> Result:
+    """``exakit mcp-setup [clients]``: configure the MCP server in the AI clients."""
     for arg in args:
         if arg.startswith("-"):
             raise BadInput(f"Unknown option '{arg}' for mcp-setup (it takes none; name clients with EXAKIT_MCP_CLIENTS=claude,codex exakit mcp-setup).")
@@ -233,16 +255,19 @@ def mcp_setup_command(args: list[str], ctx: Context) -> Result:
 
 
 def mcp_status_command(args: list[str], ctx: Context) -> Result:
+    """``exakit mcp-status [clients]``: which clients the kit manages and their config files."""
     positional, _ = _split(args, JSON_FLAGS, "mcp-status")
     return mcp_app.status(ctx, positional)
 
 
 def mcp_doctor_command(args: list[str], ctx: Context) -> Result:
+    """``exakit mcp-doctor [clients]``: check and repair the MCP configuration."""
     positional, _ = _split(args, JSON_FLAGS, "mcp-doctor")
     return mcp_app.doctor(ctx, positional)
 
 
 def mcp_remove_command(args: list[str], ctx: Context) -> Result:
+    """``exakit mcp-remove <client>...``: take the kit's entries out of those clients."""
     positional, _ = _split(args, (), "mcp-remove")
     return mcp_app.remove(ctx, positional)
 
@@ -251,12 +276,14 @@ def mcp_remove_command(args: list[str], ctx: Context) -> Result:
 
 
 def sql_command(args: list[str], ctx: Context) -> Result:
+    """``exakit sql <statement>``: one statement through exapump, with the read-only guardrail."""
     if args and args[0] in ("--help", "-h") and len(args) == 1:
         return topic_help("sql", ctx)
     return sql_app.run(ctx, args)
 
 
 def logs_command(args: list[str], ctx: Context) -> Result:
+    """``exakit logs [target]``: the install, database and add-on logs."""
     return logs_app.run(ctx, args)
 
 
@@ -264,4 +291,5 @@ def logs_command(args: list[str], ctx: Context) -> Result:
 
 
 def data_load_command(args: list[str], ctx: Context) -> Result:
+    """``exakit data-load [path]``: the bundled datasets, or the user's own files."""
     return data_app.data_load(ctx, args)

@@ -17,6 +17,7 @@ REQUIRED = ("setup/exakit", "setup/exakit.ps1", "setup/exakit.cmd", "versions.js
 
 
 def kit_version_at(root: Path, path: str = "kit.version") -> str | None:
+    """The kit version a kit copy's versions.json names, or None."""
     try:
         node = json.loads((root / "versions.json").read_text(encoding="utf-8"))
         for part in path.split("."):
@@ -32,10 +33,12 @@ class Lifecycle(ComponentBase):
     step = "exakit_helper"
 
     def installed_version(self) -> str | None:
+        """The installed kit version, or None."""
         from exakit.app.machine import installed_version
         return installed_version(self.ctx, "exakit", self.ctx.manifest_or_none())[0]
 
     def target_version(self) -> str:
+        """The advertised kit version."""
         doc = self.ctx.versions.current()
         latest = doc.kit_version() if doc else None
         if not latest:
@@ -43,6 +46,7 @@ class Lifecycle(ComponentBase):
         return latest
 
     def install(self, version: str) -> None:
+        """A first install is an update."""
         self.update()
 
     # --- the self-update -----------------------------------------------------------------------
@@ -111,6 +115,7 @@ class Lifecycle(ComponentBase):
         return staged, backup if had_kit else None
 
     def update(self, options: list[str] | None = None) -> None:
+        """Download, stage and swap the kit copy, reinstall the launcher, re-place the skills."""
         from exakit.app import skills, whats_new
         from exakit.app.machine import kit_root
         latest = self.target_version()

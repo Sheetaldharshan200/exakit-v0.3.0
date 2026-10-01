@@ -30,6 +30,7 @@ class ServiceSpec:
 
     @property
     def label(self) -> str:
+        """The service's name as the OS sees it."""
         return f"{PREFIX}.{self.id}"
 
 
@@ -53,6 +54,7 @@ class LaunchdServices:
         return self.agents_dir / f"{PREFIX}.{service_id}.plist"
 
     def register(self, spec: ServiceSpec) -> RegisterOutcome:
+        """Install the login item for the service; the outcome says whether it took and why not."""
         plist = self._plist(spec.id)
         log_path = self.logs_dir / f"autostart-{spec.id}.log"
         args = "".join(f"      <string>{escape(a)}</string>\n" for a in spec.argv)
@@ -79,6 +81,7 @@ class LaunchdServices:
         return RegisterOutcome(True)
 
     def unregister(self, service_id: str) -> bool:
+        """Remove the service's login item; True when one was there."""
         plist = self._plist(service_id)
         if not plist.exists():
             return False
@@ -87,6 +90,7 @@ class LaunchdServices:
         return True
 
     def registered(self, service_id: str) -> bool:
+        """True when the service has a login item."""
         return self._plist(service_id).exists()
 
 
@@ -101,6 +105,7 @@ class SystemdUserServices:
         return bool(self.runner.which("systemctl")) and self.runner.run(["systemctl", "--user", "show-environment"], timeout=10).ok
 
     def register(self, spec: ServiceSpec) -> RegisterOutcome:
+        """Install the login item for the service; the outcome says whether it took and why not."""
         if not self._available():
             notes = [f"{spec.id}: this session has no systemd --user, so nothing was registered."]
             if self.wsl:
@@ -129,6 +134,7 @@ class SystemdUserServices:
         return RegisterOutcome(True, tuple(notes))
 
     def unregister(self, service_id: str) -> bool:
+        """Remove the service's login item; True when one was there."""
         unit = self._unit(service_id)
         if not unit.exists():
             return False
@@ -138,6 +144,7 @@ class SystemdUserServices:
         return True
 
     def registered(self, service_id: str) -> bool:
+        """True when the service has a login item."""
         if not self._unit(service_id).exists():
             return False
         state = self.runner.run(["systemctl", "--user", "is-enabled", f"{PREFIX}.{service_id}.service"], timeout=10).out.strip()
@@ -154,6 +161,7 @@ class WindowsStartupServices:
         return self.startup_dir / f"{PREFIX}.{service_id}.cmd"
 
     def register(self, spec: ServiceSpec) -> RegisterOutcome:
+        """Install the login item for the service; the outcome says whether it took and why not."""
         command = " ".join(f'"{a}"' if " " in a else a for a in spec.argv)
         atomic_write_text(self._entry(spec.id), "\r\n".join([
             "@echo off", f"rem Starts {spec.id} at login - written by the Exasol Personal Local Starter Kit.",
@@ -161,6 +169,7 @@ class WindowsStartupServices:
         return RegisterOutcome(True)
 
     def unregister(self, service_id: str) -> bool:
+        """Remove the service's login item; True when one was there."""
         entry = self._entry(service_id)
         if not entry.exists():
             return False
@@ -168,10 +177,12 @@ class WindowsStartupServices:
         return True
 
     def registered(self, service_id: str) -> bool:
+        """True when the service has a login item."""
         return self._entry(service_id).exists()
 
 
 def for_platform(platform: Platform, *, home: Path, logs_dir: Path, runner: Runner, env: dict[str, str], log: Log | None = None) -> Services:
+    """The services adapter for this platform: launchd, a systemd user unit, or the Windows Startup folder."""
     if platform.os == "macos":
         return LaunchdServices(Path(env.get("EXAKIT_LAUNCHAGENT_DIR") or home / "Library" / "LaunchAgents"), logs_dir, runner, log)
     if platform.os == "linux":

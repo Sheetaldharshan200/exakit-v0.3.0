@@ -35,6 +35,7 @@ def _key(version: str) -> tuple[int, ...]:
 
 
 def points(root: Path, version: str) -> list[str] | None:
+    """The card lines of a version, or None."""
     doc = _load(root)
     if doc is None:
         return None
@@ -47,6 +48,7 @@ def crossed(root: Path, from_version: str, to_version: str) -> list[str]:
 
 
 def run(ctx: Context, version: str | None) -> Result:
+    """``exakit whats-new``."""
     root = kit_root(ctx)
     version = version or kit_bundled_version(ctx) or (ctx.manifest_or_none() or _NoManifest()).get("kit.version")
     if not version:
@@ -72,4 +74,5 @@ def run(ctx: Context, version: str | None) -> Result:
 
 class _NoManifest:
     def get(self, path: str, default=None):
+        """The empty record answers the default."""
         return default

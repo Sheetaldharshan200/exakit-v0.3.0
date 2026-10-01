@@ -26,37 +26,45 @@ class Lifecycle(ComponentBase):
 
     @property
     def bin(self) -> Path:
+        """The binary in the bin dir."""
         return self.ctx.paths.bin_dir / ("exapump.exe" if self.ctx.platform.os == "windows" else "exapump")
 
     @property
     def config_path(self) -> Path:
+        """exapump's config.toml (EXAKIT_EXAPUMP_CONFIG_DIR overrides the folder)."""
         base = self.ctx.env.get("EXAKIT_EXAPUMP_CONFIG_DIR") or str(Path(self.ctx.env.get("HOME") or Path.home()) / ".exapump")
         return Path(base) / "config.toml"
 
     @property
     def profile(self) -> str:
+        """The profile name the kit writes (EXAKIT_EXAPUMP_PROFILE overrides)."""
         return self.ctx.env.get("EXAKIT_EXAPUMP_PROFILE") or "starter-kit"
 
     def cli(self) -> str:
+        """The exapump to run: the kit's own, else the one on PATH."""
         if self.bin.exists():
             return str(self.bin)
         return self.ctx.runner.which("exapump") or str(self.bin)
 
     def live_version(self, path: str | None = None) -> str | None:
+        """The version the binary answers, or None."""
         done = self.ctx.runner.run([path or self.cli(), "--version"], timeout=10)
         match = VERSION_IN_TEXT.search(done.out.splitlines()[0] if done.ok and done.out else "")
         return match.group(0) if match else None
 
     def installed_version(self) -> str | None:
+        """The version the installed binary answers, or None."""
         return self.live_version() if Path(self.cli()).exists() else None
 
     # --- install ---------------------------------------------------------------------------
 
     def asset_name(self, version: str) -> str:
+        """The release asset for this version and platform, from the catalog's template."""
         suffix = ".exe" if self.ctx.platform.os == "windows" else ""
         return str(self.source["asset"]).format(version=version, platform=self.ctx.platform.platform_key, exe=suffix)
 
     def digest_for(self, version: str, asset: str) -> str | None:
+        """The sha256 to verify against: versions.json's, else the catalog's pin, else None."""
         published = self.published_digest(version, self.ctx.platform.platform_key)
         return published or (self.source.get("sha256") or {}).get(asset)
 
@@ -102,6 +110,7 @@ class Lifecycle(ComponentBase):
         return True
 
     def install(self, version: str) -> None:
+        """Download the verified binary, place it, prove it runs (shimming an old glibc), record it."""
         if self.ctx.platform.arch not in ("aarch64", "x86_64"):
             raise Failed(f"Unsupported CPU architecture: {self.ctx.platform.arch}. exapump binaries exist for x86_64 and arm64 only.")
         if self._keep_existing(version):
@@ -151,6 +160,7 @@ class Lifecycle(ComponentBase):
     # --- the profile and the check --------------------------------------------------------------
 
     def create_profile(self) -> None:
+        """Write the starter-kit profile with the runtime's connection details."""
         host, port, user, pw_file = self.runtime_connection()
         if not host or not port:
             raise Failed("No runtime DSN in the manifest - install the database first.", remedy=self.ctx.install_command())
@@ -163,6 +173,7 @@ class Lifecycle(ComponentBase):
         self.ctx.ui.ok(f"Connection profile [{self.profile}] written to {self.config_path}")
 
     def validate(self) -> None:
+        """The profile exists and a query answers; records validated."""
         if not self.recorded("profile"):
             raise Failed(f"No connection profile exists (no database password was available to write one). Create it manually with "
                          f"'exapump profile init {self.profile}', then re-run.")
@@ -179,6 +190,7 @@ class Lifecycle(ComponentBase):
     # --- update and uninstall ----------------------------------------------------------------------
 
     def update(self, options: list[str] | None = None) -> None:
+        """Install the advertised version when it differs from the installed one."""
         latest = self.target_version()
         current = self.installed_version()
         recorded = self.recorded("version")
@@ -201,6 +213,7 @@ class Lifecycle(ComponentBase):
         self.ctx.ui.ok("exapump updated without changing database data")
 
     def uninstall(self, *, dry_run: bool) -> list[str]:
+        """Remove the binary, the profile folder and the glibc shim's real binary."""
         targets = [self.bin, self.config_path.parent, self.ctx.paths.home / "libexec"]
         if dry_run:
             self.ctx.ui.info(f"  will remove: exapump ({self.bin} and the profiles at {self.config_path.parent})")

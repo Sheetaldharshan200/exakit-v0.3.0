@@ -42,6 +42,7 @@ class Component:
 
     @classmethod
     def from_doc(cls, doc: dict[str, Any]) -> Component:
+        """A Component from a validated document."""
         return cls(
             id=doc["id"], title=doc["title"], kind=doc["kind"], source=dict(doc.get("source") or {"type": "kit"}),
             install_order=int(doc.get("install_order", 100)), step_id=doc.get("step_id"),
@@ -52,6 +53,7 @@ class Component:
 
 
 def validate_component(doc: Any, *, expected_id: str | None = None) -> Problems:
+    """Every problem with a component document, empty when it is valid; ``expected_id`` must match the file name."""
     problems: Problems = []
     if not _check_schema(doc, problems):
         return problems
@@ -96,6 +98,7 @@ class Addon:
 
     @classmethod
     def from_doc(cls, doc: dict[str, Any], directory: Path | None = None) -> Addon:
+        """An Addon from a validated document; ``directory`` is where its files live."""
         return cls(
             id=doc["id"], title=doc["title"], kind=doc["kind"], source=dict(doc["source"]),
             platforms=tuple(doc.get("platforms") or ()), requires=tuple(doc.get("requires") or ()),
@@ -107,10 +110,12 @@ class Addon:
         )
 
     def supports(self, platform_key: str) -> bool:
+        """True when the add-on runs on that platform key; an empty list means everywhere."""
         return not self.platforms or platform_key in self.platforms
 
 
 def validate_addon(doc: Any, *, expected_id: str | None = None) -> Problems:
+    """Every problem with an add-on document, empty when it is valid."""
     problems: Problems = []
     if not _check_schema(doc, problems):
         return problems
@@ -150,6 +155,7 @@ class Persona:
 
     @classmethod
     def from_doc(cls, doc: dict[str, Any], *, source: str, path: Path | None = None) -> Persona:
+        """A Persona from a validated document; ``source`` is kit or user."""
         def norm(value: Any) -> str | tuple[str, ...]:
             return value if isinstance(value, str) else tuple(value)
         return cls(
@@ -159,6 +165,7 @@ class Persona:
         )
 
     def to_dict(self) -> dict[str, Any]:
+        """The persona as the document it was read from: what ``persona show --json`` prints."""
         def raw(value: str | tuple[str, ...]) -> Any:
             return value if isinstance(value, str) else list(value)
         return {
@@ -225,30 +232,39 @@ class Catalog:
     # --- lookups; unknown ids are BadInput naming the known ones ----------------------
 
     def component(self, cid: str) -> Component:
+        """The component with that id; an unknown id is BadInput naming the known ones."""
         return self._lookup(self._components, cid, "component")
 
     def addon(self, aid: str) -> Addon:
+        """The add-on with that id; an unknown id is BadInput naming the known ones."""
         return self._lookup(self._addons, aid, "marketplace add-on")
 
     def persona(self, pid: str) -> Persona:
+        """The persona with that id; an unknown id is BadInput naming the known ones."""
         return self._lookup(self._personas, pid, "persona")
 
     def has_addon(self, aid: str) -> bool:
+        """True when an add-on with that id is registered."""
         return aid in self._addons
 
     def component_ids(self) -> list[str]:
+        """Component ids in install order."""
         return [c.id for c in sorted(self._components.values(), key=lambda c: (c.install_order, c.id))]
 
     def addon_ids(self) -> list[str]:
+        """Add-on ids, sorted."""
         return sorted(self._addons)
 
     def persona_ids(self) -> list[str]:
+        """Persona ids, sorted; a user's file shadows the kit's of the same id."""
         return list(self._personas)
 
     def personas(self) -> list[Persona]:
+        """Every persona, in id order."""
         return list(self._personas.values())
 
     def addons(self) -> list[Addon]:
+        """Every add-on, in id order."""
         return [self._addons[a] for a in self.addon_ids()]
 
     @staticmethod

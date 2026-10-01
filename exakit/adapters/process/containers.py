@@ -27,6 +27,7 @@ def find_engine(runner: Runner, container: str, *, timeout: int, prefer: str | N
 
 
 def engine_answers(runner: Runner, engine: Engine, *, timeout: int) -> bool:
+    """True when the engine answers."""
     done = runner.run([engine.path, "version", "--format", "{{.Server.Version}}"], timeout=timeout)
     return done.ok and bool(done.out.strip())
 
@@ -47,14 +48,17 @@ def container_state(runner: Runner, engine: Engine | None, container: str, *, ti
 
 
 def start_container(runner: Runner, engine: Engine, container: str, *, timeout: int) -> bool:
+    """Start the container."""
     return runner.run([engine.path, "start", container], timeout=timeout).ok
 
 
 def stop_container(runner: Runner, engine: Engine, container: str, *, timeout: int) -> bool:
+    """Stop the container."""
     return runner.run([engine.path, "stop", container], timeout=timeout).ok
 
 
 def published_port(runner: Runner, engine: Engine, container: str, *, timeout: int, inner: str = "8563/tcp") -> int | None:
+    """The host port the container publishes, or None."""
     done = runner.run([engine.path, "port", container, inner], timeout=timeout)
     for line in done.out.splitlines() if done.ok else []:
         if line.startswith("["):

@@ -83,6 +83,7 @@ def free_disk_gb(platform: Platform, runner: Runner, path: Path) -> int:
 
 
 def free_disk_note(platform: Platform, runner: Runner, path: Path) -> str | None:
+    """A note about where the free disk really is (WSL's backing drive), or None."""
     drive = wsl_backing_drive(platform, runner)
     if drive is None or str(path).startswith("/mnt/"):
         return None
@@ -105,6 +106,7 @@ def wsl_drvfs_path(platform: Platform, runner: Runner, path: Path) -> bool:
 
 
 def macos_translated(platform: Platform, runner: Runner) -> bool:
+    """True when this shell runs under Rosetta 2 and reports itself as Intel."""
     if platform.os != "macos":
         return False
     done = runner.run(["sysctl", "-n", "sysctl.proc_translated"], timeout=5)
@@ -112,6 +114,7 @@ def macos_translated(platform: Platform, runner: Runner) -> bool:
 
 
 def cpu_advertises_sve(platform: Platform) -> bool:
+    """True when an arm64 Linux CPU advertises SVE (which the database needs off)."""
     if platform.os != "linux" or platform.arch != "aarch64":
         return False
     try:
@@ -161,6 +164,7 @@ def podman_install_command(runner: Runner) -> str | None:
 
 
 def podman_install_command_unattended(command: str) -> str:
+    """The Podman install command with its prompts answered."""
     if command.startswith("apt-get"):
         return (f"DEBIAN_FRONTEND=noninteractive apt-get update -qq </dev/null && DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a "
                 f"NEEDRESTART_SUSPEND=1 {command} -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold </dev/null")
@@ -168,6 +172,7 @@ def podman_install_command_unattended(command: str) -> str:
 
 
 def uidmap_install_command(runner: Runner) -> str | None:
+    """The command that installs uidmap here, or None."""
     table = (("apt-get", "apt-get install -y uidmap"), ("dnf", "dnf install -y shadow-utils"), ("zypper", "zypper install -y shadow"),
              ("pacman", "pacman -S --noconfirm shadow"))
     for tool, command in table:

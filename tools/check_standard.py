@@ -176,10 +176,22 @@ def rule_shell() -> Iterator[Finding]:
                 yield name, number, "non-ASCII byte in the shell layer"
 
 
+def _public_functions(tree: ast.Module) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef]:
+    """Module-level functions and methods: closures nested in a function are not an interface."""
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            yield node
+        elif isinstance(node, ast.ClassDef):
+            for member in node.body:
+                if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    yield member
+
+
 def rule_docstrings() -> Iterator[Finding]:
     for path, _text, tree in modules():
-        for fn in functions(tree):
-            if not fn.name.startswith("_") and ast.get_docstring(fn) is None and path.name != "__init__.py":
+        for fn in _public_functions(tree):
+            trivial = len(fn.body) == 1 and isinstance(fn.body[0], ast.Expr) and isinstance(getattr(fn.body[0], "value", None), ast.Constant)
+            if not fn.name.startswith("_") and ast.get_docstring(fn) is None and path.name != "__init__.py" and not trivial:
                 yield rel(path), fn.lineno, f"public function {fn.name} has no docstring"
 
 

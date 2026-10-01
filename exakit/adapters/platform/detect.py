@@ -21,4 +21,5 @@ def wsl_version() -> int | None:
 
 
 def detect() -> Platform:
+    """This machine's platform."""
     return make_platform(_platform.system(), _platform.machine(), wsl_version() if _platform.system() == "Linux" else None)

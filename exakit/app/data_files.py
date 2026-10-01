@@ -34,6 +34,7 @@ COMPRESSED = (".gz", ".bz2", ".zst", ".xz")
 
 
 def table_name_from_path(path: Path) -> str:
+    """The table name a file loads into: its stem, upper-cased and made an identifier."""
     stem = path.name.split("?")[0].rsplit(".", 1)[0] if "." in path.name else path.name
     name = re.sub(r"[^A-Z0-9_]", "_", stem.upper()).strip("_")
     name = re.sub(r"_+", "_", name)
@@ -41,6 +42,7 @@ def table_name_from_path(path: Path) -> str:
 
 
 def file_kind(path: Path) -> str:
+    """csv, parquet, json or unknown, from the file's extensions (compression included)."""
     name = path.name.lower()
     for ext in COMPRESSED:
         if name.endswith(ext):
@@ -56,6 +58,7 @@ def file_kind(path: Path) -> str:
 
 
 def valid_target(text: str) -> bool:
+    """True when ``text`` is SCHEMA.TABLE made of identifier characters."""
     return bool(re.fullmatch(r"[A-Za-z0-9_]+\.[A-Za-z0-9_]+", text))
 
 
@@ -66,6 +69,7 @@ class CsvInfo:
 
     @property
     def delimiter_name(self) -> str:
+        """The delimiter's name for messages."""
         return {",": "comma", ";": "semicolon", "\t": "tab"}[self.delimiter]
 
 
@@ -187,18 +191,21 @@ class Receipts:
 
     @classmethod
     def load(cls, path: Path) -> Receipts:
+        """The receipts file as rows; missing means none."""
         rows = []
         if path.is_file():
             rows = [line.split("\t") for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
         return cls(path, rows)
 
     def record(self, target: str, file: Path, rows: int) -> None:
+        """Note that a file landed in a table, with its size and row count."""
         self.rows.append([target.upper(), str(file.stat().st_size), _sha256(file), str(rows), str(int(time.time())), file.name])
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write("\t".join(self.rows[-1]) + "\n")
 
     def forget(self, target: str) -> None:
+        """Drop the receipts of one table."""
         self.rows = [r for r in self.rows if r[0] != target.upper()]
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text("".join("\t".join(r) + "\n" for r in self.rows), encoding="utf-8")
@@ -218,6 +225,7 @@ class Receipts:
 
 
 def json_tables_bin(ctx: Context) -> Path | None:
+    """The exasol-json-tables launcher to use, or None when the add-on is absent."""
     bin_path = Path(ctx.env.get("EXAKIT_JSON_TABLES_BIN") or ctx.paths.bin_dir / "exasol-json-tables")
     return bin_path if bin_path.exists() else None
 
@@ -275,6 +283,7 @@ def load_json(ctx: Context, pump: Exapump, path: Path, target: str) -> list[str]
 
 
 def ensure_schema_for(ctx: Context, pump: Exapump, schema: str) -> None:
+    """Create the schema when it does not exist."""
     from .data import ensure_schema
     ensure_schema(ctx, pump, schema)
 
@@ -283,6 +292,7 @@ def ensure_schema_for(ctx: Context, pump: Exapump, schema: str) -> None:
 
 
 def load_local_path(ctx: Context, path: Path) -> Result:
+    """Load a file or a folder the user named; the dispatch behind ``exakit data-load <path>``."""
     if path.is_dir():
         from .data_folder import load_folder
         return load_folder(ctx, path)
@@ -290,6 +300,7 @@ def load_local_path(ctx: Context, path: Path) -> Result:
 
 
 def load_file(ctx: Context, path: Path) -> Result:
+    """Load one file into the schema: CSV and Parquet through exapump, JSON through json-tables."""
     pump = exapump(ctx)
     if pump is None:
         raise Failed("exapump (the data-loading CLI) is not installed", remedy="exakit update")

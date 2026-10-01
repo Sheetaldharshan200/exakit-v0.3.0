@@ -18,6 +18,7 @@ RUNTIME_WORDS = {"runtime", "database", "db"}
 
 
 def targets(ctx: Context, target: str) -> list[str]:
+    """The components an update target names, in order."""
     manifest = ctx.manifest()
     if target == "all":
         out = ["exakit", "runtime", "exapump", "mcp", "pyexasol", "skills"]
@@ -31,6 +32,7 @@ def targets(ctx: Context, target: str) -> list[str]:
 
 
 def actual(ctx: Context, component: str) -> str:
+    """The component id behind a runtime word."""
     if component in RUNTIME_WORDS:
         rtype = ctx.manifest().runtime_type()
         if not rtype:
@@ -40,12 +42,14 @@ def actual(ctx: Context, component: str) -> str:
 
 
 def current_version(ctx: Context, component: str) -> str | None:
+    """The installed version of a component or add-on, or None."""
     if ctx.catalog.has_addon(component):
         return for_addon(ctx, ctx.catalog.addon(component)).installed_version()
     return installed_version(ctx, component, ctx.manifest_or_none())[0]
 
 
 def is_ahead(current: str | None, advertised: str | None) -> bool:
+    """True when the installed version is newer than the advertised one."""
     return bool(current and advertised and current not in ("unknown", "not installed") and is_newer(current, advertised))
 
 
@@ -115,6 +119,7 @@ def offer_runtime(ctx: Context, name: str, current: str, latest: str, yes: bool)
 
 
 def apply_runtime(ctx: Context, options: list[str] | None = None) -> None:
+    """Update the Exasol Personal runtime through the launcher."""
     rt = runtime(ctx)
     was_running = rt.status().state == "running"
     for_component(ctx, "runtime").update(options)
@@ -136,6 +141,7 @@ def apply_runtime(ctx: Context, options: list[str] | None = None) -> None:
 
 
 def update_one(ctx: Context, component: str, options: list[str]) -> None:
+    """Update one component or add-on."""
     if ctx.catalog.has_addon(component):
         for_addon(ctx, ctx.catalog.addon(component)).update()
         return
@@ -203,6 +209,7 @@ def _offer_heavy(ctx: Context, name: str, current: str | None, advertised: str |
 
 
 def run(ctx: Context, args: list[str]) -> Result:
+    """``exakit update``: apply the advertised versions, offering the runtime change."""
     target, options, yes = parse_args(args)
     ctx.manifest()
     plan = targets(ctx, target)

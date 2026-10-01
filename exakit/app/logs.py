@@ -22,6 +22,7 @@ class LogTarget:
 
 
 def targets(ctx: Context) -> list[LogTarget]:
+    """The logs the kit knows about here."""
     out: list[LogTarget] = []
     installs = sorted(ctx.paths.logs.glob("install-*.log"), key=lambda p: p.stat().st_mtime) if ctx.paths.logs.is_dir() else []
     if installs:
@@ -54,6 +55,7 @@ def _updated(path: Path) -> str:
 
 
 def run(ctx: Context, args: list[str]) -> Result:
+    """``exakit logs``."""
     follow, path_only, lines, target = _parse_logs_args(args)
     known = targets(ctx)
     if target is None:

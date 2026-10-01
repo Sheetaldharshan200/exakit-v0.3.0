@@ -19,6 +19,7 @@ class Completed:
 
     @property
     def ok(self) -> bool:
+        """True when the exit code is zero."""
         return self.code == 0
 
 
@@ -35,6 +36,7 @@ class SubprocessRunner:
 
     def run(self, cmd: Sequence[str], *, env: Mapping[str, str] | None = None, cwd: Path | None = None,
             timeout: float | None = None, stdin: str | None = None) -> Completed:
+        """Run a command and capture both streams; a timeout answers code 124."""
         full_env = dict(os.environ)
         if env:
             full_env.update(env)
@@ -50,6 +52,7 @@ class SubprocessRunner:
         return Completed(done.returncode, done.stdout, done.stderr)
 
     def which(self, name: str) -> str | None:
+        """The path of a command on PATH, or None."""
         return shutil.which(name)
 
     def spawn(self, cmd: Sequence[str], *, log_path: Path) -> int:

@@ -22,6 +22,7 @@ class FileLog:
         self.path = path or logs_dir / f"{prefix}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
 
     def line(self, level: str, message: str) -> None:
+        """Append one line; a missing directory ends the log silently."""
         if self.path is None:
             return
         try:

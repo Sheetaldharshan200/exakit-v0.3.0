@@ -26,6 +26,7 @@ def _explain(ctx: Context) -> None:
 
 
 def reset_dataset_flags(ctx: Context) -> None:
+    """Forget which datasets were loaded."""
     datasets = data.bundled(ctx)
     def change(m):
         for ds in datasets:
@@ -36,6 +37,7 @@ def reset_dataset_flags(ctx: Context) -> None:
 
 
 def run(ctx: Context, args: list[str]) -> Result:
+    """``exakit repair-runtime``: rebuild the deployment with consent."""
     yes = ctx.yes
     for arg in args:
         if arg in ("--yes", "-y"):

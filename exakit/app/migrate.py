@@ -31,6 +31,7 @@ class MigrateOutcome:
 
     @property
     def ok(self) -> bool:
+        """True when the migration finished or had nothing to do."""
         return self.status in ("done", "nothing")
 
 
@@ -94,6 +95,7 @@ def _stop_for_port(ctx: Context, db_port: int, outcome: MigrateOutcome) -> bool:
 
 
 def migrate_now(ctx: Context, db: ldb.LegacyDb, *, yes: bool) -> MigrateOutcome:
+    """Run the migration: export, stop, import, report."""
     outcome = MigrateOutcome()
     if not db.container:
         return _fail(ctx, outcome, "No container is named. Say which one holds the old database: exakit migrate docker-nano --container <name>")
@@ -211,6 +213,7 @@ USAGE = "exakit migrate docker-nano [--container NAME] [--engine docker|podman] 
 
 
 def parse_args(args: list[str]) -> tuple[dict[str, str], bool]:
+    """The overrides and the --yes flag."""
     source = args[0] if args else ""
     if source != "docker-nano":
         if not source or source.startswith("-"):
@@ -247,6 +250,7 @@ def parse_args(args: list[str]) -> tuple[dict[str, str], bool]:
 
 
 def migrate(ctx: Context, args: list[str]) -> Result:
+    """``exakit migrate docker-nano``."""
     overrides, yes = parse_args(args)
     ctx.manifest()
     if ctx.manifest().runtime_type() != "personal":

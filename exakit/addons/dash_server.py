@@ -50,27 +50,33 @@ exec "{venv_bin}" "$@"
 class Lifecycle(PythonVenvLifecycle):
     @property
     def home(self) -> Path:
+        """The add-on's folder under the kit home."""
         return self.ctx.paths.home / "dash-server"
 
     @property
     def instance(self) -> Path:
+        """Where dashboards are stored."""
         return self.home / "instance"
 
     @property
     def pidfile(self) -> Path:
+        """The server's pid file."""
         return self.home / "dash-server.pid"
 
     @property
     def log_file(self) -> Path:
+        """The server's log under the kit's logs."""
         return self.ctx.paths.logs / "dash-server.log"
 
     @property
     def launcher(self) -> Path:
+        """The launcher in the bin dir."""
         return self.ctx.paths.bin_dir / "dash-server"
 
     # --- port ----------------------------------------------------------------------
 
     def port(self) -> int:
+        """The port: EXAKIT_DASH_SERVER_PORT, else the recorded one, else the catalog's service port."""
         explicit = self.ctx.env.get("EXAKIT_DASH_SERVER_PORT", "")
         if explicit.isdigit():
             return int(explicit)
@@ -90,6 +96,7 @@ class Lifecycle(PythonVenvLifecycle):
         return holders[0].description
 
     def settle_port(self) -> int:
+        """A free port at or past the configured one; a port held by something else is walked past or refused."""
         port = self.port()
         holder = self.foreign_holder(port)
         if holder is None:
@@ -140,6 +147,7 @@ class Lifecycle(PythonVenvLifecycle):
                 self.ctx.ui.info(f"Restored {copied} data file(s) the package left out")
 
     def launcher_content(self) -> str | None:
+        """The launcher script, or None before the runtime credentials exist."""
         dsn, user, pw_file = self.runtime_credentials()
         manifest = self.ctx.manifest_or_none()
         ro_user = manifest.get("components.mcp_server.connection.user") if manifest else None
@@ -150,6 +158,7 @@ class Lifecycle(PythonVenvLifecycle):
                                venv_bin=self.uv().bin_of(self.venv, "dash-server"))
 
     def install(self, version: str) -> None:
+        """Install the package into its venv, write the launcher, start the server and validate it."""
         port = self.settle_port()
         force = self.ctx.env.get("EXAKIT_FORCE_COMPONENT_INSTALL") == "1"
         if self.package_version() == version.lstrip("v") and not force:
@@ -173,6 +182,7 @@ class Lifecycle(PythonVenvLifecycle):
     # --- validate and service ----------------------------------------------------------
 
     def validate(self) -> None:
+        """The server imports and answers over HTTP; records validated and ui_validated."""
         if not self.python.exists():
             return
         if not self.ctx.runner.run([str(self.python), "-c", "import dash_server"], timeout=60).ok:
@@ -197,6 +207,7 @@ class Lifecycle(PythonVenvLifecycle):
             self.record(validated=False)
 
     def status(self) -> str:
+        """running, stopped, or not installed."""
         if not self.launcher.exists():
             return "not installed"
         port = self.port()
@@ -206,6 +217,7 @@ class Lifecycle(PythonVenvLifecycle):
         return f"stopped (port {port} is held by another process: {holder})" if holder else "stopped"
 
     def start(self) -> None:
+        """Start the server as a daemon and wait for it to answer."""
         if not self.launcher.exists():
             self.ctx.ui.warn("dash-server is not installed - add it with: exakit marketplace")
             raise Failed("dash-server is not installed", remedy="exakit marketplace dash-server")
@@ -228,6 +240,7 @@ class Lifecycle(PythonVenvLifecycle):
         raise Failed("dash-server did not start", remedy="exakit logs dash-server")
 
     def pids(self) -> list[int]:
+        """The pids of the kit's running server processes."""
         pids: set[int] = set()
         try:
             pid = int(self.pidfile.read_text().strip())
@@ -240,6 +253,7 @@ class Lifecycle(PythonVenvLifecycle):
         return sorted(pids)
 
     def stop(self) -> None:
+        """Stop the server by pid."""
         pids = self.pids()
         if not pids and not self.http_answers(self.port()):
             self.ctx.ui.ok("dash-server is already stopped")
@@ -259,19 +273,23 @@ class Lifecycle(PythonVenvLifecycle):
         self.ctx.ui.ok("dash-server stopped")
 
     def service(self) -> ServiceHooks:
+        """The hooks start, stop and autostart use."""
         return ServiceHooks(status=self.status, start=self.start, stop=self.stop,
                             url=lambda: f"http://127.0.0.1:{self.port()}", log_path=lambda: self.log_file,
                             autostart=lambda: ServiceSpec("dash-server", (str(self.launcher), "--host", "127.0.0.1", "--port", str(self.port()))))
 
     def summary(self) -> str | None:
+        """The closing line with the dashboards URL."""
         return f"dashboards: http://127.0.0.1:{self.port()}"
 
     # --- update and uninstall ----------------------------------------------------------------
 
     def repair(self) -> None:
+        """Rewrite the launcher."""
         self.write_launchers()
 
     def uninstall(self, *, dry_run: bool) -> list[str]:
+        """Stop the server and remove the venv, the folder and the launcher; dashboards go with the kit home."""
         if not dry_run:
             with contextlib.suppress(Failed):
                 self.stop()

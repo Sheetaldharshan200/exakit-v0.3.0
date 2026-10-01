@@ -35,6 +35,7 @@ class Profile:
     schema: str | None = None
 
     def toml(self) -> str:
+        """The profile as a TOML section."""
         lines = [f"[{self.name}]", f'host = "{_toml(self.host)}"', f"port = {self.port}",
                  f'user = "{_toml(self.user)}"', f'password = "{_toml(self.password)}"']
         if self.schema:
@@ -83,26 +84,31 @@ class ExapumpCli:
         return env
 
     def sql(self, profile: str, text: str, *, config: Path | None = None, json_rows: bool = False, timeout: float = 600) -> Completed:
+        """Run one statement with a profile."""
         cmd = [self.bin, "sql", "-p", profile]
         if json_rows:
             cmd += ["-f", "json"]
         return self.runner.run(cmd, stdin=text.rstrip("\n") + "\n", env=self._env(config), timeout=timeout)
 
     def sql_file(self, profile: str, path: Path, *, timeout: float = 3600) -> Completed:
+        """Run a SQL file with a profile."""
         return self.runner.run([self.bin, "sql", "-p", profile], stdin=path.read_text(encoding="utf-8"),
                                env=self._env(None), timeout=timeout)
 
     def upload(self, file: Path, table: str, profile: str, *, delimiter: str | None = None, timeout: float = 3600) -> Completed:
+        """Upload a CSV or Parquet file into a table."""
         cmd = [self.bin, "upload", str(file), "--table", table, "-p", profile]
         if delimiter and delimiter != ",":
             cmd += ["--delimiter", delimiter]
         return self.runner.run(cmd, env=self._env(None), timeout=timeout)
 
     def export_query(self, profile: str, query: str, dest: Path, *, timeout: float = 3600) -> Completed:
+        """Export a query's result to a file."""
         cmd = [self.bin, "export", "-p", profile, "--query", query, "--format", "csv", "-o", str(dest)]
         return self.runner.run(cmd, env=self._env(None), timeout=timeout)
 
     def version(self) -> str | None:
+        """The version exapump answers, or None."""
         done = self.runner.run([self.bin, "--version"], timeout=10)
         match = re.search(r"[0-9]+\.[0-9]+[0-9A-Za-z._+-]*", done.out.splitlines()[0] if done.out else "")
         return match.group(0) if done.ok and match else None
@@ -125,6 +131,7 @@ def temp_config(directory: Path, profiles: list[Profile]) -> Iterator[Path]:
 
 
 def has_token(done: Completed, token: str) -> bool:
+    """True when the run succeeded and printed the token."""
     return done.ok and token in done.out
 
 

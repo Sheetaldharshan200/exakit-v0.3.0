@@ -84,6 +84,7 @@ class CachedVersionsSource:
         return None
 
     def current(self) -> VersionsDoc | None:
+        """The manifest in use, after a refresh."""
         if self._label is not None:
             return self._doc
         baked = self._read(self.baked_path, "baked")
@@ -103,6 +104,7 @@ class CachedVersionsSource:
         return self._label or "fallback"
 
     def schema_ahead(self) -> bool:
+        """True when the fetched manifest needs a newer kit."""
         return self._schema_ahead
 
     # --- refreshing ---------------------------------------------------------------

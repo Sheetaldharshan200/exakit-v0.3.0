@@ -33,12 +33,14 @@ def _int(ctx: Context, name: str, default: int) -> int:
 
 
 def sanitise(text: str) -> str:
+    """The text without escapes, control characters and extra whitespace."""
     text = ESCAPES.sub("", text)
     text = CONTROL.sub(" ", text)
     return re.sub(r" +", " ", text).strip()
 
 
 def cap(text: str, max_len: int) -> str:
+    """The text cut at a word boundary within ``max_len``."""
     if max_len <= 0 or len(text) <= max_len:
         return text
     cut = text[:max_len]
@@ -52,6 +54,7 @@ def _fresh(path: Path, ttl: int) -> bool:
 
 
 def repo_of(ctx: Context, addon: Addon) -> str | None:
+    """The GitHub repository of an add-on, or None."""
     doc = help_app.load_docs(kit_root(ctx) / "help").get(addon.help or addon.id) or {}
     repo = doc.get("repo") or addon.source.get("repo")
     return str(repo) if repo else None

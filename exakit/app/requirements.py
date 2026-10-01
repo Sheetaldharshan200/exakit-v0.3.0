@@ -17,10 +17,12 @@ from .runtime_ops import runtime
 
 
 def user_home(ctx: Context) -> Path:
+    """The user's home directory, as the environment names it."""
     return Path(ctx.env.get("HOME") or Path.home())
 
 
 def note_failure(ctx: Context, reason: str) -> None:
+    """Leave the failure note status shows."""
     write_failure_note(ctx.paths.failure_note, reason, utc_now())
 
 
@@ -41,10 +43,12 @@ def supported_platforms(ctx: Context) -> tuple[str, ...]:
 
 
 def platform_words(keys: tuple[str, ...]) -> str:
+    """The platform keys in words, comma-separated."""
     return ", ".join(PLATFORM_WORDS.get(k, k) for k in keys)
 
 
 def this_platform_word(ctx: Context) -> str:
+    """This machine's platform in words."""
     p = ctx.platform
     return PLATFORM_WORDS.get(p.platform_key, f"{p.os}/{p.arch}") + (" under WSL" if p.is_wsl else "")
 
@@ -132,6 +136,7 @@ def _is_root() -> bool:
 
 
 def podman_installable(ctx: Context) -> bool:
+    """True when the kit knows how to install Podman here."""
     return bool(machine.podman_install_command(ctx.runner)) and (_is_root() or bool(ctx.runner.which("sudo")))
 
 
@@ -193,6 +198,7 @@ def _sudo_ready(ctx: Context, command: str) -> bool:
 
 
 def heal_rootless_podman(ctx: Context) -> None:
+    """Fix the rootless-Podman gaps the kit can fix (uidmap, subuid ranges)."""
     gap = machine.rootless_podman_gap(ctx.platform, ctx.runner)
     if gap is None:
         return
@@ -226,6 +232,7 @@ def heal_rootless_podman(ctx: Context) -> None:
 
 
 def podman_running(ctx: Context) -> bool:
+    """True when Podman answers on Linux."""
     if ctx.platform.os != "linux" or not ctx.runner.which("podman"):
         return True
     rt = runtime(ctx)

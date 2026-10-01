@@ -22,6 +22,7 @@ def read_failure_note(path: Path) -> tuple[str | None, str | None]:
 
 
 def write_failure_note(path: Path, reason: str, when: str) -> None:
+    """Leave the note status reads after a failed run."""
     if not path.parent.is_dir():
         return
     with contextlib.suppress(OSError):
@@ -29,6 +30,7 @@ def write_failure_note(path: Path, reason: str, when: str) -> None:
 
 
 def clear_failure_note(path: Path) -> None:
+    """Remove the note."""
     path.unlink(missing_ok=True)
 
 
@@ -42,6 +44,7 @@ def clear_runtime_failure_note(path: Path) -> bool:
 
 
 def process_start_time(pid: int, runner: Runner) -> str:
+    """When a process started, as ps prints it."""
     done = runner.run(["ps", "-o", "lstart=", "-p", str(pid)], timeout=5)
     return done.out.strip().splitlines()[0].strip() if done.ok and done.out.strip() else ""
 

@@ -67,9 +67,11 @@ class PortHolder:
 
     @property
     def description(self) -> str:
+        """The holder in words."""
         name = self.command.split()[0].rsplit("/", 1)[-1] if self.command else "unknown"
         return f"pid {self.pid} ({name})"
 
 
 def port_holders(port: int, runner: Runner) -> list[PortHolder]:
+    """The processes listening on a port."""
     return [PortHolder(pid, process_command(pid, runner)) for pid in listener_pids(port, runner)]

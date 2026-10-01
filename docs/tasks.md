@@ -77,7 +77,7 @@ Update this file in the same commit as the work. Design sections are in
 - [x] E6 Bugs the gates found and fixed: the installer never recorded the persona; a corrupt install record was a traceback; `update --dry-run` acted; `<command> --help --json` printed no JSON; the dry run did not validate `EXAKIT_PERSONA`; a 3.12-only f-string in `domain/catalog.py`; the two package workflows did not parse
 - [x] E7 The coverage gate is 70% (72% measured): the CLI entry point and every help page are exercised in process, the glibc shim and the Windows uninstall have tests
 - [ ] E8 Five commits in the pushed history carry an attribution trailer (before the rule); the release gate warns until the history is rewritten, which is the owner's call
-- [ ] E9 Docstrings on the 650 public functions the standard notes (not gating)
+- [x] E9 Every public function and method in `exakit/` carries a docstring (the rule counts module-level functions and methods, not closures); `tools/check_standard.py` reports 0
 
 ## Phase F: every default is data (2026-09-30)
 

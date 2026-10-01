@@ -101,6 +101,7 @@ class VersionsDoc:
 
     @classmethod
     def parse(cls, text: str) -> VersionsDoc:
+        """A VersionsDoc from the manifest's text; invalid text is VersionsInvalid."""
         try:
             doc = json.loads(text)
         except ValueError as err:
@@ -118,37 +119,46 @@ class VersionsDoc:
         return node
 
     def kit_version(self) -> str:
+        """The kit version the manifest advertises."""
         return str(self.raw["kit"]["version"])
 
     def updated(self) -> str | None:
+        """The manifest's updated date, or None."""
         value = self.raw.get("updated")
         return value if isinstance(value, str) else None
 
     def component(self, cid: str) -> dict[str, Any] | None:
+        """A component's block, or None."""
         block = self.raw["components"].get(cid)
         return block if isinstance(block, dict) else None
 
     def component_version(self, cid: str) -> str | None:
+        """The version advertised for a component, or None."""
         block = self.component(cid)
         return str(block["version"]) if block else None
 
     def sha256(self, cid: str, platform_key: str) -> str | None:
+        """The digest for a component on a platform, or None."""
         value = self.value(f"components.{cid}.sha256.{platform_key}")
         return value if isinstance(value, str) else None
 
     def tool(self, tid: str) -> dict[str, Any] | None:
+        """A tool's block (uv), or None."""
         block = self.value(f"tools.{tid}")
         return block if isinstance(block, dict) else None
 
     def severity(self, cid: str) -> str:
+        """The update severity for a component (normal by default)."""
         value = self.value(f"components.{cid}.severity")
         return value if value in ("recommended", "critical") else "normal"
 
     def note(self, cid: str) -> str | None:
+        """The note attached to a component's version, or None."""
         value = self.value(f"components.{cid}.note")
         return value if isinstance(value, str) and value else None
 
     def min_kit_version(self, cid: str) -> str | None:
+        """The kit version a component's version needs, or None."""
         value = self.value(f"components.{cid}.min_kit_version")
         return value if isinstance(value, str) and value else None
 

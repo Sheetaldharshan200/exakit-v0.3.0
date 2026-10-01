@@ -17,12 +17,14 @@ from exakit.domain.catalog import Catalog
 from exakit.ui import make_renderer
 
 def kit_root_for(paths: Paths) -> Path:
+    """The kit copy: the installed one, else this checkout."""
     if (paths.kit / "exakit").is_dir():
         return paths.kit
     return Path(__file__).resolve().parents[2]
 
 
 def build(*, json: bool, yes: bool, dry_run: bool, readonly: bool, mutating: bool) -> Context:
+    """The Context for this machine: the real adapters, wired once per command."""
     env = dict(os.environ)
     paths = Paths.from_env(env, Path.home())
     root = kit_root_for(paths)

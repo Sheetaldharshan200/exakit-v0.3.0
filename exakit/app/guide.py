@@ -9,6 +9,7 @@ from . import Context
 
 
 def run(ctx: Context) -> Result:
+    """``exakit guide``."""
     manifest = ctx.manifest()
     home = ctx.env.get("HOME", "")
     dsn = manifest.get("runtime.dsn") or ""

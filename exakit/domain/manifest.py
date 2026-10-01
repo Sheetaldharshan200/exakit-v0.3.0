@@ -58,14 +58,17 @@ class Manifest:
 
     @property
     def doc(self) -> dict[str, Any]:
+        """The record as a dict."""
         return self._doc
 
     @property
     def schema_version(self) -> int:
+        """The record's schema version (1 when unset)."""
         value = self._doc.get("schema_version", 1)
         return value if isinstance(value, int) else 1
 
     def copy(self) -> Manifest:
+        """A deep copy."""
         return Manifest(copy.deepcopy(self._doc))
 
     # --- dot-path access -------------------------------------------------------
@@ -107,23 +110,28 @@ class Manifest:
     # --- the records commands share ---------------------------------------------
 
     def steps_completed(self) -> list[str]:
+        """The install steps ticked so far, in order."""
         steps = self._doc.get("steps_completed")
         return [s for s in steps if isinstance(s, str)] if isinstance(steps, list) else []
 
     def mark_step(self, step_id: str) -> None:
+        """Tick an install step once."""
         steps = self.steps_completed()
         if step_id not in steps:
             steps.append(step_id)
         self._doc["steps_completed"] = steps
 
     def unmark_step(self, step_id: str) -> None:
+        """Untick an install step."""
         self._doc["steps_completed"] = [s for s in self.steps_completed() if s != step_id]
 
     def runtime_type(self) -> str | None:
+        """The recorded runtime type, or None."""
         value = self.get("runtime.type")
         return value if isinstance(value, str) and value else None
 
     def persona_id(self) -> str | None:
+        """The recorded persona id, or None."""
         value = self.get("persona.id")
         return value if isinstance(value, str) and value else None
 

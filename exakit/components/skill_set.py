@@ -20,13 +20,16 @@ class Lifecycle(ComponentBase):
     step = ""
 
     def installed_version(self) -> str | None:
+        """The recorded skill set version, or None."""
         return self.recorded("version") or None
 
     def fallback_version(self) -> str | None:
+        """The version the kit copy's skills carry."""
         from exakit.app.machine import skills_local_version
         return skills_local_version(self.ctx)
 
     def install(self, version: str) -> None:
+        """Place the skills."""
         from exakit.app import skills
         skills.install(self.ctx)
 
@@ -59,6 +62,7 @@ class Lifecycle(ComponentBase):
         return stage
 
     def update(self, options: list[str] | None = None) -> None:
+        """Re-place the skills from the kit copy."""
         from exakit.app import skills
         from exakit.app.machine import kit_root
         try:
@@ -107,6 +111,7 @@ class Lifecycle(ComponentBase):
         return backup
 
     def uninstall(self, *, dry_run: bool) -> list[str]:
+        """Remove the skills from the agents' folders."""
         from exakit.app import skills
         removed: list[str] = []
         names = [s.id for s in skills.shipped(self.ctx)] or list(self.recorded("installed") or [])

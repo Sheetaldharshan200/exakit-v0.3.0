@@ -8,80 +8,14 @@ the screens and MARKED (never dropped) in the JSON.
 
 from __future__ import annotations
 
-import json
 import textwrap
-from pathlib import Path
 from typing import Any
+
+from .help_docs import _matches, catalog_rows, commands_of, json_payload, load_docs, with_hidden_marked  # noqa: F401 - the module's public surface
 
 KNOWN_TOOLS = ("exakit", "exapump", "exasol", "dash-server", "exasol-json-tables", "exasol-mcp-server", "exasol-mcp-server-http")
 
 
-def load_docs(help_dir: Path) -> dict[str, dict[str, Any]]:
-    docs: dict[str, dict[str, Any]] = {}
-    for path in sorted(help_dir.glob("*.json")) if help_dir.is_dir() else []:
-        try:
-            doc = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if isinstance(doc, dict):
-            docs[path.stem] = doc
-    return docs
-
-
-def commands_of(doc: dict[str, Any], include_hidden: bool = False) -> list[dict[str, Any]]:
-    entries = doc.get("commands", []) or []
-    return entries if include_hidden else [e for e in entries if not e.get("hidden")]
-
-
-def with_hidden_marked(doc: dict[str, Any]) -> dict[str, Any]:
-    copy = dict(doc)
-    copy["commands"] = [dict(e, hidden=bool(e.get("hidden"))) for e in commands_of(doc, include_hidden=True)]
-    return copy
-
-
-def catalog_rows(docs: dict[str, dict[str, Any]], include_hidden: bool = False) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for key in sorted(docs):
-        doc = docs[key]
-        tool = "exakit" if key == "exakit" else key
-        for entry in commands_of(doc, include_hidden=include_hidden):
-            command = entry.get("command", "")
-            parts = command.split()
-            row_tool, row_command = tool, command
-            if parts and parts[0] in ("exakit", "exapump", "exasol") and key != parts[0]:
-                row_tool, row_command = parts[0], " ".join(parts[1:])
-            rows.append({"tool": row_tool, "command": row_command, "options": entry.get("options", ""),
-                         "description": entry.get("summary") or entry.get("description", ""),
-                         "source": key, "hidden": bool(entry.get("hidden"))})
-    at: dict[tuple[str, str], int] = {}
-    unique: list[dict[str, Any]] = []
-    for row in rows:
-        key = (row["tool"], row["command"])
-        if key not in at:
-            at[key] = len(unique)
-            unique.append(row)
-            continue
-        kept = unique[at[key]]
-        if row["source"] == row["tool"] and kept["source"] != kept["tool"]:
-            unique[at[key]] = row
-    return unique
-
-
-def _matches(row: dict[str, Any], needle: str) -> bool:
-    return needle in " ".join([row["tool"], row["command"], row["options"], row["description"]]).lower()
-
-
-def json_payload(docs: dict[str, dict[str, Any]], which: str) -> dict[str, Any]:
-    rows = catalog_rows(docs, include_hidden=True)
-    for row in rows:
-        row["invocation"] = f"{row['tool']} {row['command']}".strip()
-    if which in ("", "all"):
-        return {"schema_version": 1, "search": None, "count": len(rows), "commands": rows,
-                "documents": {k: with_hidden_marked(d) for k, d in docs.items()}}
-    if which in docs:
-        return with_hidden_marked(docs[which])
-    hit = [r for r in rows if _matches(r, which.lower())]
-    return {"schema_version": 1, "search": which, "count": len(hit), "commands": hit}
 
 
 class HelpScreens:
@@ -100,17 +34,21 @@ class HelpScreens:
     # --- primitives ---------------------------------------------------------------
 
     def out(self, text: str = "") -> None:
+        """Append one line."""
         self.lines.append(text)
 
     def para(self, text: str, indent: str = "  ", first: str | None = None) -> None:
+        """Write one wrapped paragraph."""
         for line in textwrap.wrap(text, width=self.wrap - len(indent)) or [""]:
             self.out((first if first is not None else indent) + line)
             first = None
 
     def rule(self) -> None:
+        """Draw a rule."""
         self.out(f"  {self.CY}{'-' * (min(self.wrap, 72) - 2)}{self.R}")
 
     def header(self, title: str, subtitle: str = "") -> None:
+        """Write a page header, and its subtitle when given."""
         self.out()
         self.rule()
         sub = f"  {self.DIM}{subtitle}{self.R}" if subtitle else ""
@@ -118,14 +56,17 @@ class HelpScreens:
         self.rule()
 
     def section(self, title: str) -> None:
+        """Write a section title."""
         self.out()
         self.out(f"  {self.B}{title}{self.R}")
         self.out()
 
     def kv(self, key: str, value: str, pad: int = 16) -> None:
+        """Write a key and a wrapped value."""
         self.para(value, indent=" " * (4 + pad), first=f"    {self.GN}{key:<{pad}}{self.R}")
 
     def cmd_line(self, command: str, summary: str, pad: int = 22, indent: str = "    ") -> None:
+        """Write one command with its summary aligned."""
         if len(command) <= pad and summary:
             self.para(summary, indent=" " * (len(indent) + pad + 1), first=f"{indent}{self.GN}{command:<{pad}}{self.R} ")
         else:
@@ -134,6 +75,7 @@ class HelpScreens:
                 self.para(summary, indent=indent + "  ")
 
     def invocation(self, doc_id: str, entry: dict[str, Any]) -> str:
+        """The command as typed, with its tool's prefix."""
         command = (entry.get("command") or "").strip()
         parts = command.split()
         if parts and parts[0] in KNOWN_TOOLS:
@@ -142,12 +84,14 @@ class HelpScreens:
         return f"{prefix} {command}".strip()
 
     def invocation_with_options(self, doc_id: str, entry: dict[str, Any]) -> str:
+        """The invocation followed by its options summary."""
         label = self.invocation(doc_id, entry)
         return f"{label} {entry['options']}" if entry.get("options") else label
 
     # --- screens ------------------------------------------------------------------
 
     def overview(self) -> int:
+        """Render the overview page; the exit code is the answer."""
         doc = self.docs.get("exakit")
         if not doc:
             self.out("No help data found. Reinstall the kit or run: exakit update")
@@ -180,6 +124,7 @@ class HelpScreens:
         return 0
 
     def all_commands(self) -> int:
+        """Render every command, grouped; the exit code is the answer."""
         doc = self.docs.get("exakit")
         if not doc:
             return 1
@@ -215,6 +160,7 @@ class HelpScreens:
         return 0
 
     def component(self, key: str) -> int:
+        """Render a component's page, or a not-found page with exit 1."""
         doc = self.docs.get(key)
         if not doc:
             self.out(f"  No help document for '{key}'.")
@@ -331,6 +277,7 @@ class HelpScreens:
         self.out()
 
     def command(self, name: str) -> int:
+        """Render one command's page, or a not-found page with exit 1."""
         doc = self.docs.get("exakit")
         matches = self._find(doc, name) if doc else []
         if matches:
@@ -356,6 +303,7 @@ class HelpScreens:
         return 1
 
     def catalog(self, search: str) -> int:
+        """Render the catalog screen, filtered by ``search`` when one is given."""
         rows = catalog_rows(self.docs)
         if search:
             rows = [r for r in rows if _matches(r, search.lower())]

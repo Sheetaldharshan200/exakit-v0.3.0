@@ -13,12 +13,14 @@ from . import Context
 
 
 def credentials(ctx: Context) -> CredentialStore:
+    """The credential store, wired once per command."""
     if ctx.credentials is None:
         ctx.credentials = CredentialStore(ctx.paths.credentials)
     return ctx.credentials
 
 
 def runtime(ctx: Context) -> PersonalRuntime:
+    """The runtime adapter, wired once per command."""
     if ctx.runtime is None:
         deploy_dir = Path(ctx.env.get("EXAKIT_PERSONAL_DEPLOY_DIR") or Path(ctx.env.get("HOME") or Path.home()) / ".exasol" / "personal" / "deployments" / "default")
         kit = ctx.catalog.kit
@@ -43,10 +45,12 @@ def exapump(ctx: Context):
 
 
 def profile_name(ctx: Context) -> str:
+    """The exapump profile the kit uses."""
     return ctx.env.get("EXAKIT_EXAPUMP_PROFILE") or DEFAULT_PROFILE
 
 
 def is_running(ctx: Context) -> bool:
+    """True when the database answers."""
     manifest = ctx.manifest_or_none()
     if manifest is None or manifest.runtime_type() != "personal":
         return False
@@ -77,5 +81,6 @@ def ensure_running(ctx: Context, *, deploy: bool = False) -> None:
 
 
 def runtime_remedy(ctx: Context) -> str:
+    """The command that brings the database back."""
     rt = runtime(ctx)
     return "exakit repair-runtime" if rt.wedged() is not None else "exakit start"

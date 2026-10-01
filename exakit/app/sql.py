@@ -27,6 +27,7 @@ class SqlArgs:
 
 
 def parse_args(args: list[str]) -> SqlArgs:
+    """The statement, the file, the flags."""
     parsed = SqlArgs()
     i = 0
     while i < len(args):
@@ -66,18 +67,21 @@ def _statement(parsed: SqlArgs, text: str) -> None:
 
 
 def clean(text: str) -> str:
+    """The statement without comment lines and surrounding blanks."""
     lines = [line for line in text.splitlines() if line.strip() and not re.match(r"^\s*--", line)]
     body = "\n".join(lines).rstrip()
     return body[:-1].rstrip() if body.endswith(";") else body
 
 
 def first_word(text: str) -> str:
+    """The statement's first keyword, upper-cased."""
     folded = re.sub(r"[\n\t]", " ", text).lstrip().upper()
     match = re.match(r"[A-Z]+", folded)
     return match.group(0) if match else ""
 
 
 def check_read_only(text: str) -> None:
+    """Refuse a writing statement unless --write was given."""
     word = first_word(text)
     if word in READ_WORDS:
         pass
@@ -118,6 +122,7 @@ def remedy_lines(output: str, statement: str) -> tuple[list[str], str | None]:
 
 
 def error_detail(output: str) -> str:
+    """The remedy lines for the faults users hit first."""
     lines = output.splitlines()
     errors = [line for line in lines if line.startswith("Error: ")]
     if errors:
@@ -129,6 +134,7 @@ def error_detail(output: str) -> str:
 
 
 def run(ctx: Context, args: list[str]) -> Result:
+    """``exakit sql``: one statement through exapump."""
     parsed = parse_args(args)
     ctx.manifest()
     text = clean(_statement_text(parsed))

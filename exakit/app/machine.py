@@ -147,6 +147,7 @@ def addon_installed_version(ctx: Context, addon: Addon, manifest: Manifest) -> t
 
 
 def kit_bundled_version(ctx: Context) -> str | None:
+    """The kit version the running copy's versions.json names, or None."""
     try:
         return json.loads((kit_root(ctx) / "versions.json").read_text(encoding="utf-8"))["kit"]["version"]
     except (OSError, ValueError, KeyError, TypeError):
@@ -169,6 +170,7 @@ def skills_local_version(ctx: Context) -> str | None:
 
 
 def skills_current(ctx: Context, manifest: Manifest | None) -> bool:
+    """True when the placed skills match the kit's."""
     if manifest is None:
         return False
     have = manifest.get("components.skills.version")
@@ -199,6 +201,7 @@ def applicable(ctx: Context, addon: Addon) -> tuple[bool, str]:
 
 
 def addon_state(ctx: Context, addon: Addon, manifest: Manifest | None) -> tuple[str, str]:
+    """(state, reason) of an add-on on this machine."""
     if manifest is not None and addon_installed_version(ctx, addon, manifest)[1]:
         return ADDON_INSTALLED, ""
     if system_present(ctx, addon):
@@ -212,6 +215,7 @@ def addon_state(ctx: Context, addon: Addon, manifest: Manifest | None) -> tuple[
 
 
 def addon_states(ctx: Context, manifest: Manifest | None) -> dict[str, tuple[str, str]]:
+    """Every add-on's (state, reason)."""
     return {a.id: addon_state(ctx, a, manifest) for a in ctx.catalog.addons()}
 
 

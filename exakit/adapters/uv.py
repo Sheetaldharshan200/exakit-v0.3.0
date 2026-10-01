@@ -37,6 +37,7 @@ class UvTool:
         self.python_version = python_version
 
     def venv(self, path: Path, *, seed: bool) -> None:
+        """Create a venv with the managed Python."""
         cmd = [self.bin, "venv", "--python", self.python_version, str(path)]
         if seed:
             cmd.insert(2, "--seed")
@@ -45,14 +46,17 @@ class UvTool:
             raise Failed(f"uv could not create the environment at {path}.", hint=done.err.strip()[-300:])
 
     def pip_install(self, python: Path, spec: str) -> None:
+        """Install a spec into a venv."""
         done = self.runner.run([self.bin, "pip", "install", "--python", str(python), spec], timeout=1800)
         if not done.ok:
             raise Failed(f"uv could not install {spec}.", hint=done.err.strip()[-300:])
 
     def python_of(self, venv: Path) -> Path:
+        """The venv's interpreter."""
         return venv / ("Scripts" if self.windows else "bin") / ("python.exe" if self.windows else "python")
 
     def bin_of(self, venv: Path, name: str) -> Path:
+        """A script in the venv's bin folder."""
         return venv / ("Scripts" if self.windows else "bin") / (f"{name}.exe" if self.windows else name)
 
 

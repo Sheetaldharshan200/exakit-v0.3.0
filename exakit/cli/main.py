@@ -78,6 +78,7 @@ def _emit_refusal(err: ExakitError, ctx: Context | None, json_mode: bool) -> Non
 
 
 def main(argv: list[str] | None = None) -> int:
+    """The entry point: parse, dispatch, map errors to exit codes."""
     argv = list(sys.argv[1:] if argv is None else argv)
     command, rest, flags = _parse(argv)
     command = ALIASES.get(command, command)
@@ -119,4 +120,5 @@ def _unexpected(err: Exception, ctx: Context | None, json_mode: bool) -> int:
 
 
 def unknown_command(command: str) -> BadInput:
+    """The refusal for an unknown command."""
     return BadInput(f"Unknown command '{command}'.", remedy="exakit catalog --json")

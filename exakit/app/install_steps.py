@@ -39,6 +39,7 @@ class Session:
     current: str = ""
 
     def failed(self, component: str) -> bool:
+        """True when this component failed softly in this run."""
         return component in self.soft
 
     def record_soft(self, component: str, repair: str, label: str) -> None:
@@ -50,6 +51,7 @@ class Session:
         self.soft[component] = SoftFailure(component, repair, reason or "", label)
 
     def soft_step(self, component: str, repair: str, label: str, body) -> bool:
+        """Run ``body`` as a step that may fail softly: a failure is recorded with its repair command and the install goes on."""
         clear_failure_note(self.ctx.paths.failure_note)
         try:
             body()
@@ -88,6 +90,7 @@ def artifact_missing(session: Session, step: str) -> bool:
 
 
 def version_drift(session: Session, step: str) -> str | None:
+    """The advertised version a done step's recorded one drifted from, when the step must run again; None otherwise."""
     cid = DRIFT_COMPONENT.get(step)
     if not cid:
         return None
@@ -124,6 +127,7 @@ def begin(session: Session, step: str, title: str) -> bool:
 
 
 def mark(session: Session, step: str) -> None:
+    """Tick a step in the record."""
     session.ctx.manifest_store.update(lambda m: m.mark_step(step))
 
 
@@ -131,6 +135,7 @@ def mark(session: Session, step: str) -> None:
 
 
 def step_launcher(session: Session, title: str) -> None:
+    """Step 1: the Exasol launcher binary."""
     if begin(session, "launcher", title):
         lifecycle = for_component(session.ctx, "personal")
         lifecycle.install(lifecycle.target_version())
@@ -138,6 +143,7 @@ def step_launcher(session: Session, title: str) -> None:
 
 
 def step_runtime(session: Session, title: str) -> None:
+    """Step 2: the local database deployment (reuse, start, replace with consent, or deploy fresh)."""
     ctx = session.ctx
     if begin(session, "runtime", title):
         if session.soft_step("runtime", ctx.install_command(), "the local database", lambda: _deploy_or_fail(ctx)):
@@ -163,6 +169,7 @@ def _deploy_or_fail(ctx: Context) -> None:
 
 
 def step_exapump(session: Session, title: str) -> None:
+    """Step 3: exapump with the starter-kit profile, then the sample data."""
     if begin(session, "exapump", title):
         def body() -> None:
             lifecycle = for_component(session.ctx, "exapump")
@@ -217,6 +224,7 @@ def _load_named(ctx: Context, ids: list[str]) -> None:
 
 
 def step_mcp(session: Session, title: str) -> None:
+    """Step 4: the AI bridge: the MCP server, the read-only user, the chosen clients and the skills."""
     if begin(session, "mcp", title):
         def body() -> None:
             lifecycle = for_component(session.ctx, "mcp")
@@ -227,6 +235,7 @@ def step_mcp(session: Session, title: str) -> None:
 
 
 def mcp_clients(session: Session) -> None:
+    """Configure the chosen AI clients as a soft step; nothing when the answer is ``skip``."""
     ctx = session.ctx
     if ctx.manifest().get("components.mcp_server.client_setup.completed") is True:
         return
@@ -242,6 +251,7 @@ def mcp_clients(session: Session) -> None:
 
 
 def skills_place(session: Session) -> None:
+    """Place the kit's skills for the AI agents, as a soft step."""
     def body() -> None:
         if not any((session.root / "skills").glob("*/SKILL.md")):
             raise Failed(f"this kit copy carries no skills/ directory (expected {session.root / 'skills'})")
@@ -250,6 +260,7 @@ def skills_place(session: Session) -> None:
 
 
 def step_pyexasol(session: Session, title: str) -> None:
+    """Step 5: pyexasol in its own venv, validated against the database."""
     if begin(session, "pyexasol", title):
         def body() -> None:
             lifecycle = for_component(session.ctx, "pyexasol")
@@ -298,4 +309,5 @@ def _copy_kit(root: Path, kit: Path) -> None:
 
 
 def ensure_kit_root(ctx: Context) -> Path:
+    """The kit copy this install runs from: the checkout, or the copy under the kit home."""
     return kit_root(ctx)

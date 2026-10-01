@@ -22,9 +22,11 @@ class Lifecycle(ComponentBase):
 
     @property
     def package(self) -> str:
+        """The MCP server package uvx runs (EXAKIT_MCP_PACKAGE overrides the catalog's)."""
         return self.ctx.env.get("EXAKIT_MCP_PACKAGE") or str(self.ctx.catalog.component("mcp").source["package"])
 
     def installed_version(self) -> str | None:
+        """The recorded version, or None."""
         return self.recorded("version") or None
 
     def uvx(self) -> str:
@@ -40,6 +42,7 @@ class Lifecycle(ComponentBase):
         return self.ctx.runner.which("uvx") or "uvx"
 
     def ssl_cert_validation(self) -> str:
+        """The TLS setting the server needs for the kit's certificate."""
         host, _, _, _ = self.runtime_connection()
         return "no" if host in ("127.0.0.1", "localhost", "[::1]") else "yes"
 
@@ -55,6 +58,7 @@ class Lifecycle(ComponentBase):
     # --- install ------------------------------------------------------------------------
 
     def install(self, version: str) -> None:
+        """Prime the package through uvx and record it."""
         uv = find_uv(self.ctx.env, self.ctx.paths.home, self.ctx.runner, windows=self.ctx.platform.os == "windows")
         if not uv:
             raise Failed("uv (the Python tool runner the MCP server runs through) is not available - install it from https://docs.astral.sh/uv/ and re-run",
@@ -74,6 +78,7 @@ class Lifecycle(ComponentBase):
     # --- validate -----------------------------------------------------------------------------
 
     def validate(self) -> None:
+        """The server answers the stdio handshake; records validated."""
         self.ctx.ui.info("Validating the MCP server (stdio handshake)")
         host, port, _, _ = self.runtime_connection()
         user, pw_file = self.credentials()
@@ -107,6 +112,7 @@ class Lifecycle(ComponentBase):
     # --- update -----------------------------------------------------------------------------------
 
     def snapshot(self) -> None:
+        """Snapshot the clients' configs before a change."""
         from exakit.app import mcp as mcp_app
         from exakit.domain.ids import CLIENT_IDS
         call = mcp_app._clients(self.ctx).operation("backup", self.ctx.paths.home, list(CLIENT_IDS))
@@ -117,6 +123,7 @@ class Lifecycle(ComponentBase):
             self.ctx.ui.warn("MCP pre-update snapshot was not created; generated configs will still be refreshed.")
 
     def update(self, options: list[str] | None = None) -> None:
+        """Re-prime the advertised version and refresh the clients' pins."""
         from exakit.app import mcp as mcp_app
         latest = self.target_version()
         current = self.installed_version()
@@ -135,6 +142,7 @@ class Lifecycle(ComponentBase):
         self.ctx.ui.ok("MCP server updated; database data was not changed")
 
     def uninstall(self, *, dry_run: bool) -> list[str]:
+        """Remove the kit's entries from the clients and forget the component."""
         from exakit.app import mcp as mcp_app
         if dry_run:
             self.ctx.ui.info("  will remove: the managed MCP configuration from the AI clients")

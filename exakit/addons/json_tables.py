@@ -51,18 +51,22 @@ exec "{script}" "$@"
 class Lifecycle(PythonVenvLifecycle):
     @property
     def home(self) -> Path:
+        """The add-on's folder under the kit home."""
         return self.ctx.paths.home / "json-tables"
 
     @property
     def engine(self) -> Path:
+        """The prebuilt ingest engine."""
         return self.home / "libexec" / "json_to_parquet"
 
     @property
     def shim_dir(self) -> Path:
+        """Where the cargo shim lives."""
         return self.home / "shim"
 
     @property
     def launcher(self) -> Path:
+        """The launcher in the bin dir."""
         return self.ctx.paths.bin_dir / "exasol-json-tables"
 
     # --- platform and versions ------------------------------------------------------
@@ -73,11 +77,13 @@ class Lifecycle(PythonVenvLifecycle):
         return str(name) if name else None
 
     def applicable(self) -> tuple[bool, str]:
+        """(True, '') where the catalog names an engine for this platform, else the reason."""
         if self.engine_asset() is None:
             return False, f"no prebuilt ingest engine is published for this platform ({self.ctx.platform.os}/{self.ctx.platform.arch})"
         return True, ""
 
     def installed_version(self) -> str | None:
+        """The recorded version when the venv, the engine and the import all still work; else None."""
         recorded = self.recorded("version")
         if not recorded or not self.python.exists() or not self.engine.exists():
             return None
@@ -86,6 +92,7 @@ class Lifecycle(PythonVenvLifecycle):
         return str(recorded)
 
     def system_present(self) -> bool:
+        """True when an exasol-json-tables that is not the kit's is on PATH or importable from the ambient Python."""
         found = self.ctx.runner.which("exasol-json-tables")
         if found and Path(found).resolve() != self.launcher.resolve():
             return True
@@ -95,6 +102,7 @@ class Lifecycle(PythonVenvLifecycle):
         return False
 
     def mirror_repo(self) -> str:
+        """The repository the prebuilt release lives in: the override, the kit this copy came from, or the catalog's mirror."""
         explicit = self.ctx.env.get("EXAKIT_JSON_TABLES_MIRROR_REPO")
         if explicit:
             return explicit
@@ -105,6 +113,7 @@ class Lifecycle(PythonVenvLifecycle):
         return self.ctx.kit_repo if self.addon.source.get("mirror") == "kit" else str(self.addon.source["repo"])
 
     def release_tag(self, version: str) -> str:
+        """The release tag: EXAKIT_JSON_TABLES_MIRROR_TAG, else the pin in versions.json, else the catalog's template."""
         explicit = self.ctx.env.get("EXAKIT_JSON_TABLES_MIRROR_TAG")
         if explicit:
             return explicit
@@ -113,6 +122,7 @@ class Lifecycle(PythonVenvLifecycle):
         return pinned or str(self.addon.source.get("tag", "json-tables-{version}")).format(version=version)
 
     def wheel_name(self, version: str) -> str | None:
+        """The wheel's file name: the pin in versions.json, else the first wheel the release lists."""
         doc = self.ctx.versions.current()
         if doc and self.pin_applies(version) and doc.value("components.json-tables.wheel"):
             return str(doc.value("components.json-tables.wheel"))
@@ -124,6 +134,7 @@ class Lifecycle(PythonVenvLifecycle):
     # --- install ----------------------------------------------------------------------------
 
     def restore_package_data(self, version: str) -> None:
+        """Copy the package's non-Python files from the upstream sources when pip left them out."""
         site = self.ctx.runner.run([str(self.python), "-c", "import exasol_json_tables, os; print(os.path.dirname(exasol_json_tables.__file__))"], timeout=30)
         if not site.ok or not site.out.strip():
             return
@@ -148,6 +159,7 @@ class Lifecycle(PythonVenvLifecycle):
                             dest.write_bytes(file.read_bytes())
 
     def write_launchers(self) -> None:
+        """Write the cargo shim and the launcher that puts it first on PATH."""
         self.shim_dir.mkdir(parents=True, exist_ok=True)
         shim = self.shim_dir / "cargo"
         shim.write_text(SHIM.format(engine=self.engine, shimdir=self.shim_dir), encoding="utf-8")
@@ -155,6 +167,7 @@ class Lifecycle(PythonVenvLifecycle):
         self.write_launcher("exasol-json-tables", LAUNCHER.format(shimdir=self.shim_dir, script=self.uv().bin_of(self.venv, "exasol-json-tables")))
 
     def install(self, version: str) -> None:
+        """Install the wheel into its venv, the engine, the shim and the launcher, and prove the engine runs."""
         ok, reason = self.applicable()
         if not ok:
             raise Failed(reason)
@@ -185,6 +198,7 @@ class Lifecycle(PythonVenvLifecycle):
         self.ctx.ui.ok(f"JSON Tables installed: {self.venv}")
 
     def validate(self) -> None:
+        """The package imports and the engine turns a sample JSON into Parquet; records validated."""
         if not self.python.exists():
             return
         if not self.ctx.runner.run([str(self.python), "-c", "import exasol_json_tables"], timeout=60).ok:
@@ -206,12 +220,15 @@ class Lifecycle(PythonVenvLifecycle):
             self.ctx.ui.warn("The JSON Tables engine did not produce Parquet from a sample - see: exakit logs json-tables")
 
     def summary(self) -> str | None:
+        """The closing line naming the ingest command."""
         return "ingest JSON: exasol-json-tables"
 
     def repair(self) -> None:
+        """Rewrite the shim and the launcher."""
         self.write_launchers()
 
     def uninstall(self, *, dry_run: bool) -> list[str]:
+        """Remove the venv, the folder and the launcher."""
         removed = self.remove_paths([self.venv, self.home, self.launcher], dry_run=dry_run)
         if not dry_run:
             self.forget()

@@ -14,6 +14,7 @@ from .status import not_installed
 
 
 def skills_verdict(ctx: Context, manifest) -> dict[str, Any]:
+    """The skills block of the info document."""
     have = manifest.get("components.skills.version")
     doc = ctx.versions.current()
     want = doc.value("components.skills.version") if doc else None
@@ -23,6 +24,7 @@ def skills_verdict(ctx: Context, manifest) -> dict[str, Any]:
 
 
 def run(ctx: Context) -> Result:
+    """``exakit info``: the panel, or the record under --json."""
     manifest = ctx.manifest_or_none()
     if manifest is None:
         raise not_installed(ctx)

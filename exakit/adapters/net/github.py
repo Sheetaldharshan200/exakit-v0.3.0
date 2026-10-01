@@ -60,6 +60,7 @@ def release_assets(repo: str, tag: str, downloader: Downloader, *, endpoints: En
 
 def asset_digest(repo: str, tag: str, name: str, downloader: Downloader, *, endpoints: Endpoints, token: str | None = None,
                  cache_dir: Path | None = None) -> str | None:
+    """The digest the release API publishes for an asset, or None."""
     for asset in release_assets(repo, tag, downloader, endpoints=endpoints, token=token, cache_dir=cache_dir) or []:
         if asset.name == name:
             return asset.digest
@@ -67,4 +68,5 @@ def asset_digest(repo: str, tag: str, name: str, downloader: Downloader, *, endp
 
 
 def download_url(repo: str, tag: str, name: str, *, endpoints: Endpoints) -> str:
+    """The download URL of a release asset."""
     return endpoints.url("release_asset", repo=repo, tag=tag, name=name)

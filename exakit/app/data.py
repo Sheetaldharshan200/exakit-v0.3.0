@@ -56,6 +56,7 @@ def bundled(ctx: Context) -> list[Dataset]:
 
 
 def dataset(ctx: Context, dataset_id: str) -> Dataset:
+    """The bundled dataset with that id; unknown is BadInput."""
     for ds in bundled(ctx):
         if ds.id == dataset_id:
             return ds
@@ -98,6 +99,7 @@ def loaded(ctx: Context, *, tables: dict[str, int] | None = None, heal: bool = T
 
 
 def pending(ctx: Context) -> list[Dataset]:
+    """The bundled datasets not loaded yet."""
     done = loaded(ctx)
     return [d for d in bundled(ctx) if d.id not in done]
 
@@ -115,12 +117,14 @@ def _sql_file(ctx: Context, pump: Exapump, path: Path, what: str) -> None:
 
 
 def schema_present(ctx: Context, pump: Exapump, schema: str) -> bool:
+    """True when the schema exists."""
     done = pump.sql(profile_name(ctx), f"SELECT CASE WHEN EXISTS (SELECT 1 FROM EXA_ALL_SCHEMAS WHERE SCHEMA_NAME = '{schema}') "
                                       "THEN 'EXAKIT_SCHEMA_PRESENT' ELSE 'EXAKIT_SCHEMA_MISSING' END AS STATUS")
     return done.ok and "EXAKIT_SCHEMA_PRESENT" in done.out
 
 
 def ensure_schema(ctx: Context, pump: Exapump, schema: str) -> None:
+    """Create the schema when it does not exist."""
     if not schema_present(ctx, pump, schema):
         done = pump.sql(profile_name(ctx), f"CREATE SCHEMA {schema}")
         if not done.ok:
@@ -128,6 +132,7 @@ def ensure_schema(ctx: Context, pump: Exapump, schema: str) -> None:
 
 
 def count_rows(ctx: Context, pump: Exapump, table: str) -> int | None:
+    """The row count of a table, or None."""
     done = pump.sql(profile_name(ctx), f"SELECT 'EXAKIT_RC[' || CAST(COUNT(*) AS VARCHAR(20)) || ']' AS R FROM {table}")
     match = re.search(r"EXAKIT_RC\[(\d+)\]", done.out) if done.ok else None
     return int(match.group(1)) if match else None

@@ -17,11 +17,13 @@ SECTIONS = ("datasets", "mcp_clients", "addons", "skills")   # every plan docume
 
 
 def recorded(ctx: Context) -> str | None:
+    """The recorded persona id, or None."""
     manifest = ctx.manifest_or_none()
     return manifest.persona_id() if manifest else None
 
 
 def list_personas(ctx: Context) -> Result:
+    """``exakit persona list``."""
     current = recorded(ctx)
     personas = ctx.catalog.personas()
     data: dict[str, Any] = {
@@ -51,6 +53,7 @@ def _render_list(ctx: Context, personas: list[Persona], current: str | None) -> 
 
 
 def show(ctx: Context, persona_id: str) -> Result:
+    """``exakit persona show <id>``: the document."""
     persona = ctx.catalog.persona(persona_id)
     doc = persona.to_dict()
     if not ctx.json:
@@ -67,6 +70,7 @@ def show(ctx: Context, persona_id: str) -> Result:
 
 
 def build_plan(ctx: Context, persona: Persona) -> Plan:
+    """The plan for a persona on this machine, from the probed state."""
     manifest = ctx.manifest_or_none()
     machine = probe(ctx, manifest)
     answers = answers_for(persona, ctx.env, all_datasets=list(machine.all_datasets))
@@ -74,6 +78,7 @@ def build_plan(ctx: Context, persona: Persona) -> Plan:
 
 
 def plan(ctx: Context, persona_id: str) -> Result:
+    """``exakit persona plan <id>``: the plan, nothing changed."""
     persona = ctx.catalog.persona(persona_id)
     the_plan = build_plan(ctx, persona)
     pending = len(the_plan.pending())

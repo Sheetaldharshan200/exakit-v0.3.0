@@ -18,6 +18,7 @@ class Service:
 
 
 def services_adapter(ctx: Context):
+    """The platform's services adapter, wired once per command."""
     if ctx.services is None:
         home = ctx.env.get("HOME") or str(ctx.paths.home.parent)
         from pathlib import Path
@@ -42,6 +43,7 @@ def service_ids(ctx: Context) -> list[Service]:
 
 
 def status_of(ctx: Context, service: Service) -> str:
+    """running, stopped, or not installed for an add-on service."""
     if service.hooks is None:
         manifest = ctx.manifest_or_none()
         if manifest and manifest.runtime_type() == "personal":
@@ -51,6 +53,7 @@ def status_of(ctx: Context, service: Service) -> str:
 
 
 def start(ctx: Context, service: Service) -> None:
+    """Start an add-on service through its hooks."""
     if service.hooks is None:
         ensure_running(ctx, deploy=True)
     else:
@@ -58,6 +61,7 @@ def start(ctx: Context, service: Service) -> None:
 
 
 def stop(ctx: Context, service: Service) -> None:
+    """Stop an add-on service through its hooks."""
     if service.hooks is None:
         manifest = ctx.manifest_or_none()
         if manifest and manifest.runtime_type() == "personal":
@@ -67,6 +71,7 @@ def stop(ctx: Context, service: Service) -> None:
 
 
 def autostart_spec(ctx: Context, service: Service) -> ServiceSpec | None:
+    """The login item for a service, or None when it has no hooks."""
     if service.hooks is None:
         manifest = ctx.manifest_or_none()
         if manifest and manifest.runtime_type() == "personal":
@@ -76,6 +81,7 @@ def autostart_spec(ctx: Context, service: Service) -> ServiceSpec | None:
 
 
 def register_autostart(ctx: Context, service: Service) -> bool:
+    """Register the service's login item; True when it took."""
     spec = autostart_spec(ctx, service)
     if spec is None:
         return True
@@ -86,15 +92,18 @@ def register_autostart(ctx: Context, service: Service) -> bool:
 
 
 def unregister_autostart(ctx: Context, service_id: str) -> None:
+    """Remove the service's login item."""
     if services_adapter(ctx).unregister(service_id):
         ctx.ui.ok(f"{service_id}: no longer starts at login")
 
 
 def autostart_registered(ctx: Context, service_id: str) -> bool:
+    """True when the service has a login item."""
     return services_adapter(ctx).registered(service_id)
 
 
 def autostart_enable(ctx: Context) -> bool:
+    """Register every service's login item; True when any took."""
     any_ok = False
     for service in service_ids(ctx):
         if register_autostart(ctx, service):
@@ -106,6 +115,7 @@ def autostart_enable(ctx: Context) -> bool:
 
 
 def autostart_disable(ctx: Context) -> None:
+    """Remove every service's login item."""
     for service in service_ids(ctx):
         unregister_autostart(ctx, service.id)
     ctx.manifest_store.update(lambda m: m.set("autostart.enabled", False))
@@ -113,5 +123,6 @@ def autostart_disable(ctx: Context) -> None:
 
 
 def autostart_wanted(ctx: Context) -> bool:
+    """True when the record says autostart is on."""
     manifest = ctx.manifest_or_none()
     return bool(manifest and manifest.get("autostart.enabled") is True)

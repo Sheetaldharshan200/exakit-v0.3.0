@@ -69,31 +69,38 @@ done
 class Lifecycle(BinaryLifecycle):
     @property
     def pidfile(self) -> Path:
+        """The engine's pid file."""
         return self.home / "exasol-scheduler.pid"
 
     @property
     def giveup(self) -> Path:
+        """The marker the launcher leaves after five rapid failures."""
         return self.home / "gave-up"
 
     @property
     def log_file(self) -> Path:
+        """The scheduler's log under the kit's logs."""
         return self.ctx.paths.logs / "exasol-scheduler.log"
 
     @property
     def launcher(self) -> Path:
+        """The supervising launcher in the bin dir."""
         return self.ctx.paths.bin_dir / "exasol-scheduler"
 
     # --- release naming ------------------------------------------------------------
 
     @property
     def db_user(self) -> str:
+        """The dedicated database user the scheduler runs as (catalog config)."""
         return str(self.addon.config["db_user"])
 
     @property
     def schema(self) -> str:
+        """The schema the scheduler's tables live in (catalog config)."""
         return str(self.addon.config["schema"])
 
     def applicable(self) -> tuple[bool, str]:
+        """(True, '') where the catalog names a prebuilt binary for this platform, else the reason."""
         if self.ctx.platform.platform_key not in (self.addon.source.get("assets") or {}):
             return False, f"no prebuilt scheduler binary is published for this platform ({self.ctx.platform.os}/{self.ctx.platform.arch})"
         return True, ""
@@ -110,6 +117,7 @@ class Lifecycle(BinaryLifecycle):
         return super().repo()
 
     def release_tag(self, version: str) -> str:
+        """The release tag: EXAKIT_EXASOL_SCHEDULER_RELEASE_TAG, else the pin in versions.json, else the catalog's template."""
         explicit = self.ctx.env.get("EXAKIT_EXASOL_SCHEDULER_RELEASE_TAG")
         if explicit:
             return explicit
@@ -118,12 +126,14 @@ class Lifecycle(BinaryLifecycle):
         return pinned or super().release_tag(version)
 
     def system_present(self) -> bool:
+        """True when an exasol_scheduler that is not the kit's engine is on PATH."""
         found = self.ctx.runner.which("exasol_scheduler")
         return bool(found) and Path(found).resolve() != self.engine.resolve()
 
     # --- the database user --------------------------------------------------------------
 
     def ensure_db_user(self) -> None:
+        """Create the service user with its own password file and the grants the first run needs, once."""
         from exakit.app.runtime_ops import credentials, exapump, profile_name
         pump = exapump(self.ctx)
         if pump is None:
@@ -147,6 +157,7 @@ class Lifecycle(BinaryLifecycle):
                 raise Failed("the dedicated database user could not be created - is the database running? (exakit start)", remedy="exakit start")
 
     def schema_present(self) -> bool:
+        """True when the scheduler's schema exists in the database."""
         from exakit.app.runtime_ops import exapump, profile_name
         pump = exapump(self.ctx)
         if pump is None:
@@ -156,6 +167,7 @@ class Lifecycle(BinaryLifecycle):
         return done.ok and "EXAKIT_SCHED_SCHEMA_PRESENT" in done.out
 
     def revoke_bootstrap(self) -> None:
+        """Take back the CREATE grants once the schema exists, so the service user keeps only what jobs need."""
         if self.recorded("bootstrap_revoked") is True:
             return
         from exakit.app.runtime_ops import exapump, profile_name
@@ -168,6 +180,7 @@ class Lifecycle(BinaryLifecycle):
     # --- launcher, install, validate ----------------------------------------------------------
 
     def launcher_content(self) -> str | None:
+        """The supervising launcher script, or None before the credentials exist."""
         from exakit.app.runtime_ops import credentials
         dsn, _, _ = self.runtime_credentials()
         host, _, port = dsn.rpartition(":")
@@ -176,10 +189,12 @@ class Lifecycle(BinaryLifecycle):
                                pwfile=credentials(self.ctx).path("exasol_scheduler_password"))
 
     def after_engine(self, version: str) -> None:
+        """What follows the engine download on install: the database user and the launcher."""
         self.ensure_db_user()
         self.record(db_user=self.db_user, schema=self.schema, bootstrap_revoked=False)
 
     def validate(self) -> None:
+        """The engine answers and the database user works; records validated=True or False."""
         if not self.engine.exists():
             self.ctx.ui.warn("exasol-scheduler engine is missing - repair with: exakit update exasol-scheduler")
             return
@@ -197,6 +212,7 @@ class Lifecycle(BinaryLifecycle):
     # --- service -----------------------------------------------------------------------------------
 
     def pids(self) -> list[int]:
+        """The pids of the kit's running scheduler processes."""
         pids: set[int] = set()
         try:
             pid = int(self.pidfile.read_text().strip())
@@ -209,6 +225,7 @@ class Lifecycle(BinaryLifecycle):
         return sorted(pids)
 
     def status(self) -> str:
+        """running, stopped, or not installed."""
         if not self.launcher.exists():
             return "not installed"
         if self.pids():
@@ -219,6 +236,7 @@ class Lifecycle(BinaryLifecycle):
         return "stopped"
 
     def start(self) -> None:
+        """Start the launcher as a daemon and wait for the engine to appear."""
         if not self.launcher.exists():
             self.ctx.ui.warn("exasol-scheduler is not installed - add it with: exakit marketplace")
             raise Failed("exasol-scheduler is not installed", remedy="exakit marketplace exasol-scheduler")
@@ -234,6 +252,7 @@ class Lifecycle(BinaryLifecycle):
         raise Failed("exasol-scheduler did not start", remedy="exakit logs exasol-scheduler")
 
     def stop(self) -> None:
+        """Stop the engine and the launcher, by pid."""
         pids = self.pids()
         if not pids:
             self.ctx.ui.ok("exasol-scheduler is already stopped")
@@ -248,15 +267,18 @@ class Lifecycle(BinaryLifecycle):
         self.ctx.ui.ok("exasol-scheduler stopped (missed occurrences are not replayed on restart)")
 
     def service(self) -> ServiceHooks:
+        """The hooks start, stop and autostart use."""
         return ServiceHooks(status=self.status, start=self.start, stop=self.stop, url=lambda: None,
                             log_path=lambda: self.log_file, autostart=lambda: ServiceSpec("exasol-scheduler", (str(self.launcher),)))
 
     def summary(self) -> str | None:
+        """The closing line naming the task table."""
         return f"SQL jobs in {self.schema}.SCHED_TASKS"
 
     # --- update and uninstall ---------------------------------------------------------------------
 
     def update(self) -> None:
+        """Replace the engine with the advertised version, keeping it running if it was."""
         was_running = bool(self.pids())
         had_install = self.installed_version() is not None
         if was_running:
@@ -277,6 +299,7 @@ class Lifecycle(BinaryLifecycle):
         self.ctx.ui.ok("exasol-scheduler updated; database data was not changed")
 
     def uninstall(self, *, dry_run: bool) -> list[str]:
+        """Remove the engine, the launcher, the service user and the records; the schema and its history stay."""
         from exakit.app.runtime_ops import credentials, exapump, profile_name
         if not dry_run:
             with contextlib.suppress(Failed):

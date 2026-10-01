@@ -153,6 +153,7 @@ def _remove_bins(ctx: Context, dry: bool, gone: list[str]) -> None:
 
 
 def remove_component(ctx: Context, key: str) -> None:
+    """Remove one piece from the uninstall menu."""
     if key == "database":
         ctx.ui.info("Removing the local Exasol personal deployment and all data")
         for_component(ctx, "personal").uninstall(dry_run=False)
@@ -220,6 +221,7 @@ def _done_everything(ctx: Context) -> None:
 
 
 def run(ctx: Context, args: list[str]) -> Result:
+    """``exakit uninstall``."""
     targets = [a for a in args if not a.startswith("-")]
     for arg in args:
         if arg.startswith("-") and arg not in ("-y", "--yes", "-n", "--dry-run"):

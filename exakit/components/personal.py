@@ -15,6 +15,7 @@ from exakit.lifecycles.base import temp_dir
 from .base import ComponentBase
 
 def major(version: str | None) -> str:
+    """The major number of a version, or '' when it does not parse."""
     try:
         return str(parse_version(version or "")[0][0])
     except (ValueError, IndexError):
@@ -28,13 +29,16 @@ class Lifecycle(ComponentBase):
 
     @property
     def bin(self) -> Path:
+        """The launcher binary in the bin dir."""
         return self.ctx.paths.bin_dir / ("exasol.exe" if self.ctx.platform.os == "windows" else "exasol")
 
     def runtime(self):
+        """The runtime adapter, wired once per command."""
         from exakit.app.runtime_ops import runtime
         return runtime(self.ctx)
 
     def installed_version(self) -> str | None:
+        """The deployed runtime version the record names, or None."""
         manifest = self.ctx.manifest_or_none()
         return (manifest.get("runtime.version") if manifest else None) or None
 
@@ -47,6 +51,7 @@ class Lifecycle(ComponentBase):
         return str(name)
 
     def release_url(self, version: str, name: str) -> str:
+        """The download URL of a release asset."""
         return download_url(self.repo(), self.tag(version), name, endpoints=self.ctx.catalog.kit.endpoints)
 
     # --- install ----------------------------------------------------------------------------
@@ -59,6 +64,7 @@ class Lifecycle(ComponentBase):
         return found if done.ok and "local" in done.out else None
 
     def refuse_downgrade(self, version: str) -> None:
+        """Refuse to install a launcher older than the deployed runtime."""
         deployed = self.runtime().deployed_version() if hasattr(self.runtime(), "deployed_version") else None
         if deployed and is_newer(deployed, version):
             self.ctx.ui.error(f"The Exasol Personal deployment on this machine is version {deployed}, which is newer than the launcher "
@@ -69,6 +75,7 @@ class Lifecycle(ComponentBase):
             raise Failed(f"Refusing to install launcher {version} over a newer {deployed} deployment.")
 
     def install(self, version: str) -> None:
+        """Download the verified launcher archive and place the binary."""
         if not self.force():
             existing = self._existing_supports_local()
             if existing:
@@ -118,6 +125,7 @@ class Lifecycle(ComponentBase):
         self.ctx.manifest_store.update(change)
 
     def update(self, options: list[str] | None = None) -> None:
+        """Update the launcher and, with consent, the deployment."""
         mode = "default"
         for option in options or []:
             if option not in ("--plan", "--backup", "--apply"):

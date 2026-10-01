@@ -37,6 +37,7 @@ def _clients(ctx: Context):
 
 
 def detected_clients(ctx: Context) -> dict[str, str] | None:
+    """The AI clients on this machine and their state, or None when detection is unavailable."""
     return client_states(_clients(ctx).discover(ctx.paths.home))
 
 
@@ -164,6 +165,7 @@ def _clients_from_args(args: list[str]) -> list[str]:
 
 
 def status(ctx: Context, args: list[str]) -> Result:
+    """``exakit mcp-status``: the managed clients and their config files."""
     ctx.manifest()
     clients = _clients_from_args(args)
     call = _clients(ctx).operation("status", ctx.paths.home, clients)
@@ -197,6 +199,7 @@ def _render_status(ctx: Context, doc: dict[str, Any]) -> None:
 
 
 def doctor(ctx: Context, args: list[str]) -> Result:
+    """``exakit mcp-doctor``: check and repair the configuration."""
     manifest = ctx.manifest_or_none()
     if manifest is None:
         raise NotInstalled("No installation found.", remedy=ctx.install_command())
@@ -263,6 +266,7 @@ def _render_operation(ctx: Context, doc: dict[str, Any]) -> None:
 
 
 def remove(ctx: Context, args: list[str]) -> Result:
+    """``exakit mcp-remove <client>...``: take the kit's entries out."""
     if not args:
         raise BadInput("Name the client(s) to remove the kit's MCP entries from: exakit mcp-remove cursor (see: exakit mcp-status)")
     if any(a.lower() == "all" for a in args):
@@ -284,10 +288,12 @@ def remove(ctx: Context, args: list[str]) -> Result:
 
 
 def managed(ctx: Context) -> list[str]:
+    """The client ids the kit manages."""
     return managed_clients(_clients(ctx).operation("status", ctx.paths.home, []))
 
 
 def register_addon_servers(ctx: Context, label: str) -> bool:
+    """Add an add-on's MCP server to every managed client; True when it took."""
     clients = managed(ctx)
     if not clients:
         ctx.ui.info("No AI client is connected yet - connect one any time with: exakit mcp-setup")
@@ -305,6 +311,7 @@ def register_addon_servers(ctx: Context, label: str) -> bool:
 
 
 def unregister_server_entry(ctx: Context, server: str, label: str) -> bool:
+    """Remove one server entry from every managed client; True when it took."""
     clients = managed(ctx)
     if not clients:
         return True
@@ -316,6 +323,7 @@ def unregister_server_entry(ctx: Context, server: str, label: str) -> bool:
 
 
 def refresh_client_pins(ctx: Context, version: str) -> bool:
+    """Rewrite the MCP server version pin in every managed client; True when it took."""
     clients = managed(ctx)
     if not clients:
         ctx.ui.info("No AI client is connected yet - connect one any time with: exakit mcp-setup")

@@ -29,9 +29,11 @@ class LegacyDb:
     password: str | None = None
 
     def state(self, ctx: Context) -> str:
+        """The container's state: running, stopped, absent, or unknown when the engine does not answer."""
         return containers.container_state(ctx.runner, self.engine, self.container, timeout=ctx.catalog.kit.container_probe_timeout)
 
     def remove_command(self) -> str | None:
+        """The command that removes the legacy container, or None when there is none."""
         if not self.container:
             return None
         engine = self.engine_name or "podman"
@@ -54,16 +56,19 @@ class Imported:
 
 
 def export_dir(ctx: Context) -> Path:
+    """Where a migration exports the legacy tables (EXAKIT_LEGACY_EXPORT_DIR overrides)."""
     return Path(ctx.env.get("EXAKIT_LEGACY_EXPORT_DIR") or ctx.paths.home / "migration")
 
 
 def recorded_type(ctx: Context) -> str | None:
+    """The legacy runtime type the record names, or None."""
     manifest = ctx.manifest_or_none()
     rtype = manifest.runtime_type() if manifest else None
     return rtype if rtype in LEGACY_TYPES else None
 
 
 def value(ctx: Context, key: str, *, old_kit: bool = True) -> str:
+    """One legacy setting from the record: the current one, or the old kit's when ``old_kit``."""
     manifest = ctx.manifest_or_none()
     if manifest is None:
         return ""
@@ -91,6 +96,7 @@ def from_record(ctx: Context, **overrides: str) -> LegacyDb:
 
 
 def remember(ctx: Context, db: LegacyDb) -> None:
+    """Write the legacy database's details into the record for the crossing."""
     def change(m):
         for key, val in (("container", db.container), ("engine", db.engine_name), ("volume", db.volume), ("dsn", db.dsn),
                          ("password_file", db.password_file or ""), ("user", db.user)):
@@ -100,10 +106,12 @@ def remember(ctx: Context, db: LegacyDb) -> None:
 
 
 def start_container(ctx: Context, db: LegacyDb) -> bool:
+    """Start the legacy container; False when there is no engine."""
     return bool(db.engine) and containers.start_container(ctx.runner, db.engine, db.container, timeout=ctx.catalog.kit.container_action_timeout)
 
 
 def stop_container(ctx: Context, db: LegacyDb) -> bool:
+    """Stop the legacy container when it runs."""
     if not db.container or db.state(ctx) != "running" or not db.engine:
         return True
     ctx.ui.info(f"Stopping the old database container ({db.container}) so the new deployment can take the port")
@@ -118,6 +126,7 @@ def stop_container(ctx: Context, db: LegacyDb) -> bool:
 
 
 def password_of(db: LegacyDb) -> str | None:
+    """The legacy password from the record or its file, or None."""
     if db.password:
         return db.password
     if db.password_file and Path(db.password_file).is_file():
@@ -127,6 +136,7 @@ def password_of(db: LegacyDb) -> str | None:
 
 
 def write_legacy_profile(ctx: Context, db: LegacyDb) -> bool:
+    """Write the exapump profile that reaches the legacy database."""
     host, _, port = db.dsn.rpartition(":")
     password = password_of(db)
     if not host or not port.isdigit() or not password:
@@ -139,11 +149,13 @@ def write_legacy_profile(ctx: Context, db: LegacyDb) -> bool:
 
 
 def db_answers(ctx: Context) -> bool:
+    """True when the legacy database answers a query."""
     pump = exapump(ctx)
     return bool(pump) and "EXAKIT_LEGACY_OK" in pump.sql(PROFILE, "SELECT 'EXAKIT_LEGACY_OK' AS P").out
 
 
 def wait_db(ctx: Context, budget: int) -> bool:
+    """Wait up to ``budget`` seconds for the legacy database to answer."""
     import time
     waited = 0
     while not db_answers(ctx):
@@ -155,6 +167,7 @@ def wait_db(ctx: Context, budget: int) -> bool:
 
 
 def tables(ctx: Context) -> list[str]:
+    """Every user table of the legacy database as schema.table."""
     pump = exapump(ctx)
     if pump is None:
         return []
@@ -165,6 +178,7 @@ def tables(ctx: Context) -> list[str]:
 
 
 def table_ddl(ctx: Context, schema: str, table: str) -> str | None:
+    """The CREATE TABLE of one legacy table, or None."""
     pump = exapump(ctx)
     if pump is None:
         return None
@@ -189,6 +203,7 @@ def sample_catalog(ctx: Context) -> dict[str, tuple[str, int | None]]:
 
 
 def table_rows(ctx: Context, schemas: list[str]) -> dict[str, int]:
+    """Row counts of every table in those schemas."""
     pump = exapump(ctx)
     if pump is None or not schemas:
         return {}
@@ -298,6 +313,7 @@ def import_(ctx: Context, directory: Path) -> Imported | None:
 
 
 def report_restore(ctx: Context, directory: Path, why: str, imported: Imported, db: LegacyDb) -> bool:
+    """Say how the restore went; True when every table landed."""
     ctx.ui.ok(f"Restored {imported.ok} table(s) from your previous database")
     if imported.skipped:
         ctx.ui.info(f"Left alone ({why}): {' '.join(imported.skipped_names)}")

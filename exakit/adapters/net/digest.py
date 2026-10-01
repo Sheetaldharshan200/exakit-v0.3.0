@@ -9,6 +9,7 @@ from exakit.domain.errors import Failed
 
 
 def sha256_of(path: Path) -> str:
+    """The hex sha256 of a file."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):

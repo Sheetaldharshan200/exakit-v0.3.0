@@ -42,22 +42,26 @@ class LifecycleBase:
     # --- the record ---------------------------------------------------------------
 
     def recorded(self, field: str, default=None):
+        """The add-on's recorded field from the install record, or ``default`` when there is no record or no such field."""
         manifest = self.ctx.manifest_or_none()
         return manifest.get(f"components.{self.key}.{field}", default) if manifest else default
 
     def record(self, **fields) -> None:
+        """Write the given fields into the add-on's block of the install record."""
         def change(m: Manifest) -> None:
             for name, value in fields.items():
                 m.set(f"components.{self.key}.{name}", value)
         self.ctx.manifest_store.update(change)
 
     def forget(self) -> None:
+        """Drop the add-on's block, its desired version and its step tick from the install record."""
         def change(m: Manifest) -> None:
             m.delete(f"components.{self.key}")
             m.delete(f"desired.{self.key}")
         self.ctx.manifest_store.update(change)
 
     def note_failure(self, reason: str) -> None:
+        """Record the add-on as not validated and keep the reason for status to show."""
         self.record(validated=False)
         self.ctx.ui.warn(f"{self.addon.id} was not installed: {reason}")
         self.ctx.ui.warn(f"Everything else in the kit is unaffected. Retry with: exakit update {self.addon.id}")
@@ -65,6 +69,7 @@ class LifecycleBase:
     # --- versions -----------------------------------------------------------------------
 
     def target_version(self) -> str:
+        """The version to install: EXAKIT_<ID>_VERSION, else the policy's answer from versions.json, else the catalog fallback."""
         pin = self.ctx.env.get(env_var(self.addon.id, "VERSION"))
         resolved = resolve(self.addon.id, policy=self.ctx.policy, env_pin=pin, doc=self.ctx.versions.current(),
                            fallback=self.addon.fallback_version)
@@ -73,10 +78,12 @@ class LifecycleBase:
         return resolved.version
 
     def pin_applies(self, version: str) -> bool:
+        """True when versions.json advertises exactly this version, so its pins (digests, release tags) apply."""
         doc = self.ctx.versions.current()
         return bool(doc) and doc.component_version(self.addon.id) == version
 
     def published_digest(self, version: str, key: str) -> str | None:
+        """The sha256 versions.json publishes for this version under ``key``, or None when it names another version."""
         doc = self.ctx.versions.current()
         return doc.sha256(self.addon.id, key) if doc and self.pin_applies(version) else None
 
@@ -99,6 +106,7 @@ class LifecycleBase:
     # --- tools ----------------------------------------------------------------------------------
 
     def uv(self) -> UvTool:
+        """The uv tool for the kit's venvs, wired once per command and installed on first use."""
         if self.ctx.uv is not None:
             return self.ctx.uv
         bin_path = find_uv(self.ctx.env, self.ctx.paths.home, self.ctx.runner, windows=self.ctx.platform.os == "windows")
@@ -109,6 +117,7 @@ class LifecycleBase:
         return self.ctx.uv
 
     def write_launcher(self, name: str, content: str) -> Path:
+        """Write an executable launcher of that name into the bin dir and return its path."""
         path = self.ctx.paths.bin_dir / name
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(f".{name}.tmp{os.getpid()}")
@@ -118,6 +127,7 @@ class LifecycleBase:
         return path
 
     def remove_paths(self, paths: list[Path], *, dry_run: bool) -> list[str]:
+        """Remove the given paths (a dry run only names them); the answer lists what went or would go."""
         removed = []
         for path in paths:
             if not path.exists() and not path.is_symlink():
@@ -142,11 +152,13 @@ class LifecycleBase:
     # --- defaults subclasses may keep ------------------------------------------------------------
 
     def applicable(self) -> tuple[bool, str]:
+        """(True, '') when the add-on can run on this machine, else (False, the reason the marketplace shows)."""
         if not self.addon.supports(self.ctx.platform.platform_key):
             return False, f"no build is published for this platform ({self.ctx.platform.platform_key})"
         return True, ""
 
     def system_present(self) -> bool:
+        """True when a copy the kit did not install is already on PATH; the marketplace then offers nothing."""
         for name in {self.addon.id, self.addon.launcher or self.addon.id}:
             found = self.ctx.runner.which(name)
             if found and Path(found).resolve() != (self.ctx.paths.bin_dir / name).resolve():
@@ -154,13 +166,16 @@ class LifecycleBase:
         return False
 
     def service(self) -> ServiceHooks | None:
+        """The service hooks of an add-on that runs as a daemon; None for the others."""
         return None
 
     def summary(self) -> str | None:
+        """One line for the install's closing summary, or None when there is nothing to say."""
         return None
 
     def validate(self) -> None:
-        return None
+        """Check that the installed add-on works; subclasses record validated=True or False and say what they found."""
+        return
 
     def update(self) -> None:
         """Same version: rewrite the launchers (repair); otherwise force a reinstall, then validate."""
@@ -177,19 +192,24 @@ class LifecycleBase:
         self.ctx.ui.ok(f"{self.addon.id} updated; database data was not changed")
 
     def repair(self) -> None:
-        return None
+        """Rewrite what the add-on keeps outside its venv (launchers, profiles); a no-op for most."""
+        return
 
     def installed_version(self) -> str | None:
+        """The installed version, or None; every lifecycle answers this."""
         raise NotImplementedError
 
     def install(self, version: str) -> None:
+        """Install this version into the kit; every lifecycle defines its steps."""
         raise NotImplementedError
 
     def uninstall(self, *, dry_run: bool) -> list[str]:
+        """Remove the add-on (a dry run only lists what would go) and return what went."""
         raise NotImplementedError
 
 
 def wait_for(probe: Callable[[], bool], *, seconds: int, every: float = 2.0) -> bool:
+    """Poll ``probe`` every ``every`` seconds until it answers True or ``seconds`` pass; the answer is whether it did."""
     started = time.monotonic()
     while time.monotonic() - started < seconds:
         if probe():
@@ -199,8 +219,10 @@ def wait_for(probe: Callable[[], bool], *, seconds: int, every: float = 2.0) -> 
 
 
 def make_executable(path: Path) -> None:
+    """Add the execute bits."""
     path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
 def temp_dir(prefix: str) -> tempfile.TemporaryDirectory:
+    """A temporary directory with that prefix, removed when the ``with`` block ends."""
     return tempfile.TemporaryDirectory(prefix=prefix)

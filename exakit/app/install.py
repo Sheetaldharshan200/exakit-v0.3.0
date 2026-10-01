@@ -37,6 +37,7 @@ TITLES = {"launcher": "Step 1/6  Exasol launcher", "runtime": "Step 2/6  Local d
 
 
 def prepare_home(ctx: Context) -> None:
+    """Create the kit home and its folders."""
     ctx.paths.home.mkdir(parents=True, exist_ok=True)
     ctx.paths.logs.mkdir(parents=True, exist_ok=True)
     (ctx.paths.home / "workflows").mkdir(exist_ok=True)
@@ -65,6 +66,7 @@ def init_manifest(ctx: Context) -> None:
 
 
 def acquire_lock(ctx: Context) -> None:
+    """Take the install lock, or refuse when another install holds it."""
     lock = ctx.paths.install_lock
     if lock.exists():
         if lock_holder_alive(lock, ctx.runner):
@@ -75,6 +77,7 @@ def acquire_lock(ctx: Context) -> None:
 
 
 def release_lock(ctx: Context) -> None:
+    """Release the install lock."""
     ctx.paths.install_lock.unlink(missing_ok=True)
     if ctx.manifest_store.exists():
         ctx.manifest_store.update(lambda m: m.delete("install.current_step"))
@@ -138,6 +141,7 @@ def resolve_answers(ctx: Context) -> Answers:
 
 
 def connection_summary(ctx: Context) -> None:
+    """Print the connection panel: DSN, users, password files."""
     manifest = ctx.manifest()
     home = ctx.env.get("HOME", "")
     creds = str(ctx.paths.credentials).replace(home, "~", 1) if home else str(ctx.paths.credentials)
@@ -151,6 +155,7 @@ def connection_summary(ctx: Context) -> None:
 
 
 def whats_new_box(ctx: Context, root: Path) -> None:
+    """Print the what's-new cards for the versions this install crossed."""
     manifest = ctx.manifest()
     since = manifest.get("kit.whats_new_from")
     to = kit_version_at(root) or manifest.get("kit.version")
@@ -168,6 +173,7 @@ def whats_new_box(ctx: Context, root: Path) -> None:
 
 
 def report_soft_failures(session: steps.Session) -> None:
+    """Say once which steps did not complete, with their repair commands."""
     ctx = session.ctx
     if not session.soft:
         ctx.ui.text("")
@@ -190,6 +196,7 @@ def report_soft_failures(session: steps.Session) -> None:
 
 
 def autostart_default_on(ctx: Context) -> None:
+    """Enable autostart on a first install, when nothing was decided before."""
     if ctx.manifest().get("autostart.enabled") in (True, False):
         return
     loud = ctx.ui
@@ -204,6 +211,7 @@ def autostart_default_on(ctx: Context) -> None:
 
 
 def marketplace_offer(session: steps.Session) -> None:
+    """Offer the add-ons (the persona's answer, or the menu)."""
     ctx = session.ctx
     pending = [r for r in marketplace_rows(ctx) if r.state == "available"]
     if not pending:
@@ -226,6 +234,7 @@ def marketplace_offer(session: steps.Session) -> None:
 
 
 def closing(session: steps.Session) -> None:
+    """The closing sequence: summary, what's new, autostart, the marketplace, the next steps."""
     ctx = session.ctx
     if not session.failed("runtime"):
         connection_summary(ctx)
@@ -273,6 +282,7 @@ def _steps(session: steps.Session) -> None:
 
 
 def run(ctx: Context) -> Result:
+    """``exakit install``: the whole install, resumable; a dry run shows the plan."""
     answers = resolve_answers(ctx)      # an unknown persona stops here, dry run or not
     if ctx.dry_run:
         the_plan = plan(ctx)
@@ -308,6 +318,7 @@ def run(ctx: Context) -> Result:
 
 
 def kit_version(root: Path) -> str | None:
+    """The kit version a checkout's versions.json names, or None."""
     try:
         return json.loads((root / "versions.json").read_text(encoding="utf-8"))["kit"]["version"]
     except (OSError, ValueError, KeyError, TypeError):

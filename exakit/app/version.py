@@ -38,6 +38,7 @@ class Row:
     platform_note: str | None
 
     def to_dict(self) -> dict[str, Any]:
+        """The row as ``exakit version --json`` prints it."""
         return {"component": self.component, "addon": self.addon, "installed": self.installed,
                 "installed_label": self.installed_label, "advertised": self.advertised, "status": self.status,
                 "remedy": self.remedy, "severity": self.severity, "note": self.note, "platform_note": self.platform_note}
@@ -82,6 +83,7 @@ def _metadata(ctx: Context, cid: str) -> tuple[str, str | None, str | None]:
 
 
 def kit_current(ctx: Context) -> str | None:
+    """The installed kit version, or None."""
     version, _ = installed_version(ctx, "exakit", ctx.manifest_or_none())
     return version
 
@@ -92,6 +94,7 @@ def _min_kit_satisfied(ctx: Context, needed: str) -> bool:
 
 
 def build_row(ctx: Context, cid: str) -> Row:
+    """The version row for one component or add-on: installed, advertised, status, remedy."""
     manifest = ctx.manifest_or_none()
     is_addon = ctx.catalog.has_addon(cid)
     version, present = installed_version(ctx, cid, manifest)
@@ -121,6 +124,7 @@ def build_row(ctx: Context, cid: str) -> Row:
 
 
 def targets(ctx: Context) -> list[str]:
+    """The components and add-ons the table lists."""
     manifest = ctx.manifest_or_none()
     rows = [c for c in CORE_ROWS if c != "personal" or (manifest and manifest.runtime_type() == "personal")]
     for addon in ctx.catalog.addons():
@@ -131,16 +135,19 @@ def targets(ctx: Context) -> list[str]:
 
 
 def rows(ctx: Context, *, refresh: bool) -> list[Row]:
+    """Every row, after refreshing the manifest when asked."""
     if refresh and ctx.policy is VersionPolicy.MANIFEST and not ctx.readonly:
         ctx.versions.refresh(force=True)
     return [build_row(ctx, cid) for cid in targets(ctx)]
 
 
 def pending_count(table: list[Row]) -> int:
+    """How many rows have an update available."""
     return sum(1 for r in table if r.status in ("update_available", "missing"))
 
 
 def source_line(ctx: Context) -> str:
+    """Where the advertised versions came from, in words."""
     policy = ctx.policy
     if policy is VersionPolicy.LATEST:
         return "Available versions come from live upstream lookups (EXAKIT_VERSION_POLICY=latest)"
@@ -153,6 +160,7 @@ def source_line(ctx: Context) -> str:
 
 
 def local_time(stamp: str | None) -> str:
+    """A timestamp in the local time zone, for the human table."""
     if not stamp:
         return "unknown"
     try:
@@ -163,6 +171,7 @@ def local_time(stamp: str | None) -> str:
 
 
 def run(ctx: Context) -> Result:
+    """``exakit version``: the table or the JSON document."""
     manifest = ctx.manifest()
     table = rows(ctx, refresh=True)
     pending = pending_count(table)

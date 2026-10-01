@@ -15,9 +15,7 @@ import socket
 import ssl
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
 
 from exakit.adapters.fs.credentials import CredentialStore
 from exakit.adapters.fs.log import Log, NullLog
@@ -26,36 +24,10 @@ from exakit.adapters.process.runner import Runner
 from exakit.domain.errors import Failed
 from exakit.domain.manifest import Manifest
 
+from .protocol import PersonalRuntime, RuntimeStatus  # noqa: F401 - re-exported for the app and the fakes
 
 
-@dataclass(frozen=True, slots=True)
-class RuntimeStatus:
-    state: str            # running | stopped | starting | conflict | interrupted | not deployed | not installed
-    port: int
-    detail: str = ""
 
-
-class PersonalRuntime(Protocol):
-    def status(self) -> RuntimeStatus: ...
-    def running(self) -> bool: ...
-    def deployment_exists(self) -> bool: ...
-    def start(self, say: Callable[[str], None]) -> None: ...
-    def stop(self, say: Callable[[str], None]) -> None: ...
-    def wait_ready(self, say: Callable[[str], None], *, budget: int | None = None) -> bool: ...
-    def deploy(self, say: Callable[[str], None]) -> None: ...
-    def db_port(self) -> int: ...
-    def wedged(self) -> str | None: ...
-    def reap_orphan(self, port: int, say: Callable[[str], None]) -> bool: ...
-    def cli(self) -> str: ...
-    def destroy(self) -> bool: ...
-    def deployed_version(self) -> str | None: ...
-    def deploy_again(self) -> bool: ...
-    def install_local(self) -> tuple[bool, str]: ...
-    def recover_slow_first_boot(self, say: Callable[[str], None]) -> bool: ...
-    def podman_answers(self) -> tuple[bool, str]: ...
-    def launcher_state(self) -> str: ...
-    def launcher_version(self) -> str | None: ...
-    def tls_answers(self, port: int | None = None) -> bool: ...
 
 
 class PersonalLauncher:
@@ -72,31 +44,37 @@ class PersonalLauncher:
     # --- the launcher --------------------------------------------------------------
 
     def cli(self) -> str:
+        """The launcher to run: the kit's own, else the one on PATH."""
         own = self.bin_dir / "exasol"
         if own.exists():
             return str(own)
         return self.runner.which("exasol") or str(own)
 
     def installed(self) -> bool:
+        """True when a launcher exists at all."""
         return (self.bin_dir / "exasol").exists() or bool(self.runner.which("exasol"))
 
     def _run(self, *args: str, timeout: float | None = None):
         return self.runner.run([self.cli(), *args], timeout=self.probe_timeout if timeout is None else timeout)
 
     def supports(self, subcommand: str) -> bool:
+        """True when the launcher's help lists that subcommand."""
         done = self._run("--help")
         return bool(re.search(rf"^\s*(-\w,\s*)?{re.escape(subcommand)}(\s|,|$)", done.out, re.M))
 
     def auto_approve(self, subcommand: str) -> list[str]:
+        """The flags that answer the subcommand's prompts, when it has them."""
         done = self._run(subcommand, "--help")
         return ["--auto-approve"] if "--auto-approve" in done.out else []
 
     def launcher_version(self) -> str | None:
+        """The launcher's own version, or None."""
         done = self._run("version")
         text = done.out.strip().splitlines()[0].lstrip("v") if done.ok and done.out.strip() else ""
         return text if re.fullmatch(r"[0-9][0-9A-Za-z._+-]*", text) else None
 
     def launcher_state(self) -> str:
+        """The deployment state the launcher reports."""
         done = self._run("status", "--json")
         match = re.search(r'"status"\s*:\s*"([^"]*)"', done.out)
         if match:
@@ -108,6 +86,7 @@ class PersonalLauncher:
     # --- the deployment ----------------------------------------------------------------
 
     def db_port(self) -> int:
+        """The database port the launcher chose, else the default."""
         try:
             text = (self.deploy_dir / "deployment.json").read_text(encoding="utf-8")
             match = re.search(r'"dbPort"\s*:\s*(\d+)', text)
@@ -116,9 +95,11 @@ class PersonalLauncher:
             return self.default_port
 
     def deployment_exists(self) -> bool:
+        """True when the deployment directory is in use."""
         return self.deploy_dir.is_dir() and self._run("info").ok
 
     def deployed_version(self) -> str | None:
+        """The Exasol Personal version of the deployment, or None."""
         try:
             return (self.deploy_dir / ".exasolLauncher.version").read_text(encoding="utf-8").strip() or None
         except OSError:
@@ -162,6 +143,7 @@ class PersonalLauncher:
         return ("mac-runner" in command and "__daemon__" in command) or "exasol-local-runner" in command
 
     def starting(self, port: int) -> bool:
+        """True when one of our runner processes is bringing the database up on that port."""
         for pid, command in self._runner_pids(port):
             age = process_age_seconds(pid, self.runner)
             if self._looks_like_our_runner(command) and age is not None and age < self.reap_min_age:
@@ -169,6 +151,7 @@ class PersonalLauncher:
         return False
 
     def status(self) -> RuntimeStatus:
+        """The decision tree's answer: state, port and detail."""
         port = self.db_port()
         if not self.installed():
             return RuntimeStatus("not installed", port)
@@ -188,6 +171,7 @@ class PersonalLauncher:
         return RuntimeStatus("stopped", port)
 
     def running(self) -> bool:
+        """True when the database answers on its port."""
         port = self.db_port()
         if not port_in_use(port):
             return False
@@ -222,6 +206,7 @@ class PersonalLauncher:
         return not port_in_use(port)
 
     def start(self, say: Callable[[str], None]) -> None:
+        """Start the deployment and wait for the database."""
         if not self.supports("start"):
             say("This launcher version has no explicit start command.")
             say(f"Check the database with: {self.cli()} info")
@@ -254,6 +239,7 @@ class PersonalLauncher:
                          remedy="exakit start")
 
     def stop(self, say: Callable[[str], None]) -> None:
+        """Stop the deployment."""
         if not self.supports("stop"):
             say("This launcher version has no explicit stop command.")
             say("To remove the database entirely use: exakit uninstall")
@@ -280,6 +266,7 @@ class PersonalLauncher:
         return False
 
     def wait_ready_or_deploy(self, say: Callable[[str], None]) -> bool:
+        """Wait for the database; deploy a fresh one when nothing comes up."""
         if self.wait_ready(say):
             return True
         say("The database did not answer after the launcher accepted the start.")

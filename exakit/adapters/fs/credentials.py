@@ -26,9 +26,11 @@ class CredentialStore:
         self.directory = directory
 
     def path(self, name: str) -> Path:
+        """The file for a credential name."""
         return self.directory / name
 
     def exists(self, name: str) -> bool:
+        """True when the credential is stored."""
         return self.path(name).is_file()
 
     def read(self, name: str) -> str | None:
@@ -55,6 +57,7 @@ class CredentialStore:
         return path
 
     def remove(self, name: str) -> None:
+        """Delete the credential."""
         with contextlib.suppress(FileNotFoundError):
             self.path(name).unlink()
 
@@ -65,5 +68,6 @@ class CredentialStore:
 
     @staticmethod
     def is_token(value: str | None) -> bool:
+        """True when the value is a single ASCII token."""
         return bool(value) and value[0].isascii() and value[0].isalpha() and value.isupper() and all(
             c in _TOKEN_ALPHABET for c in value)

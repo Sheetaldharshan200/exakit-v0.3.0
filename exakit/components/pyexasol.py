@@ -33,17 +33,21 @@ class Lifecycle(ComponentBase):
 
     @property
     def venv(self) -> Path:
+        """The pyexasol venv (EXAKIT_PYEXASOL_VENV overrides)."""
         return Path(self.ctx.env.get("EXAKIT_PYEXASOL_VENV") or self.ctx.paths.home / "pyexasol-venv")
 
     @property
     def python(self) -> Path:
+        """The venv's interpreter."""
         return self.venv / ("Scripts/python.exe" if self.ctx.platform.os == "windows" else "bin/python")
 
     @property
     def package(self) -> str:
+        """The package spec to install (EXAKIT_PYEXASOL_PACKAGE overrides the catalog's)."""
         return self.ctx.env.get("EXAKIT_PYEXASOL_PACKAGE") or str(self.ctx.catalog.component("pyexasol").source["package"])
 
     def installed_version(self) -> str | None:
+        """The pyexasol version importable from the venv, or None."""
         if not self.python.exists():
             return None
         done = self.ctx.runner.run([str(self.python), "-c", "import pyexasol; print(pyexasol.__version__)"], timeout=20)
@@ -51,6 +55,7 @@ class Lifecycle(ComponentBase):
         return text or None
 
     def uv(self) -> UvTool:
+        """The uv tool, wired once per command."""
         if self.ctx.uv is not None:
             return self.ctx.uv
         bin_path = find_uv(self.ctx.env, self.ctx.paths.home, self.ctx.runner, windows=self.ctx.platform.os == "windows")
@@ -61,6 +66,7 @@ class Lifecycle(ComponentBase):
         return self.ctx.uv
 
     def install(self, version: str) -> None:
+        """Create the venv and install the package at the version."""
         current = self.installed_version()
         if current == version and not self.force():
             self.ctx.ui.ok(f"pyexasol {current} already installed: {self.venv}")
@@ -74,6 +80,7 @@ class Lifecycle(ComponentBase):
         self.record(version=version, venv=str(self.venv), python=str(self.python))
 
     def validate(self) -> None:
+        """pyexasol imports and connects; records validated."""
         if not self.python.exists():
             return
         if not self.ctx.runner.run([str(self.python), "-c", "import pyexasol"], timeout=60).ok:
@@ -98,6 +105,7 @@ class Lifecycle(ComponentBase):
             self.record(validated=False)
 
     def update(self, options: list[str] | None = None) -> None:
+        """Install the advertised version when it differs."""
         latest = self.target_version()
         current = self.installed_version()
         if current and current == latest:
@@ -110,6 +118,7 @@ class Lifecycle(ComponentBase):
         self.ctx.ui.ok("pyexasol updated; database data was not changed")
 
     def uninstall(self, *, dry_run: bool) -> list[str]:
+        """Remove the venv."""
         if dry_run:
             self.ctx.ui.info(f"  will remove: pyexasol (the managed venv at {self.venv})")
             return [str(self.venv)] if self.venv.exists() else []

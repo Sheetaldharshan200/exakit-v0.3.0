@@ -54,6 +54,7 @@ def frontmatter(path: Path) -> dict[str, str]:
 
 
 def summary_of(description: str) -> str:
+    """The one-line summary of a skill, from its description without the triggers."""
     text = description.split("Triggers")[0].split('". ')[0].rstrip(" —-")
     if len(text) <= 64:
         return text
@@ -81,6 +82,7 @@ def shipped(ctx: Context) -> list[Skill]:
 
 
 def roots(ctx: Context) -> list[Path]:
+    """Where skills are placed: EXAKIT_SKILL_ROOTS, else the Claude and open-standard folders."""
     raw = ctx.env.get("EXAKIT_SKILL_ROOTS", "")
     home = Path(ctx.env.get("HOME") or Path.home())
     if raw.strip():
@@ -95,6 +97,7 @@ def state_of(ctx: Context, skill_id: str) -> str:
 
 
 def wanted(ctx: Context, skill: Skill, manifest: Manifest | None) -> bool:
+    """True when the skill belongs on this machine (its add-on is installed, or it has none)."""
     if not skill.addon:
         return True
     if manifest is None or not ctx.catalog.has_addon(skill.addon):
@@ -103,6 +106,7 @@ def wanted(ctx: Context, skill: Skill, manifest: Manifest | None) -> bool:
 
 
 def place(ctx: Context, skill: Skill) -> None:
+    """Copy a skill into every root."""
     for root in roots(ctx):
         dest = root / skill.id
         shutil.rmtree(dest, ignore_errors=True)
@@ -110,6 +114,7 @@ def place(ctx: Context, skill: Skill) -> None:
 
 
 def unplace(ctx: Context, skill_id: str) -> None:
+    """Remove a skill from every root."""
     for root in roots(ctx):
         shutil.rmtree(root / skill_id, ignore_errors=True)
 
@@ -162,6 +167,7 @@ def install(ctx: Context) -> int:
 
 
 def install_for_addon(ctx: Context, addon_id: str) -> int:
+    """Place the skills of one add-on; the count placed."""
     count = 0
     for skill in shipped(ctx):
         if skill.addon == addon_id:
@@ -174,6 +180,7 @@ def install_for_addon(ctx: Context, addon_id: str) -> int:
 
 
 def remove_for_addon(ctx: Context, addon_id: str) -> int:
+    """Remove the skills of one add-on; the count removed."""
     count = 0
     for skill in shipped(ctx):
         if skill.addon == addon_id:
@@ -188,6 +195,7 @@ def remove_for_addon(ctx: Context, addon_id: str) -> int:
 
 
 def allowlist_entries() -> tuple[list[str], list[str]]:
+    """(allow, keep gated): the exakit commands the Claude settings allow without a prompt."""
     allow = []
     for prefix in PREFIXES:
         allow += [f"Bash({prefix} {cmd}:*)" for cmd in READONLY_COMMANDS]
@@ -198,6 +206,7 @@ def allowlist_entries() -> tuple[list[str], list[str]]:
 
 
 def settings_path(ctx: Context) -> Path:
+    """Claude Code's settings file for this user."""
     return Path(ctx.env.get("HOME") or Path.home()) / ".claude" / "settings.json"
 
 
@@ -230,6 +239,7 @@ def apply_allowlist(ctx: Context) -> str:
 
 
 def remove_allowlist(ctx: Context) -> str:
+    """Take the kit's entries out of the allowlist; the outcome word."""
     path = settings_path(ctx)
     if not path.exists():
         return "REMOVED 0"
@@ -253,6 +263,7 @@ def remove_allowlist(ctx: Context) -> str:
 
 
 def report_allowlist(ctx: Context, outcome: str) -> None:
+    """Say what happened to the allowlist."""
     if outcome == "ADDED 0":
         ctx.log.line("INFO", "Read-only command allowlist already present in ~/.claude/settings.json.")
     elif outcome.startswith("ADDED"):
@@ -267,12 +278,14 @@ def report_allowlist(ctx: Context, outcome: str) -> None:
 
 
 def gating_addon(ctx: Context, skill: Skill, manifest: Manifest | None) -> str | None:
+    """The add-on a skill waits for, or None."""
     if skill.addon and not wanted(ctx, skill, manifest):
         return skill.addon
     return None
 
 
 def list_skills(ctx: Context) -> Result:
+    """``exakit skills``: every skill with its state and the next command."""
     if not (kit_root(ctx) / "skills").is_dir():
         raise Failed("No skills/ directory in this kit build - nothing to list.")
     manifest = ctx.manifest_or_none()
@@ -323,5 +336,6 @@ def _render(ctx: Context, rows: list[dict[str, Any]], have: str | None, want: st
 
 
 def skills_install_command(ctx: Context) -> Result:
+    """``exakit skills-install``: place the skills and merge the allowlist."""
     install(ctx)
     return Result(True, "ok")

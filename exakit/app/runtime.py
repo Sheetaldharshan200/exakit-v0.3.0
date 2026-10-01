@@ -33,6 +33,7 @@ def _start_database(ctx: Context) -> None:
 
 
 def start(ctx: Context) -> Result:
+    """``exakit start``."""
     _start_database(ctx)
     for service in services.service_ids(ctx):
         if service.id == "database":
@@ -92,6 +93,7 @@ def _answer(ctx: Context, question: str) -> bool:
 
 
 def autostart(ctx: Context, args: list[str]) -> Result:
+    """``exakit autostart``."""
     if args:
         raise BadInput("autostart takes no arguments - run 'exakit autostart' and answer the question.")
     ctx.manifest()

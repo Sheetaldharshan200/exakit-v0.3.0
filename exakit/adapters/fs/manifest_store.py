@@ -39,6 +39,7 @@ class FileManifestStore:
         self.lock_path = lock_path
 
     def exists(self) -> bool:
+        """True when a record exists."""
         return self.path.is_file()
 
     def load(self) -> Manifest:
@@ -54,6 +55,7 @@ class FileManifestStore:
         return Manifest(doc)
 
     def save(self, manifest: Manifest) -> None:
+        """Write the record atomically."""
         atomic_write_text(self.path, json.dumps(manifest.doc, indent=2) + "\n", mode=0o600)
 
     def update(self, change: Callable[[Manifest], None]) -> Manifest:

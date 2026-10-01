@@ -29,6 +29,7 @@ class Platform:
 
     @property
     def is_wsl(self) -> bool:
+        """True under WSL."""
         return self.wsl_version is not None
 
     @property
@@ -37,6 +38,7 @@ class Platform:
         return f"{self.os}-{self.arch}"
 
     def to_dict(self) -> dict[str, str | int | None]:
+        """The platform as the status document prints it."""
         return {"platform": self.os, "arch": self.arch, "wsl_version": self.wsl_version}
 
 
