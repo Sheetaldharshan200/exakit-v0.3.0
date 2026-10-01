@@ -352,13 +352,13 @@ class KitSelfUpdateTest(unittest.TestCase):
                         "bootstrap/exakit": "new launcher", "exakit/__main__.py": "",
                         "versions.json": json.dumps({"schema_version": 1, "kit": {"version": "0.3.0"}, "components": {}}),
                         "help/whats-new.json": json.dumps({"0.3.0": ["Python kit"]}), "help/exakit.json": "{}"}
-            box.downloader.pages["https://github.com/krishna-exasol/update-path/archive/refs/heads/main.tar.gz"] = tarball(new_tree)
+            box.downloader.pages["https://github.com/exasol-labs/exasol-personal-local-starterkit/archive/refs/heads/main.tar.gz"] = tarball(new_tree)
             with mock.patch("exakit.app.skills.install", lambda ctx: 0):
                 for_component(box.ctx, "exakit").update()
             self.assertEqual((box.ctx.paths.kit / "setup" / "exakit").read_text(), "new launcher")
             self.assertEqual((box.ctx.paths.bin_dir / "exakit").read_text(), "new launcher")
             self.assertEqual(box.manifest().get("kit.version"), "0.3.0")
-            self.assertEqual(box.manifest().get("kit.source"), "krishna-exasol/update-path@main")
+            self.assertEqual(box.manifest().get("kit.source"), "exasol-labs/exasol-personal-local-starterkit@main")
             self.assertTrue(any(p.name.startswith("kit.backup-") for p in box.home.iterdir()))
             self.assertFalse(box.ctx.paths.update_in_progress.exists())
             self.assertIn("exakit updated to 0.3.0", box.screen())
@@ -370,7 +370,7 @@ class KitSelfUpdateTest(unittest.TestCase):
         box = Sandbox(manifest={**MANIFEST, "kit": {"version": "0.2.0"}})
         try:
             kit = self._installed_kit(box)
-            box.downloader.pages["https://github.com/krishna-exasol/update-path/archive/refs/heads/main.tar.gz"] = tarball({"versions.json": "{}"})
+            box.downloader.pages["https://github.com/exasol-labs/exasol-personal-local-starterkit/archive/refs/heads/main.tar.gz"] = tarball({"versions.json": "{}"})
             with self.assertRaises(Failed) as caught:
                 for_component(box.ctx, "exakit").update()
             self.assertIn("incomplete", caught.exception.message)
@@ -408,7 +408,7 @@ class SkillSetTest(unittest.TestCase):
             (kit / "skills" / "old" / "SKILL.md").write_text("old")
             tree = {"skills/new/SKILL.md": "---\nname: new\ndescription: x. Triggers — y\n---\n",
                     "versions.json": json.dumps({"schema_version": 1, "kit": {"version": "0.3.0"}, "components": {"skills": {"version": "1.12.2"}}})}
-            box.downloader.pages["https://github.com/krishna-exasol/update-path/archive/refs/heads/main.tar.gz"] = tarball(tree)
+            box.downloader.pages["https://github.com/exasol-labs/exasol-personal-local-starterkit/archive/refs/heads/main.tar.gz"] = tarball(tree)
             def place(ctx):
                 ctx.manifest_store.update(lambda m: m.set("components.skills.version", "1.12.2"))
                 return 1

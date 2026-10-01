@@ -27,7 +27,7 @@ irm https://www.exasol.com/install/starter-kit.ps1 | iex
 To install by role (datasets, AI clients and add-ons chosen for you), name a persona first:
 
 ```powershell
-$env:EXAKIT_PERSONA = 'data-scientist'; irm https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.ps1 | iex
+$env:EXAKIT_PERSONA = 'data-scientist'; irm https://raw.githubusercontent.com/exasol-labs/exasol-personal-local-starterkit/main/install.ps1 | iex
 ```
 
 What happens, in order:

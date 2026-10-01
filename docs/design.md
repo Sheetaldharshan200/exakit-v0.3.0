@@ -772,8 +772,11 @@ the refusal object, exit codes, and every `EXAKIT_*` variable in
 3. First `exakit` run after the update: the launcher finds no managed Python,
    runs `ensure-python`, then `python -m exakit`. `Manifest.migrate()` runs on
    the first write.
-4. Read-only commands that day answer from Python once it exists; before that,
-   from the documented "unknown" shape.
+4. The first command after the update, read-only or not, sets the managed
+   Python up: the launcher's "a read-only query never downloads a Python"
+   rule holds only where no install record exists (a machine without the
+   kit). The documented "unknown" shape is what a read-only query answers
+   on such a machine.
 
 ---
 

@@ -27,10 +27,13 @@ if [ ! -f "$EXAKIT_KIT_DIR/exakit/__main__.py" ]; then
     exit 4
 fi
 
-# Read-only queries never download a Python; they degrade to the documented answer.
+# Read-only queries never download a Python on a machine where the kit is not
+# installed; they degrade to the documented answer. An installed kit (the record
+# exists - a 0.2.0 kit that just updated itself, for one) sets its Python up on
+# the first command, whichever it is.
 case " ${1:-} " in
     " status "|" info "|" version "|" help "|" catalog "|" whats-new "|" skills "|" logs "|" mcp-status ")
-        EXAKIT_READONLY_QUERY=1; export EXAKIT_READONLY_QUERY ;;
+        [ -f "$EXAKIT_HOME/manifest.json" ] || { EXAKIT_READONLY_QUERY=1; export EXAKIT_READONLY_QUERY; } ;;
 esac
 
 . "$EXAKIT_KIT_DIR/bootstrap/ensure-python.sh"

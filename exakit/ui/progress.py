@@ -30,7 +30,7 @@ def creep(pct: int, ceiling: int, seconds: float, elapsed: float) -> int:
     span = ceiling - pct
     if span <= 0 or seconds <= 0:
         return pct
-    step = int(span * elapsed / seconds)
+    step = int(span * elapsed / seconds + 1e-6)      # 9.999999s of a 10s stage is the whole stage
     return pct + max(0, min(step, span - 1))
 
 

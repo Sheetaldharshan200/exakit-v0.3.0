@@ -54,16 +54,18 @@ jobs:
           exakit help >/dev/null
           exakit catalog --json >/dev/null
           test -f "$HOME/.exasol-starter-kit/credentials/sys_password" || ls "$HOME/.exasol-starter-kit/credentials"
+      - name: gather the logs
+        if: always()
+        run: |
+          mkdir -p kept
+          cp -R "$HOME/.exasol-starter-kit/logs" kept/ 2>/dev/null || true
+          cp -f update.log status*.json version.json kept/ 2>/dev/null || true
       - name: keep the logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: update-command-logs
-          path: |
-            ~/.exasol-starter-kit/logs/
-            update.log
-            status*.json
-            version.json
+          path: kept/
           if-no-files-found: ignore
 
   rerun-installer:
@@ -124,20 +126,23 @@ jobs:
           EXAKIT_FORCE: "1"
         run: |
           $env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
-          & "$env:GITHUB_WORKSPACE\install.ps1" 2>&1 | Tee-Object rerun.log
+          Get-Content install.ps1 -Raw | Invoke-Expression
           if (-not (Test-Path "$env:USERPROFILE\.exasol-starter-kit\kit\exakit")) { throw "the Python kit copy is missing" }
           exakit version --json | Out-File version.json -Encoding utf8
           python -c "import json; d=json.load(open('version.json', encoding='utf-8-sig')); assert '0.3.0' in json.dumps(d), d; print('version ok')"
           exakit status --json | Out-File status.json -Encoding utf8
           python -c "import json; d=json.load(open('status.json', encoding='utf-8-sig')); print('status:', d.get('status'), d.get('datasets_loaded'))"
+      - name: gather the logs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p kept
+          cp -R "$HOME/.exasol-starter-kit/logs" kept/ 2>/dev/null || true
+          cp -f rerun.log status*.json version.json kept/ 2>/dev/null || true
       - name: keep the logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: rerun-${{ matrix.os }}-logs
-          path: |
-            ~/.exasol-starter-kit/logs/
-            rerun.log
-            status*.json
-            version.json
+          path: kept/
           if-no-files-found: ignore

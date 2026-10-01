@@ -192,7 +192,7 @@ which AI clients, which add-ons. Four ship with the kit: `analyst`,
 command and every question is answered for you:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.sh | EXAKIT_PERSONA=data-scientist sh
+curl -fsSL https://raw.githubusercontent.com/exasol-labs/exasol-personal-local-starterkit/main/install.sh | EXAKIT_PERSONA=data-scientist sh
 ```
 
 On an installed kit, `exakit persona list` shows them and

@@ -19,7 +19,10 @@ if (-not (Test-Path (Join-Path $kitDir "exakit\__main__.py"))) {
     exit 4
 }
 $first = if ($Arguments.Count -gt 0) { $Arguments[0] } else { "help" }
-if ($first -in @("status", "info", "version", "help", "catalog", "whats-new", "skills", "logs", "mcp-status")) {
+# A read-only query never downloads a Python on a machine where the kit is not installed (no manifest.json);
+# an installed kit sets its Python up on the first command, whichever it is.
+if (($first -in @("status", "info", "version", "help", "catalog", "whats-new", "skills", "logs", "mcp-status")) -and
+    -not (Test-Path (Join-Path $env:EXAKIT_HOME "manifest.json"))) {
     $env:EXAKIT_READONLY_QUERY = "1"
 }
 . (Join-Path $kitDir "bootstrap\ensure-python.ps1")

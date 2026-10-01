@@ -83,7 +83,7 @@ class SettingsReachTheCodeTest(unittest.TestCase):
 
     def test_no_python_module_carries_a_repository_url_port_or_threshold_literal(self):
         """The literals that moved to catalog/kit.json and the catalog source blocks must not come back."""
-        forbidden = ("krishna-exasol/update-path", "exasol-labs/exapump", "exasol/exasol-personal", "exasol-labs/exasol-json-tables",
+        forbidden = ("exasol-labs/exasol-personal-local-starterkit", "exasol-labs/exapump", "exasol/exasol-personal", "exasol-labs/exasol-json-tables",
                      "https://api.github.com", "https://raw.githubusercontent.com", "https://pypi.org", "www.exasol.com/install",
                      "= 8563", "scheduler_svc", "exasol_starter_kit")
         offenders = []

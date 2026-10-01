@@ -476,8 +476,8 @@ jobs:
     #
     # A repository that does not publish these releases (a fork, a staging copy
     # of the kit) cannot pass it; there the verdict is shown but does not fail
-    # the build. The kit downloads from krishna-exasol/update-path.
-    continue-on-error: ${{ github.repository != 'krishna-exasol/update-path' }}
+    # the build. The kit downloads from exasol-labs/exasol-personal-local-starterkit.
+    continue-on-error: ${{ github.repository != 'exasol-labs/exasol-personal-local-starterkit' }}
     steps:
       - uses: actions/checkout@v7
       - name: every repo-published pin resolves in this repository

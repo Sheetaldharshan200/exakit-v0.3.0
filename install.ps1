@@ -1,6 +1,6 @@
 # install.ps1 - Exasol Personal Local Starter Kit, one-command installer (Windows).
 #
-#   irm https://raw.githubusercontent.com/krishna-exasol/update-path/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/exasol-labs/exasol-personal-local-starterkit/main/install.ps1 | iex
 #
 # IMPORTANT: this file must NOT have a UTF-8 BOM. It is only ever executed
 # via `irm | iex` (as a fetched string, never read from disk with -File), and
@@ -121,7 +121,7 @@ function Get-ExakitInstallHomeBase {
 }
 $ExakitHome = if ($env:EXAKIT_HOME) { $env:EXAKIT_HOME } else { Join-Path (Get-ExakitInstallHomeBase) ".exasol-starter-kit" }
 $env:EXAKIT_HOME = $ExakitHome
-$Repo       = if ($env:EXAKIT_REPO) { $env:EXAKIT_REPO } else { "krishna-exasol/update-path" }
+$Repo       = if ($env:EXAKIT_REPO) { $env:EXAKIT_REPO } else { "exasol-labs/exasol-personal-local-starterkit" }
 $Ref        = if ($env:EXAKIT_REF)  { $env:EXAKIT_REF }  else { "main" }
 $KitDir     = Join-Path $ExakitHome "kit"
 # A DRY RUN WRITES NOTHING UNDER EXAKIT_HOME. It used to swap the download into

@@ -61,6 +61,13 @@ class LauncherTest(unittest.TestCase):
             self.assertEqual((doc["installed"], doc["status"]), (False, "not installed"))
             self.assertIn("remedy", doc)
 
+    def test_an_installed_kit_sets_its_python_up_even_for_a_read_only_query(self):
+        """The launcher's read-only rule applies only without an install record (design 10: the first command after a 0.2.0 update)."""
+        text = (REPO / "bootstrap" / "exakit").read_text()
+        self.assertIn('[ -f "$EXAKIT_HOME/manifest.json" ] || { EXAKIT_READONLY_QUERY=1; export EXAKIT_READONLY_QUERY; }', text)
+        ps1 = (REPO / "bootstrap" / "exakit.ps1").read_text()
+        self.assertIn("manifest.json", ps1.split("EXAKIT_READONLY_QUERY")[0][-400:], "the PowerShell launcher keeps the same rule")
+
     def test_read_only_query_without_python_answers_unknown_and_exits_3(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = self._env(tmp)
