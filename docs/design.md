@@ -399,7 +399,9 @@ the literals out of the package.
   "mcp":      { "readonly_user": "mcp_readonly", "readonly_schemas": "STARTER_KIT" },
   "data":     { "schema": "STARTER_KIT" },
   "exapump":  { "glibc_shim_image": "ubuntu:24.04" },   // where the binary runs when the host glibc is older than 2.38
-  "notice":   { "interval_seconds": 86400 }
+  "notice":   { "interval_seconds": 86400 },
+  "ui":       { "package": "textual", "venv_dir": "ui-venv" },
+  "feedback": { "email": "starter-kit-feedback@example.com", "note": "..." }   // named at the end of an uninstall; nothing is ever sent
 }
 ```
 

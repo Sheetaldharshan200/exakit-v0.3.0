@@ -268,4 +268,14 @@ def _full(ctx: Context) -> Result:
     ctx.ui.text("")
     ctx.ui.ok("Uninstall complete - the Exasol Personal Local Starter Kit has been removed.")
     ctx.ui.info(f"If a PATH entry for {ctx.paths.bin_dir} remains in your shell profile (~/.zshrc, ~/.bashrc, ~/.profile), remove it manually if you no longer need it.")
+    farewell(ctx)
     return Result(True, "removed", data={"removed": gone})
+
+
+def farewell(ctx: Context) -> None:
+    """Thank the person and name the feedback address (kit.json ``feedback``); nothing is sent - the kit has no telemetry."""
+    ctx.ui.text("")
+    ctx.ui.text("  Thank you for trying the Exasol Personal Local Starter Kit.")
+    ctx.ui.text(f"  {ctx.catalog.kit.feedback_note}")
+    ctx.ui.text(f"    {ctx.catalog.kit.feedback_email}")
+    ctx.ui.text("  Nothing is sent on your behalf: this kit collects no telemetry, and the address is for you to write to.")

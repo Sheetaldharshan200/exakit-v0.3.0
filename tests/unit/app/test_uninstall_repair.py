@@ -100,6 +100,9 @@ class FullUninstallTest(unittest.TestCase):
             self.assertFalse((box.ctx.paths.bin_dir / "exakit").exists())
             self.assertFalse((box.ctx.paths.bin_dir / "exasol").exists())
             self.assertIn("Uninstall complete", box.screen())
+            self.assertIn("Thank you for trying the Exasol Personal Local Starter Kit", box.screen())
+            self.assertIn(box.ctx.catalog.kit.feedback_email, box.screen())
+            self.assertIn("collects no telemetry", box.screen())
             self.assertIn("There is no export step", box.screen())
         finally:
             box.close()

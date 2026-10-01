@@ -63,5 +63,9 @@
   "ui": {
     "package": "textual",
     "venv_dir": "ui-venv"
+  },
+  "feedback": {
+    "email": "starter-kit-feedback@example.com",
+    "note": "If something did not work, or you can spare a minute to say why you are leaving, we would like to hear it."
   }
 }

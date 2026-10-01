@@ -38,6 +38,7 @@ FIELDS: tuple[tuple[str, str, type], ...] = (
     ("data", "schema", str),
     ("exapump", "glibc_shim_image", str),
     ("ui", "package", str), ("ui", "venv_dir", str),
+    ("feedback", "email", str), ("feedback", "note", str),
     ("notice", "interval_seconds", int),
 )
 
@@ -93,6 +94,8 @@ class KitSettings:
     exapump_shim_image: str
     ui_package: str
     ui_venv_dir: str
+    feedback_email: str
+    feedback_note: str
     notice_interval: int
 
     @classmethod
@@ -118,6 +121,7 @@ class KitSettings:
             data_schema=value("data", "schema"),
             exapump_shim_image=value("exapump", "glibc_shim_image"),
             ui_package=value("ui", "package"), ui_venv_dir=value("ui", "venv_dir"),
+            feedback_email=value("feedback", "email"), feedback_note=value("feedback", "note"),
             notice_interval=value("notice", "interval_seconds"),
         )
 
@@ -146,6 +150,9 @@ def validate_settings(doc: Any) -> Problems:
     repository = doc.get("repository")
     if not isinstance(repository, str) or repository.count("/") != 1 or not repository.isascii():
         problems.append("repository must be owner/name")
+    email = (doc.get("feedback") or {}).get("email") if isinstance(doc.get("feedback"), dict) else None
+    if isinstance(email, str) and (email.count("@") != 1 or "." not in email.split("@")[-1] or " " in email):
+        problems.append("feedback.email must be an email address")
     for section, key, kind in FIELDS:
         block = doc.get(section)
         if not isinstance(block, dict) or key not in block:

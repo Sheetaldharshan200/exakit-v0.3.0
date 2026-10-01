@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+**The uninstall says goodbye properly.** It thanks you and names the
+address to write to with feedback (`feedback.email` in `catalog/kit.json`).
+Nothing is sent: the kit has no telemetry, and it says so.
+
 **The progress line is back, for everything that takes time.** The local
 deployment, every download, each dataset load, a folder of files and every
 add-on install draw the line the shell kit drew: the phase, a bar that creeps
