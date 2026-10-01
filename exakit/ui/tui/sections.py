@@ -64,13 +64,19 @@ def _variant(kind: str) -> str:
     return "success" if kind.endswith("start") else "default"
 
 
-def _service_card(name: str, state: str, url: str | None, title: str, row: dict[str, Any]) -> Card:
+def _service_card(name: str, state: str, url: str | None, title: str, row: dict[str, Any], extra: dict[str, Any] | None = None) -> Card:
     lines = Facts()
     if url:
         lines.kv("URL", url)
     lines.kv("Version", f"{row.get('installed_label') or '-'}  (advertised {row.get('advertised') or '-'})")
+    if extra:
+        lines.kv("Tasks", f"{extra.get('tasks', '-')} ({extra.get('enabled', '-')} enabled)  in {extra.get('schema', 'SCHED')}.SCHED_TASKS")
+        lines.kv("Last run", f"{extra.get('last_run') or '-'}  {extra.get('last_status') or ''}".rstrip())
+        lines.kv("Failures (24h)", extra.get("failures_24h", "-"))
     running = state.startswith("running")
     actions = [("Stop", "service-stop", name)] if running else [("Start", "service-start", name)]
+    if not running and name == "exasol-scheduler":
+        actions.append(("Repair", "update", name))        # exakit update exasol-scheduler re-runs the user setup and the engine
     return Card(title, lines, actions, state=state)
 
 
@@ -131,7 +137,8 @@ class StatusView(VerticalScroll):
         services = doc.get("services") or {}
         out = [self._kit_card(rows.get("exakit") or {}, record, doc), self._database_card(doc, record, rows.get("personal") or {}, titles)]
         for name, state in services.items():
-            out.append(_service_card(name, str(state), (doc.get("urls") or {}).get(name), titles.get(name, name), rows.get(name) or {}))
+            extra = self.state.get("scheduler") if name == "exasol-scheduler" else None
+            out.append(_service_card(name, str(state), (doc.get("urls") or {}).get(name), titles.get(name, name), rows.get(name) or {}, extra or None))
         for cid, row in rows.items():
             if row.get("installed") and cid not in services and cid not in ("personal", "exakit"):
                 out.append(_component_card(row, titles.get(cid, cid), record))

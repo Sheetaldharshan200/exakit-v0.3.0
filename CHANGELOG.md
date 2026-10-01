@@ -16,6 +16,11 @@ The 0.2.0 self-update insisted on five library files this tree no longer
 has, so they ship as empty stubs; a workflow installs the real 0.2.0 kit
 on scratch machines and proves both routes.
 
+**The scheduler's card says what it does.** The dashboard reads the
+scheduler's own tables: how many tasks, how many enabled, the last run and
+its outcome, the failures of the last day; a stopped scheduler offers Repair
+(`exakit update exasol-scheduler`, which re-runs its database user setup).
+
 **Cmd-C copies in the screens** where the terminal passes the key on; in
 Terminal.app and iTerm2, Option-drag and Cmd-C copy through the terminal
 itself, and the hint says so.

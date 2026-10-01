@@ -30,7 +30,8 @@ class FakeData:
 
     def status(self):
         return {"installed": True, "status": "running", "running": True, "runtime": {"type": "personal"}, "datasets_loaded": ["tpch"],
-                "services": {"dash-server": "running"}, "urls": {}, "autostart": True, "persona": "analyst", "remedy": None}
+                "services": {"dash-server": "running", "exasol-scheduler": "stopped (gave up after 5 rapid failures)"}, "urls": {}, "autostart": True,
+                "persona": "analyst", "remedy": None}
 
     def versions(self):
         return [{"component": "personal", "addon": False, "installed": "2.3.0", "installed_label": "2.3.0", "advertised": "2.3.0", "status": "current", "remedy": None, "note": None},
@@ -48,6 +49,9 @@ class FakeData:
 
     def help_page(self, topic):
         return f"HELP PAGE FOR {topic}"
+
+    def scheduler(self):
+        return {"tasks": "3", "enabled": "2", "last_run": "2026-10-02 01:00", "last_status": "SUCCESS", "failures_24h": "1", "schema": "SCHED"}
 
     def info(self):
         return {"kit": {"version": "0.3.0", "source": "Sheetaldharshan200/exakit-v0.3.0@main"},
@@ -113,9 +117,13 @@ class DashboardTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(cards["dash-server (AI dashboard host)"].actions, [("Stop", "service-stop", "dash-server")])
             self.assertIn("Sample data", cards)
             self.assertIn("Autostart", cards)
+            scheduler = cards["exasol-scheduler"]
+            self.assertIn("3 (2 enabled)", scheduler.lines.plain)
+            self.assertIn("2026-10-02 01:00  SUCCESS", scheduler.lines.plain)
+            self.assertEqual(scheduler.actions, [("Start", "service-start", "exasol-scheduler"), ("Repair", "update", "exasol-scheduler")])
             from textual.widgets import Button
             top = {str(b.label): b for b in app.query("#actions Button")}
-            self.assertEqual(top["Start everything"].variant, "default", "everything runs: Start is plain")
+            self.assertEqual(top["Start everything"].variant, "success", "the scheduler is stopped: Start is green")
             self.assertEqual(top["Stop everything"].variant, "error", "Stop is always red")
             self.assertEqual(cards["Exasol Personal"].query_one(Button).variant, "error")
             await pilot.press("down")

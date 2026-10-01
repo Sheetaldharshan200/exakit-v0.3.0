@@ -644,7 +644,10 @@ sidebar is a list (arrows, Enter, the mouse): **Status**, one card per
 installed piece, all the same height: the starter kit (version, advertised,
 source repository, record, persona), the database (state, DSN, admin user,
 password file, launcher version, TLS), each service add-on (state, URL,
-version), each other component (installed, advertised; the MCP card names
+version; the scheduler's card adds its tasks, enabled count, last run and
+outcome and the day's failures from `SCHED.SCHED_TASKS` and
+`SCHED.SCHED_HISTORY`, read through exapump, and a Repair action when it is
+stopped), each other component (installed, advertised; the MCP card names
 its read-only user and password file), the sample data and autostart; each
 card carries the actions that fit it (start or stop that one service, update
 that one component, the MCP doctor, load data, change autostart) and the

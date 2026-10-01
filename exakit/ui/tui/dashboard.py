@@ -25,7 +25,7 @@ from .palette import KitProvider
 from .panels import Loader, LogPane, ProgressRow, WordmarkHeader
 from .sections import SECTIONS, ComingSoonView, EntryList, JobView, MarketplaceView, RunJob, StatusView, catalog_detail
 
-LOADING = ("status", "versions", "catalog", "marketplace", "commands", "info")
+LOADING = ("status", "versions", "catalog", "marketplace", "commands", "info", "scheduler")
 QUIET_LEVELS = {"INFO", "OK"}        # these lines came through the renderer already; the tail shows the rest (CMD, LAUNCHER, DATA, WARN...)
 
 

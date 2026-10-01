@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -47,6 +48,28 @@ class DashboardData:
         """The install record as ``exakit info --json`` answers it (DSN, users, password files, kit source); empty before an install."""
         manifest = self.ctx.manifest_or_none()
         return dict(manifest.doc) if manifest else {}
+
+    def scheduler(self) -> dict[str, Any]:
+        """What the scheduler's own tables say: tasks, enabled, the last run, failures in the last day; empty when it cannot be asked."""
+        from exakit.app.db.runtime_ops import exapump, is_running, profile_name
+        manifest = self.ctx.manifest_or_none()
+        if not manifest or not manifest.get("components.exasol_scheduler.version"):
+            return {}
+        pump = exapump(self.quiet)
+        if pump is None or not is_running(self.quiet):
+            return {}
+        schema = str(manifest.get("components.exasol_scheduler.schema") or "SCHED")
+        sql = (f"SELECT 'EXAKIT_SCHED[' || (SELECT COUNT(*) FROM {schema}.SCHED_TASKS) || '|' || (SELECT COUNT(*) FROM {schema}.SCHED_TASKS WHERE \"ENABLED\")"
+               f" || '|' || COALESCE((SELECT TO_CHAR(MAX(\"STARTED_AT\"), 'YYYY-MM-DD HH24:MI') FROM {schema}.SCHED_HISTORY), '-')"
+               f" || '|' || COALESCE((SELECT \"STATUS\" FROM {schema}.SCHED_HISTORY ORDER BY \"STARTED_AT\" DESC LIMIT 1), '-')"
+               f" || '|' || (SELECT COUNT(*) FROM {schema}.SCHED_HISTORY WHERE UPPER(\"STATUS\") NOT IN ('SUCCESS', 'OK')"
+               f" AND \"STARTED_AT\" > ADD_HOURS(CURRENT_TIMESTAMP, -24)) || ']' AS R")
+        done = pump.sql(profile_name(self.quiet), sql, timeout=30)
+        match = re.search(r"EXAKIT_SCHED\[([^\]]*)\]", done.out) if done.ok else None
+        if not match:
+            return {}
+        tasks, enabled, last_at, last_status, failures = [*match.group(1).split("|"), "", "", "", "", ""][:5]
+        return {"tasks": tasks, "enabled": enabled, "last_run": last_at, "last_status": last_status, "failures_24h": failures, "schema": schema}
 
     def log_path(self) -> str | None:
         """The log file this run writes, for the job view's tail."""
