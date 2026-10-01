@@ -160,7 +160,7 @@ main() {
     # Windows x86_64 (catalog/components/personal.json, platforms). An Intel
     # Mac is refused here, before a byte is downloaded; the Python kit holds
     # the same rule for everything that runs after this installer.
-    if [ "$platform" = "macos" ] && [ "$arch" != "arm64" ] && [ "$arch" != "aarch64" ]; then
+    if [ "${EXAKIT_PREFLIGHT:-0}" != "1" ] && [ "$platform" = "macos" ] && [ "$arch" != "arm64" ] && [ "$arch" != "aarch64" ]; then
         fail "The local Exasol database runs on macOS with Apple silicon, Linux x86_64/arm64 and Windows x86_64. This Mac is Intel ($arch), so the database cannot run here. Nothing was installed."
     fi
 

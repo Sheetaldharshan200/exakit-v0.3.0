@@ -219,7 +219,10 @@ jobs:
 
       - name: a second run skips every done step
         run: |
-          Get-Content install.ps1 -Raw | Invoke-Expression 2>&1 | Tee-Object -FilePath rerun.log
+          # A child PowerShell with both streams merged by cmd: a native stderr line merged inside this session
+          # would become an error record and trip the installer's own trap.
+          cmd /c "powershell -NoProfile -ExecutionPolicy Bypass -Command ""Get-Content install.ps1 -Raw | Invoke-Expression; exit `$LASTEXITCODE"" 2>&1" | Tee-Object -FilePath rerun.log
+          Write-Host "re-run exit $LASTEXITCODE"
           Write-Host "skipped: $((Select-String -Path rerun.log -Pattern 'already done, skipping').Count)"
           exit 0
 

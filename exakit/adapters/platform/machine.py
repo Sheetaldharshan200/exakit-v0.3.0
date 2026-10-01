@@ -11,9 +11,12 @@ from exakit.domain.platform import Platform
 
 
 def ram_gb(platform: Platform, runner: Runner) -> int:
+    """Installed memory in whole GB; 0 when the machine will not say."""
     if platform.os == "macos":
         done = runner.run(["sysctl", "-n", "hw.memsize"], timeout=5)
         return int(done.out.strip()) // 1073741824 if done.ok and done.out.strip().isdigit() else 0
+    if platform.os == "windows":
+        return _windows_ram_gb()
     try:
         for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
             if line.startswith("MemTotal"):
@@ -22,6 +25,25 @@ def ram_gb(platform: Platform, runner: Runner) -> int:
     except (OSError, ValueError, IndexError):
         pass
     return 0
+
+
+def _windows_ram_gb() -> int:
+    """GlobalMemoryStatusEx through ctypes: the figure Task Manager shows, rounded to whole GB."""
+    import ctypes
+
+    class MemoryStatus(ctypes.Structure):
+        _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong), ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong), ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong), ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+
+    status = MemoryStatus()
+    status.dwLength = ctypes.sizeof(MemoryStatus)
+    try:
+        if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):  # type: ignore[attr-defined]
+            return 0
+    except (AttributeError, OSError):
+        return 0
+    return int(status.ullTotalPhys / 1073741824 + 0.5)
 
 
 def _free_gb_raw(path: Path, runner: Runner) -> int:
