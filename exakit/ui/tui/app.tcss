@@ -191,3 +191,33 @@ OptionList > .option-list--option-highlighted, ListView > ListItem.-highlight {
     background: $foreground 15%;
     text-style: bold;
 }
+
+#cards {
+    layout: grid;
+    grid-size: 2;
+    grid-gutter: 1 2;
+    height: auto;
+    margin-top: 1;
+    background: transparent;
+}
+
+.card {
+    height: auto;
+    border: round $foreground 30%;
+    padding: 0 1;
+    background: transparent;
+}
+
+.card-title, .card-text {
+    height: auto;
+    background: transparent;
+}
+
+.card-actions {
+    height: auto;
+    margin-top: 1;
+}
+
+.card-actions Button {
+    margin-right: 1;
+}

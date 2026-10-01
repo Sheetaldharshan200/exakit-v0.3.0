@@ -119,6 +119,8 @@ class DashboardApp(App[None]):
         self.call_from_thread(self._loaded, payload)
 
     async def _loaded(self, payload: dict[str, Any]) -> None:
+        if not self.is_running or not self.query("#content"):
+            return
         self.state.update(payload)
         self.query_one(SearchBar).set_entries(self.entries())
         if not self.job_running and not self.query(JobView):      # a finished job's log stays until Esc

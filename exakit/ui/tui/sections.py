@@ -31,48 +31,106 @@ def _kv(text: Text, key: str, value: Any) -> None:
     text.append(f"{key:<18}", style="dim").append(f"{value}\n")
 
 
+class Card(Vertical):
+    """One installed piece: its title, its facts, the actions that fit it."""
+
+    def __init__(self, title: str, lines: Text, actions: list[tuple[str, str, str]], *, state: str = "") -> None:
+        super().__init__(classes="card")
+        self.title_text, self.lines, self.actions, self.state_word = title, lines, actions, state
+
+    def compose(self) -> ComposeResult:
+        """The title with its state, the facts, the buttons."""
+        head = Text.assemble((self.title_text, "bold"))
+        if self.state_word:
+            head.append(f"  {self.state_word}", style=ACCENT if self.state_word == "running" else "dim")
+        yield Static(head, classes="card-title")
+        yield Static(self.lines, classes="card-text")
+        if self.actions:
+            with Horizontal(classes="card-actions"):
+                for label, kind, target in self.actions:
+                    yield Button(label, name=f"{kind}|{target}", variant="success" if kind.endswith("start") else "default", compact=True)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """An action on this card."""
+        kind, target = str(event.button.name).split("|", 1)
+        self.post_message(RunJob(kind, target))
+
+
+def _service_card(name: str, state: str, url: str | None, title: str) -> Card:
+    lines = Text()
+    if url:
+        _kv(lines, "URL", url)
+    running = state.startswith("running")
+    actions = [("Stop", "service-stop", name)] if running else [("Start", "service-start", name)]
+    return Card(title, lines, actions, state=state)
+
+
+def _component_card(row: dict[str, Any], title: str) -> Card:
+    lines = Text()
+    _kv(lines, "Installed", row.get("installed_label") or row.get("installed") or "-")
+    _kv(lines, "Advertised", row.get("advertised") or "-")
+    if row.get("note"):
+        _kv(lines, "Note", row["note"])
+    actions = [("Update", "update", row["component"])] if row.get("status") == "update_available" else []
+    if row["component"] == "mcp":
+        actions.append(("Doctor", "mcp-doctor", ""))
+    return Card(title, lines, actions, state=str(row.get("status", "")))
+
+
 class StatusView(VerticalScroll):
-    """What ``exakit status`` knows, and the Start and Stop actions."""
+    """What ``exakit status`` and ``exakit version`` know, one card per installed piece, each with the actions that fit it."""
 
     def __init__(self, state: dict[str, Any]) -> None:
         super().__init__(id="view")
         self.state = state
 
     def compose(self) -> ComposeResult:
-        """The facts, then the actions."""
-        yield Static(self.render_status(), id="status-text")
-        with Horizontal(id="actions"):
-            yield Button("Start", id="start", variant="success")
-            yield Button("Stop", id="stop")
-
-    def render_status(self) -> Text:
-        """The status document as key/value lines."""
+        """The cards, or the one line that says the kit is not installed or still loading."""
         doc = self.state.get("status") or {}
-        text = Text()
         if not doc:
-            return text.append("Loading…", style="dim")
+            yield Static(Text("Loading…", style="dim"), id="status-text")
+            return
         if not doc.get("installed", True):
-            text.append(f"{doc.get('status')}\n", style="bold")
+            text = Text(f"{doc.get('status')}\n", style="bold")
             if doc.get("remedy"):
                 _kv(text, "Next", doc["remedy"])
-            return text
-        _kv(text, "Database", f"{'running' if doc.get('running') else doc.get('status')}  ({(doc.get('runtime') or {}).get('type', '?')})")
-        _kv(text, "Datasets", ", ".join(doc.get("datasets_loaded") or []) or "none")
-        for name, state in (doc.get("services") or {}).items():
-            _kv(text, name, state)
-        for name, url in (doc.get("urls") or {}).items():
-            _kv(text, name, url)
-        _kv(text, "Autostart", "on" if doc.get("autostart") else "off")
-        _kv(text, "Persona", doc.get("persona") or "none")
-        if doc.get("last_failure"):
-            _kv(text, "Last failure", f"{doc['last_failure']} ({doc.get('last_failure_at')})")
-        if doc.get("remedy"):
-            _kv(text, "Next", doc["remedy"])
-        return text
+            yield Static(text, id="status-text")
+            return
+        with Horizontal(id="actions"):
+            yield Button("Start everything", name="start|", variant="success", compact=True)
+            yield Button("Stop everything", name="stop|", compact=True)
+        with Vertical(id="cards"):
+            yield from self.cards(doc)
+
+    def cards(self, doc: dict[str, Any]) -> list[Card]:
+        """The database, each service, each other installed component, the datasets, autostart."""
+        titles = {e["id"]: e["title"] for e in self.state.get("catalog") or []}
+        services = doc.get("services") or {}
+        urls = doc.get("urls") or {}
+        db_state = "running" if doc.get("running") else str(doc.get("status") or "stopped")
+        db = Text()
+        _kv(db, "Runtime", (doc.get("runtime") or {}).get("type", "?"))
+        _kv(db, "Datasets", ", ".join(doc.get("datasets_loaded") or []) or "none")
+        out = [Card(titles.get("personal", "Exasol Personal (the database)"), db,
+                    [("Stop", "service-stop", "database")] if doc.get("running") else [("Start", "service-start", "database")], state=db_state)]
+        out += [_service_card(name, str(state), urls.get(name), titles.get(name, name)) for name, state in services.items()]
+        for row in self.state.get("versions") or []:
+            cid = row["component"]
+            if row.get("installed") and cid not in services and cid not in ("personal", "exakit"):
+                out.append(_component_card(row, titles.get(cid, cid)))
+        data = Text()
+        _kv(data, "Loaded", ", ".join(doc.get("datasets_loaded") or []) or "none")
+        out.append(Card("Sample data", data, [("Load more", "data-load", "")]))
+        auto = Text()
+        _kv(auto, "At login", "on" if doc.get("autostart") else "off")
+        out.append(Card("Autostart", auto, [("Change", "autostart", "")], state="on" if doc.get("autostart") else "off"))
+        return out
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Start or Stop."""
-        self.post_message(RunJob(str(event.button.id)))
+        """Start or stop everything (the cards answer their own buttons)."""
+        if event.button.name in ("start|", "stop|"):
+            self.post_message(RunJob(str(event.button.name).rstrip("|")))
+            event.stop()
 
 
 class EntryList(Horizontal):
@@ -174,7 +232,7 @@ def updates_detail(row: dict[str, Any]) -> Text:
     return text
 
 
-class MarketplaceView(TabbedContent):
+class MarketplaceView(Vertical):
     """Two tabs: the add-ons (install one) and the updates (update everything)."""
 
     def __init__(self, state: dict[str, Any]) -> None:
@@ -182,15 +240,16 @@ class MarketplaceView(TabbedContent):
         self.state = state
 
     def compose(self) -> ComposeResult:
-        """The two tabs."""
+        """The tab strip and the two panes."""
         rows = self.state.get("marketplace") or []
         versions = self.state.get("versions") or []
-        with TabPane("Add-ons", id="addons"):
-            yield EntryList(rows, label=lambda r: f"{r['id']:<18} {r.get('status', '')}", detail=marketplace_detail, key="id",
-                            action=("marketplace", "Install", lambda r: r.get("status") == "available"), view_id="addons-list")
-        with TabPane("Updates", id="updates"):
-            yield EntryList(versions, label=lambda r: f"{r['component']:<18} {r.get('status', '')}", detail=updates_detail, key="component",
-                            action=("update", "Update everything", lambda _r: True), view_id="updates-list")
+        with TabbedContent(id="market-tabs"):
+            with TabPane("Add-ons", id="addons"):
+                yield EntryList(rows, label=lambda r: f"{r['id']:<18} {r.get('status', '')}", detail=marketplace_detail, key="id",
+                                action=("marketplace", "Install", lambda r: r.get("status") == "available"), view_id="addons-list")
+            with TabPane("Updates", id="updates"):
+                yield EntryList(versions, label=lambda r: f"{r['component']:<18} {r.get('status', '')}", detail=updates_detail, key="component",
+                                action=("update", "Update everything", lambda _r: True), view_id="updates-list")
 
 
 class ComingSoonView(Static):

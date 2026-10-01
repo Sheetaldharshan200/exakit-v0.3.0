@@ -6,7 +6,7 @@ import dataclasses
 from collections.abc import Callable
 from typing import Any
 
-from exakit.app import Context, marketplace as marketplace_app, status as status_app, version as version_app
+from exakit.app import Context, marketplace as marketplace_app, services as services_app, status as status_app, version as version_app
 from exakit.app import help as help_app
 from exakit.app.machine import kit_root
 from exakit.domain.errors import ExakitError
@@ -89,11 +89,24 @@ class DashboardData:
         return text
 
     def job(self, kind: str, target: str = "") -> Job:
-        """An action as the ordinary command: install an add-on, update everything, start, stop."""
+        """An action as the ordinary command, or one service's start or stop through its hooks."""
         table: dict[str, Job] = {
             "marketplace": lambda: commands.marketplace_command([target], self.ctx),
-            "update": lambda: commands.update_command([], self.ctx),
+            "update": lambda: commands.update_command([target] if target else [], self.ctx),
             "start": lambda: commands.start_command([], self.ctx),
             "stop": lambda: commands.stop_command([], self.ctx),
+            "service-start": lambda: self._service(target, start=True),
+            "service-stop": lambda: self._service(target, start=False),
+            "data-load": lambda: commands.data_load_command([], self.ctx),
+            "autostart": lambda: commands.autostart_command([], self.ctx),
+            "mcp-doctor": lambda: commands.mcp_doctor_command([], self.ctx),
         }
         return table[kind]
+
+    def _service(self, service_id: str, *, start: bool) -> Result:
+        """One service (the database or an add-on) started or stopped; the others are left as they are."""
+        for service in services_app.service_ids(self.ctx):
+            if service.id == service_id:
+                (services_app.start if start else services_app.stop)(self.ctx, service)
+                return Result(True, services_app.status_of(self.ctx, service))
+        return Result(False, "unknown service", remedy="exakit status")

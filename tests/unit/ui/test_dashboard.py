@@ -68,9 +68,9 @@ class DashboardTest(unittest.IsolatedAsyncioTestCase):
         return app, data
 
     async def _settled(self, pilot, app):
-        for _ in range(100):
+        for _ in range(400):
             await pilot.pause(0.02)
-            if app.state.get("catalog"):
+            if app.state.get("catalog") and app.query("#view"):
                 break
 
     async def test_the_sidebar_switches_the_views_with_the_keys(self):
@@ -79,7 +79,14 @@ class DashboardTest(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(120, 40)) as pilot:
             await self._settled(pilot, app)
             self.assertTrue(app.query(StatusView))
-            self.assertIn("running", str(app.query_one("#status-text").render()))
+            from exakit.ui.tui.sections import Card
+            cards = {c.title_text: c for c in app.query(Card)}
+            self.assertIn("Exasol Personal", cards)
+            self.assertEqual(cards["Exasol Personal"].actions, [("Stop", "service-stop", "database")])
+            self.assertIn("dash-server (AI dashboard host)", cards)
+            self.assertEqual(cards["dash-server (AI dashboard host)"].actions, [("Stop", "service-stop", "dash-server")])
+            self.assertIn("Sample data", cards)
+            self.assertIn("Autostart", cards)
             await pilot.press("down")
             await pilot.pause(0.05)
             self.assertEqual(app.section, "catalog")
