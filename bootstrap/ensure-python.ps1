@@ -26,14 +26,14 @@ function Get-ExakitVersionsValue {
 }
 
 function Install-ExakitUv {
-    param([string]$Home, [string]$KitDir)
+    param([string]$KitHome, [string]$KitDir)
     $arch = $env:PROCESSOR_ARCHITECTURE
     if ($arch -ne "AMD64") { Write-Host "  [x] The kit's Python bootstrap supports x86_64 Windows only (found $arch)."; return $false }
     $version = Get-ExakitVersionsValue "tools.uv.version" (Join-Path $KitDir "versions.json")
     $want = Get-ExakitVersionsValue "tools.uv.sha256.windows-x86_64" (Join-Path $KitDir "versions.json")
     if (-not $version) { Write-Host "  [x] The kit's versions.json names no uv version (tools.uv.version)."; return $false }
     $url = "https://github.com/astral-sh/uv/releases/download/$version/uv-x86_64-pc-windows-msvc.zip"
-    $dir = Join-Path $Home "tools\uv"
+    $dir = Join-Path $KitHome "tools\uv"
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     $zip = Join-Path $env:TEMP ("exakit-uv-" + [guid]::NewGuid().ToString("N") + ".zip")
     Write-Host "  - Downloading uv $version"
@@ -59,9 +59,9 @@ function Install-ExakitUv {
 }
 
 function Find-ExakitUv {
-    param([string]$Home)
+    param([string]$KitHome)
     if ($env:EXAKIT_UV_BIN -and (Test-Path $env:EXAKIT_UV_BIN)) { return $env:EXAKIT_UV_BIN }
-    $own = Join-Path $Home "tools\uv\uv.exe"
+    $own = Join-Path $KitHome "tools\uv\uv.exe"
     if (Test-Path $own) { return $own }
     $cmd = Get-Command uv.exe -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
