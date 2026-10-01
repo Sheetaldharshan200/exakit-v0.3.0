@@ -44,6 +44,11 @@ as the change they describe.
 - **Adding a persona?** One file, `catalog/personas/<id>.json` (schema in
   docs/design.md 3.3). `tests/unit/domain/test_catalog.py` validates every
   shipped file; name the id in AGENTS.md. Nothing in code names a persona.
+- **Adding a dataset?** One folder, `data/datasets/<id>/` (`dataset.conf`, the
+  schema SQL, one CSV per table; `data/datasets/README.md` has the contract).
+  The kit discovers it; a persona or `data.default_datasets` in
+  `catalog/kit.json` may name it. `tests/test_sample_data_schema.py` checks
+  every folder. Nothing in code names a dataset.
 - **Adding an add-on?** One file, `catalog/addons/<id>/addon.json` (schema
   3.2), its `help/<id>.json` and its `skills/<id>/SKILL.md` with an
   `addon:` key, plus the `components.<id>` block in `versions.json`. Code

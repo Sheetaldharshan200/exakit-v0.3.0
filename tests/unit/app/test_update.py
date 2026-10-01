@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from exakit.app import update
+from exakit.app.kit import update
 from exakit.domain.errors import BadInput, Failed
 from tests.unit.app.harness import MANIFEST, FakeVersions, Sandbox
 from tests.unit.components.test_components import versions_doc
@@ -35,9 +35,9 @@ def box_for(doc: dict, current: dict[str, str | None], manifest: dict | None = N
     box.ctx.runtime = FakeRuntime("running")
     recorder = Recorder(current)
     patches = [
-        mock.patch("exakit.app.update.for_component", lambda ctx, cid: recorder.lifecycle(cid)),
-        mock.patch("exakit.app.update.installed_version", lambda ctx, cid, manifest: (recorder.current.get(cid), recorder.current.get(cid) is not None)),
-        mock.patch("exakit.app.update.for_addon", lambda ctx, addon: recorder.lifecycle(addon.id)),
+        mock.patch("exakit.app.kit.update.for_component", lambda ctx, cid: recorder.lifecycle(cid)),
+        mock.patch("exakit.app.kit.update.installed_version", lambda ctx, cid, manifest: (recorder.current.get(cid), recorder.current.get(cid) is not None)),
+        mock.patch("exakit.app.kit.update.for_addon", lambda ctx, addon: recorder.lifecycle(addon.id)),
     ]
     return box, recorder, patches
 

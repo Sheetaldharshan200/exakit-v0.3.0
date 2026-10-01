@@ -2,7 +2,8 @@ import json
 import unittest
 
 from exakit.adapters.process.runner import Completed
-from exakit.app import logs, sql
+from exakit.app.kit import logs
+from exakit.app.loading import sql
 from exakit.domain.errors import BadInput, Failed, NotRunning
 from tests.unit.app.harness import MANIFEST, Sandbox
 from tests.unit.fakes import FakeExapump

@@ -6,7 +6,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from exakit.app import repair, uninstall
+from exakit.app.installing import repair
+from exakit.app.kit import uninstall
 from exakit.domain.errors import BadInput, Failed, NotConfirmed, NotRunning
 from exakit.domain.result import Result
 from tests.unit.app.harness import MANIFEST, Sandbox
@@ -75,7 +76,7 @@ class FullUninstallTest(unittest.TestCase):
         try:
             (box.home / "python").mkdir()
             (box.home / "python" / "python.exe").write_text("")
-            with mock.patch("exakit.app.uninstall.for_component") as comp:
+            with mock.patch("exakit.app.kit.uninstall.for_component") as comp:
                 comp.return_value.uninstall = lambda dry_run: []
                 result = uninstall.run(box.ctx, ["--yes"])
             self.assertEqual(result.status, "removed")
@@ -92,7 +93,7 @@ class FullUninstallTest(unittest.TestCase):
     def test_yes_removes_the_kit_in_order(self):
         box = installed_box()
         try:
-            with mock.patch("exakit.app.uninstall.for_component") as comp:
+            with mock.patch("exakit.app.kit.uninstall.for_component") as comp:
                 comp.return_value.uninstall = lambda dry_run: []
                 result = uninstall.run(box.ctx, ["--yes"])
             self.assertEqual(result.status, "removed")
@@ -134,7 +135,7 @@ class FullUninstallTest(unittest.TestCase):
             self.assertEqual(result.status, "cancelled")
             self.assertTrue(box.ctx.manifest_store.exists())
             box.ctx.ui.prompt = lambda question, default="": "UNINSTALL"
-            with mock.patch("exakit.app.uninstall.for_component") as comp:
+            with mock.patch("exakit.app.kit.uninstall.for_component") as comp:
                 comp.return_value.uninstall = lambda dry_run: []
                 result = uninstall.run(box.ctx, [])
                 self.assertEqual((result.status, result.data["removed"]), ("removed", ["pyexasol"]))
@@ -177,7 +178,7 @@ class RepairRuntimeTest(unittest.TestCase):
                 seen["steps"] = ctx.manifest().steps_completed()
                 seen["flag"] = ctx.manifest().get("data.datasets.tpch.loaded")
                 return Result(True, "installed", data={"soft_failures": {}})
-            with mock.patch("exakit.app.repair.install.run", fake_install):
+            with mock.patch("exakit.app.installing.repair.install.run", fake_install):
                 result = repair.run(box.ctx, ["--yes"])
             self.assertEqual(result.status, "repaired")
             self.assertEqual((seen["env"]["EXAKIT_REUSE_DB"], seen["env"]["EXAKIT_REPLACE_DB"]), ("0", "1"))
@@ -189,7 +190,7 @@ class RepairRuntimeTest(unittest.TestCase):
     def test_a_rebuild_that_does_not_finish_is_exit_3(self):
         box = Sandbox(manifest=MANIFEST, env={"EXAKIT_CONFIRM_RUNTIME_REPAIR": "1"})
         try:
-            with mock.patch("exakit.app.repair.install.run", lambda ctx: Result(True, "partial", data={"soft_failures": {"runtime": {}}})), \
+            with mock.patch("exakit.app.installing.repair.install.run", lambda ctx: Result(True, "partial", data={"soft_failures": {"runtime": {}}})), \
                  self.assertRaises(NotRunning) as caught:
                 repair.run(box.ctx, [])
             self.assertEqual(caught.exception.data["status"], "failed")

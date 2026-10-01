@@ -50,7 +50,7 @@ class Answers:
         return out
 
 
-def answers_for(persona: Persona, env: Mapping[str, str], *, all_datasets: list[str]) -> Answers:
+def answers_for(persona: Persona, env: Mapping[str, str], *, all_datasets: list[str], default_datasets: tuple[str, ...]) -> Answers:
     """Fold the persona and the environment; an explicit environment answer wins per variable."""
     explicit: set[str] = set()
 
@@ -59,12 +59,12 @@ def answers_for(persona: Persona, env: Mapping[str, str], *, all_datasets: list[
         datasets = tuple(t for t in env["EXAKIT_DATASETS"].replace(" ", "").split(",") if t)
         explicit.add("datasets")
     elif env.get("EXAKIT_LOAD_SAMPLE") in ("0", "1"):
-        datasets = None if env["EXAKIT_LOAD_SAMPLE"] == "0" else ("tpch",)
+        datasets = None if env["EXAKIT_LOAD_SAMPLE"] == "0" else tuple(default_datasets)
         explicit.add("datasets")
     elif persona.datasets == "none":
         datasets = None
     elif persona.datasets == "all":
-        datasets = tuple(all_datasets) or ("tpch",)
+        datasets = tuple(all_datasets) or tuple(default_datasets)
     else:
         datasets = tuple(persona.datasets)
 
@@ -105,7 +105,7 @@ class MachineState:
 
 def plan_for(persona: Persona, machine: MachineState, answers: Answers | None = None) -> Plan:
     """What applying the persona would do here. Nothing is probed or changed."""
-    answers = answers or answers_for(persona, {}, all_datasets=list(machine.all_datasets))
+    answers = answers or answers_for(persona, {}, all_datasets=list(machine.all_datasets), default_datasets=tuple(machine.all_datasets[:1]))
     steps: list[Step] = []
     steps += _dataset_steps(answers, machine)
     steps += _client_steps(answers, machine)

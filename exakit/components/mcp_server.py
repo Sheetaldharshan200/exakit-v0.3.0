@@ -123,7 +123,7 @@ class Lifecycle(ComponentBase):
 
     def snapshot(self) -> None:
         """Snapshot the clients' configs before a change."""
-        from exakit.app import mcp as mcp_app
+        from exakit.app.bridge import mcp as mcp_app
         from exakit.domain.ids import CLIENT_IDS
         call = mcp_app._clients(self.ctx).operation("backup", self.ctx.paths.home, list(CLIENT_IDS))
         reference = (call.doc or {}).get("backup_reference") if call.code == 0 else None
@@ -134,7 +134,7 @@ class Lifecycle(ComponentBase):
 
     def update(self, options: list[str] | None = None) -> None:
         """Re-prime the advertised version and refresh the clients' pins."""
-        from exakit.app import mcp as mcp_app
+        from exakit.app.bridge import mcp as mcp_app
         latest = self.target_version()
         current = self.installed_version()
         if latest == current:
@@ -153,7 +153,7 @@ class Lifecycle(ComponentBase):
 
     def uninstall(self, *, dry_run: bool) -> list[str]:
         """Remove the kit's entries from the clients and forget the component."""
-        from exakit.app import mcp as mcp_app
+        from exakit.app.bridge import mcp as mcp_app
         if dry_run:
             self.ctx.ui.info("  will remove: the managed MCP configuration from the AI clients")
             return ["mcp configs"]

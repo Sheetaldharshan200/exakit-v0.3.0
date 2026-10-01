@@ -35,7 +35,7 @@ FIELDS: tuple[tuple[str, str, type], ...] = (
     ("runtime", "rebuild_timeout_seconds", int), ("runtime", "reap_min_age_seconds", int),
     ("runtime", "container_probe_timeout_seconds", int), ("runtime", "container_action_timeout_seconds", int),
     ("mcp", "readonly_user", str), ("mcp", "readonly_schemas", str),
-    ("data", "schema", str),
+    ("data", "schema", str), ("data", "default_datasets", list), ("data", "legacy_flags", dict),
     ("exapump", "glibc_shim_image", str),
     ("ui", "package", str), ("ui", "venv_dir", str),
     ("feedback", "email", str), ("feedback", "note", str),
@@ -91,6 +91,8 @@ class KitSettings:
     mcp_readonly_user: str
     mcp_readonly_schemas: str
     data_schema: str
+    default_datasets: tuple[str, ...]          # loaded when nothing else answers (a persona, EXAKIT_DATASETS)
+    legacy_flags: dict[str, str]               # an older record's "loaded" flag -> the dataset it meant
     exapump_shim_image: str
     ui_package: str
     ui_venv_dir: str
@@ -118,7 +120,8 @@ class KitSettings:
             reap_min_age=value("runtime", "reap_min_age_seconds"), container_probe_timeout=value("runtime", "container_probe_timeout_seconds"),
             container_action_timeout=value("runtime", "container_action_timeout_seconds"),
             mcp_readonly_user=value("mcp", "readonly_user"), mcp_readonly_schemas=value("mcp", "readonly_schemas"),
-            data_schema=value("data", "schema"),
+            data_schema=value("data", "schema"), default_datasets=tuple(value("data", "default_datasets")),
+            legacy_flags=dict(value("data", "legacy_flags")),
             exapump_shim_image=value("exapump", "glibc_shim_image"),
             ui_package=value("ui", "package"), ui_venv_dir=value("ui", "venv_dir"),
             feedback_email=value("feedback", "email"), feedback_note=value("feedback", "note"),

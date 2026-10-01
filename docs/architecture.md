@@ -83,7 +83,7 @@ update-path/
 |   |-- cli/                    one file per command: status.py, install.py, update.py, marketplace.py,
 |   |                           persona.py, mcp.py, data.py, skills.py, runtime.py, uninstall.py, help.py
 |   |-- ui/                     render(result): console.py (plain and ansi), silent.py, tui/ (Textual, its own venv)
-|   |-- app/                    use cases (plan/apply): install.py, update.py, marketplace.py, persona.py,
+|   |-- app/                    use cases (plan/apply), grouped: installing/, loading/, bridge/, addons/, kit/, db/ over machine.py;
 |   |                           mcp.py, data.py, skills.py, runtime.py, uninstall.py, status.py
 |   |-- domain/                 pure models and rules: manifest.py, versions.py, catalog.py, component.py,
 |   |                           addon.py, persona.py, plan.py, result.py, errors.py (exit codes live here)

@@ -14,8 +14,9 @@ import sys
 import traceback
 from collections.abc import Callable
 
-from exakit.app import Context, notice
-from exakit.app.requirements import supported_platforms
+from exakit.app import Context
+from exakit.app.kit import notice
+from exakit.app.installing.requirements import supported_platforms
 from exakit.domain.errors import BadInput, ExakitError, Failed
 from exakit.domain.result import Result
 from exakit.ui import tui

@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from exakit.app import install
+from exakit.app.installing import install
 from exakit.domain.errors import Failed
 from exakit.domain.platform import Platform
 from tests.unit.app.harness import MANIFEST, Sandbox
@@ -46,19 +46,19 @@ def box_with(manifest=None, **kw) -> tuple[Sandbox, Calls, list]:
     box.ctx.runtime = FakeRuntime("stopped", exists=False)
     calls = Calls()
     patches = [
-        mock.patch("exakit.app.install_steps.for_component", lambda ctx, cid: calls.lifecycle(ctx, cid)),
-        mock.patch("exakit.app.install.for_component", lambda ctx, cid: calls.lifecycle(ctx, cid)),
-        mock.patch("exakit.app.install.check_requirements", lambda ctx: calls.log.append("requirements")),
-        mock.patch("exakit.app.install_steps.mcp.setup", lambda ctx: calls.log.append("mcp.setup") or mock.Mock(exit_code=0)),
-        mock.patch("exakit.app.install_steps.skills.install", lambda ctx: calls.log.append("skills") or 3),
-        mock.patch("exakit.app.install_steps.data.load", lambda ctx, ds, **kw: calls.log.append(f"data.{ds.id}") or mock.Mock()),
-        mock.patch("exakit.app.install_steps.data.loaded", lambda ctx, **kw: set()),
-        mock.patch("exakit.app.install.services.autostart_enable", lambda ctx: calls.log.append("autostart") or True),
-        mock.patch("exakit.app.install.marketplace_rows", lambda ctx: []),
-        mock.patch("exakit.app.install_steps.crossing_after", lambda ctx, runtime_failed: None),
-        mock.patch("exakit.app.install.crossing_before", lambda ctx: None),
-        mock.patch("exakit.app.install.process_start_time", lambda pid, runner: "now"),
-        mock.patch("exakit.app.deploy.port_in_use", lambda port: False),        # never the machine's own port 8563
+        mock.patch("exakit.app.installing.install_steps.for_component", lambda ctx, cid: calls.lifecycle(ctx, cid)),
+        mock.patch("exakit.app.installing.install.for_component", lambda ctx, cid: calls.lifecycle(ctx, cid)),
+        mock.patch("exakit.app.installing.install.check_requirements", lambda ctx: calls.log.append("requirements")),
+        mock.patch("exakit.app.installing.install_steps.mcp.setup", lambda ctx: calls.log.append("mcp.setup") or mock.Mock(exit_code=0)),
+        mock.patch("exakit.app.installing.install_steps.skills.install", lambda ctx: calls.log.append("skills") or 3),
+        mock.patch("exakit.app.installing.install_steps.data.load", lambda ctx, ds, **kw: calls.log.append(f"data.{ds.id}") or mock.Mock()),
+        mock.patch("exakit.app.installing.install_steps.data.loaded", lambda ctx, **kw: set()),
+        mock.patch("exakit.app.installing.install.services.autostart_enable", lambda ctx: calls.log.append("autostart") or True),
+        mock.patch("exakit.app.installing.install.marketplace_rows", lambda ctx: []),
+        mock.patch("exakit.app.installing.install_steps.crossing_after", lambda ctx, runtime_failed: None),
+        mock.patch("exakit.app.installing.install.crossing_before", lambda ctx: None),
+        mock.patch("exakit.app.installing.install.process_start_time", lambda pid, runner: "now"),
+        mock.patch("exakit.app.installing.deploy.port_in_use", lambda port: False),        # never the machine's own port 8563
     ]
     return box, calls, patches
 
@@ -116,7 +116,7 @@ class FreshInstallTest(unittest.TestCase):
                 calls.log.clear()
                 box.out.truncate(0)
                 box.out.seek(0)
-                with mock.patch("exakit.app.install_steps.data.loaded", lambda ctx, **kw: {"tpch"}):
+                with mock.patch("exakit.app.installing.install_steps.data.loaded", lambda ctx, **kw: {"tpch"}):
                     result = install.run(box.ctx)
             self.assertEqual(result.status, "installed")
             self.assertNotIn("personal.install", calls.log)
@@ -179,7 +179,7 @@ class SoftFailureTest(unittest.TestCase):
     def test_a_hard_failure_before_the_steps_releases_the_lock_and_names_the_step(self):
         box, _calls, patches = box_with()
         try:
-            patches[2] = mock.patch("exakit.app.install.check_requirements", mock.Mock(side_effect=Failed("Insufficient memory: 4 GB.")))
+            patches[2] = mock.patch("exakit.app.installing.install.check_requirements", mock.Mock(side_effect=Failed("Insufficient memory: 4 GB.")))
             with Patched(patches), self.assertRaises(Failed) as caught:
                 install.run(box.ctx)
             self.assertEqual(caught.exception.message, "Insufficient memory: 4 GB.")
@@ -283,7 +283,7 @@ class HousekeepingTest(unittest.TestCase):
         box = Sandbox(manifest=MANIFEST)
         try:
             box.ctx.paths.install_lock.write_text("123\nstart\n")
-            with mock.patch("exakit.app.install.lock_holder_alive", lambda path, runner: True), self.assertRaises(Failed) as caught:
+            with mock.patch("exakit.app.installing.install.lock_holder_alive", lambda path, runner: True), self.assertRaises(Failed) as caught:
                 install.acquire_lock(box.ctx)
             self.assertIn("already in progress (pid 123)", caught.exception.message)
         finally:

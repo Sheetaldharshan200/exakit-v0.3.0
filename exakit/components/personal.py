@@ -34,7 +34,7 @@ class Lifecycle(ComponentBase):
 
     def runtime(self):
         """The runtime adapter, wired once per command."""
-        from exakit.app.runtime_ops import runtime
+        from exakit.app.db.runtime_ops import runtime
         return runtime(self.ctx)
 
     def installed_version(self) -> str | None:
@@ -116,7 +116,7 @@ class Lifecycle(ComponentBase):
     # --- update -------------------------------------------------------------------------------------
 
     def _record_launcher(self, version: str) -> None:
-        from exakit.app.runtime_ops import credentials
+        from exakit.app.db.runtime_ops import credentials
         rt = self.runtime()
         def change(m):
             warning = rt.record(m, credentials(self.ctx)) if hasattr(rt, "record") else None

@@ -15,7 +15,7 @@ import unittest
 from pathlib import Path
 
 from exakit.adapters.net.versions_cache import CachedVersionsSource
-from exakit.app import about
+from exakit.app.kit import about
 from exakit.components import for_component
 from exakit.domain.errors import Failed
 from exakit.domain.versions import VersionPolicy, resolve

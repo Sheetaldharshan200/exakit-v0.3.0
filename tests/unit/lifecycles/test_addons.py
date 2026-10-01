@@ -198,8 +198,8 @@ class SchedulerTest(unittest.TestCase):
         box = Sandbox(manifest=CREDS)
         try:
             lc = for_addon(box.ctx, box.ctx.catalog.addon("exasol-scheduler"))
-            with mock.patch("exakit.app.runtime_ops.exapump", lambda ctx: Pump()), \
-                 mock.patch("exakit.app.runtime_ops.profile_name", lambda ctx: "starter-kit"), \
+            with mock.patch("exakit.app.db.runtime_ops.exapump", lambda ctx: Pump()), \
+                 mock.patch("exakit.app.db.runtime_ops.profile_name", lambda ctx: "starter-kit"), \
                  self.assertRaises(Failed) as caught:
                 lc.ensure_db_user()
             self.assertIn("granting CREATE TABLE failed: insufficient privileges", caught.exception.message)

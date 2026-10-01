@@ -6,7 +6,8 @@ import unittest
 from unittest import mock
 
 from exakit.adapters.process.services import RegisterOutcome
-from exakit.app import info, runtime as runtime_app, status
+from exakit.app.kit import info, status
+from exakit.app.db import runtime as runtime_app
 from exakit.domain.errors import BadInput, Failed, NotInstalled
 from tests.unit.app.harness import MANIFEST, Sandbox
 from tests.unit.fakes import FakeRuntime
@@ -50,8 +51,8 @@ class StatusJsonTest(unittest.TestCase):
     def test_running_is_exit_0_with_no_remedy_and_the_documented_keys(self):
         box = box_with("running", json_mode=True)
         try:
-            with mock.patch("exakit.app.status.data.listing", lambda ctx: {"TPCH.LINEITEM": 5}), \
-                 mock.patch("exakit.app.status.data.loaded", lambda ctx, tables, heal: {"tpch"}):
+            with mock.patch("exakit.app.kit.status.data.listing", lambda ctx: {"TPCH.LINEITEM": 5}), \
+                 mock.patch("exakit.app.kit.status.data.loaded", lambda ctx, tables, heal: {"tpch"}):
                 result = status.run(box.ctx)
             self.assertEqual((result.status, result.exit_code, result.remedy), ("running", 0, None))
             for key in ("installing", "install_step", "kit_level", "runtime", "platform", "wsl_version", "running", "services", "urls",
@@ -101,11 +102,11 @@ class StatusJsonTest(unittest.TestCase):
         doc = {**MANIFEST, "install": {"current_step": "mcp"}}
         box = box_with("running", manifest=doc, json_mode=True)
         try:
-            with mock.patch("exakit.app.status.lock_holder_alive", lambda path, runner: True):
+            with mock.patch("exakit.app.kit.status.lock_holder_alive", lambda path, runner: True):
                 result = status.run(box.ctx)
             self.assertEqual((result.status, result.exit_code, result.remedy), ("installing", 3, "exakit status --json"))
             self.assertTrue(result.data["installing"])
-            with mock.patch("exakit.app.status.lock_holder_alive", lambda path, runner: False):
+            with mock.patch("exakit.app.kit.status.lock_holder_alive", lambda path, runner: False):
                 result = status.run(box.ctx)
             self.assertEqual((result.status, result.exit_code, result.data["installing"], result.data["install_step"]), ("running", 0, False, "mcp"))
             self.assertEqual(result.remedy, box.ctx.install_command())

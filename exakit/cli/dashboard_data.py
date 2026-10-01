@@ -6,8 +6,10 @@ import dataclasses
 from collections.abc import Callable
 from typing import Any
 
-from exakit.app import Context, marketplace as marketplace_app, services as services_app, status as status_app, version as version_app
-from exakit.app import help as help_app
+from exakit.app import Context
+from exakit.app.addons import marketplace as marketplace_app, services as services_app
+from exakit.app.kit import status as status_app, version as version_app
+from exakit.app.kit import help as help_app
 from exakit.app.machine import kit_root
 from exakit.domain.errors import ExakitError
 from exakit.domain.result import Result

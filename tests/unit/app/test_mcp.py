@@ -2,7 +2,7 @@ import json
 import unittest
 
 from exakit.adapters.process.runner import Completed
-from exakit.app import mcp
+from exakit.app.bridge import mcp
 from exakit.domain.errors import BadInput, Failed, NotRunning
 from tests.unit.app.harness import MANIFEST, Sandbox
 from tests.unit.fakes import FakeClientOps, FakeExapump, FakeRuntime
@@ -30,7 +30,7 @@ def _box(**kw) -> Sandbox:
     manifest = {**MANIFEST}
     box = Sandbox(manifest=manifest, **kw)
     box.ctx.credentials = None
-    from exakit.app.runtime_ops import credentials
+    from exakit.app.db.runtime_ops import credentials
     store = credentials(box.ctx)
     store.store("personal_sys_password", "adminpw")
     box.ctx.manifest_store.update(lambda m: m.set("runtime.password_file", str(store.path("personal_sys_password"))))

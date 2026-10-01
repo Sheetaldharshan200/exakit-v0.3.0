@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+**A dataset is one folder.** Drop `data/datasets/<id>/` with its
+`dataset.conf`, the schema SQL and one CSV per table, and the kit offers it;
+`data/datasets/README.md` has the contract and a test checks every folder.
+The code names no dataset any more: the default and the older record's
+flag live in `catalog/kit.json`. The `exakit/app` package is grouped by
+purpose (installing, loading, bridge, addons, kit, db).
+
 **Upgrading from 0.2.0 works both ways.** `exakit update` on a 0.2.0 kit
 and a re-run of the install command both bring this version with the
 database, its data, the credentials and the AI client configs untouched.

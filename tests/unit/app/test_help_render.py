@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import unittest
 
-from exakit.app import help as help_app
+from exakit.app.kit import help as help_app
 from tests.support import REPO
 
 DOCS = help_app.load_docs(REPO / "help")

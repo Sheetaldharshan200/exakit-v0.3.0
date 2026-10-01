@@ -173,7 +173,7 @@ class Lifecycle(PythonVenvLifecycle):
         self.write_launchers()
         self.record(version=version, venv=str(self.venv), python=str(self.python), command=str(self.launcher), port=port,
                     instance=str(self.instance))
-        from exakit.app import mcp
+        from exakit.app.bridge import mcp
         try:
             mcp.register_addon_servers(self.ctx, "dash-server")
         except Exception as err:
@@ -304,7 +304,7 @@ class Lifecycle(PythonVenvLifecycle):
             with contextlib.suppress(OSError):
                 self.home.rmdir()
         if not dry_run:
-            from exakit.app import mcp
+            from exakit.app.bridge import mcp
             try:
                 mcp.unregister_server_entry(self.ctx, "dash-server", "dash-server")
             except Exception as err:

@@ -7,7 +7,7 @@ import os
 import time
 import unittest
 
-from exakit.app import about
+from exakit.app.kit import about
 from tests.unit.app.harness import MANIFEST, Sandbox
 
 

@@ -162,5 +162,52 @@ class LoadPipelineFilesTests(unittest.TestCase):
                 )
 
 
+class EveryDatasetFolderTests(unittest.TestCase):
+    """Every folder under data/datasets is a dataset the kit will offer: the same checks, for each (data/datasets/README.md)."""
+
+    DATASETS = sorted(p.parent for p in (ROOT / "data" / "datasets").glob("*/dataset.conf"))
+
+    def _columns(self, schema_sql: Path) -> dict[str, list[str]]:
+        tables: dict[str, list[str]] = {}
+        for match in CREATE_TABLE_RE.finditer(schema_sql.read_text(encoding="utf-8")):
+            body = match.group(2)
+            tables[match.group(1).lower()] = [line.strip().rstrip(",").split()[0].lower() for line in body.splitlines()
+                                              if line.strip() and not line.strip().upper().startswith("CONSTRAINT")]
+        return tables
+
+    def test_there_are_datasets_and_each_has_an_id_a_label_and_markers(self) -> None:
+        self.assertGreaterEqual(len(self.DATASETS), 3)
+        for folder in self.DATASETS:
+            with self.subTest(dataset=folder.name):
+                fields = dict(line.split("=", 1) for line in (folder / "dataset.conf").read_text().splitlines() if "=" in line)
+                self.assertEqual(fields.get("id"), folder.name, "the id is the folder name")
+                self.assertTrue(fields.get("label"))
+                self.assertTrue(fields.get("markers"))
+
+    def test_each_csv_has_a_table_with_the_same_columns_and_a_primary_key(self) -> None:
+        for folder in self.DATASETS:
+            schema_sql = folder / "01_create_schema.sql"
+            with self.subTest(dataset=folder.name):
+                self.assertTrue(schema_sql.exists(), "01_create_schema.sql is required")
+                tables = self._columns(schema_sql)
+                for csv_path in sorted((folder / "data").glob("*.csv")):
+                    with csv_path.open(newline="", encoding="utf-8") as handle:
+                        header = [c.strip().lower() for c in next(csv.reader(handle))]
+                    self.assertIn(csv_path.stem.lower(), tables, f"{csv_path.name} has no CREATE TABLE")
+                    self.assertEqual(tables[csv_path.stem.lower()], header, f"{csv_path.name}: columns differ from the CREATE TABLE")
+                for match in CREATE_TABLE_RE.finditer(schema_sql.read_text(encoding="utf-8")):
+                    self.assertIn("PRIMARY KEY", match.group(2).upper(), f"{match.group(1)} has no primary key")
+
+    def test_the_verification_script_mentions_every_table_when_present(self) -> None:
+        for folder in self.DATASETS:
+            verify_sql = folder / "03_verify_setup.sql"
+            if not verify_sql.exists():
+                continue
+            with self.subTest(dataset=folder.name):
+                text = verify_sql.read_text(encoding="utf-8").upper()
+                for table in self._columns(folder / "01_create_schema.sql"):
+                    self.assertIn(table.upper(), text, f"03_verify_setup.sql does not mention {table.upper()}")
+
+
 if __name__ == "__main__":
     unittest.main()

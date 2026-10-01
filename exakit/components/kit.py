@@ -106,7 +106,7 @@ class Lifecycle(ComponentBase):
             shutil.rmtree(stage, ignore_errors=True)
             raise Failed("Could not install the staged starter kit update; previous kit copy was restored.") from None
         try:
-            from exakit.app.install_steps import helper_files
+            from exakit.app.installing.install_steps import helper_files
             for source, target in helper_files(self.ctx, kit_dir):
                 self.install_binary(source, target)
         except OSError:
@@ -117,7 +117,8 @@ class Lifecycle(ComponentBase):
 
     def update(self, options: list[str] | None = None) -> None:
         """Download, stage and swap the kit copy, reinstall the launcher, re-place the skills."""
-        from exakit.app import skills, whats_new
+        from exakit.app.addons import skills
+        from exakit.app.kit import whats_new
         from exakit.app.machine import kit_root
         latest = self.target_version()
         current = self.installed_version()

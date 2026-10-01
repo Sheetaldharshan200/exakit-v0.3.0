@@ -6,7 +6,7 @@ import sys
 import unittest
 
 from exakit.adapters.process.runner import Completed, SubprocessRunner
-from exakit.app import deploy
+from exakit.app.installing import deploy
 from exakit.domain.catalog import validate_component
 from exakit.ui.progress import ProgressState
 from tests.unit.app.harness import MANIFEST, Sandbox

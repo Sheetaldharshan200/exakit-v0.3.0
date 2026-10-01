@@ -8,6 +8,8 @@ branches here with their own ``installed_version`` hooks.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import json
 import re
 import sys
@@ -53,14 +55,15 @@ def all_datasets(ctx: Context) -> list[str]:
     return [ds for _, ds in sorted(rows)]
 
 
-def loaded_datasets(manifest: Manifest) -> set[str]:
-    """The datasets the record says are loaded (the database is asked in Phase B)."""
+def loaded_datasets(manifest: Manifest, legacy_flags: Mapping[str, str] | None = None) -> set[str]:
+    """The datasets the record says are loaded; an older record's flag (``data.legacy_flags`` in kit.json) counts too."""
     loaded: set[str] = set()
     datasets = manifest.get("data.datasets") or {}
     if isinstance(datasets, dict):
         loaded.update(name for name, rec in datasets.items() if isinstance(rec, dict) and rec.get("loaded"))
-    if manifest.get("data.loaded") is True:
-        loaded.add("tpch")
+    for flag, dataset_id in (legacy_flags or {}).items():
+        if manifest.get(flag) is True:
+            loaded.add(dataset_id)
     return loaded
 
 
@@ -227,7 +230,7 @@ def probe(ctx: Context, manifest: Manifest | None, *, need: set[str] | None = No
     need = need or {"datasets", "mcp_clients", "addons", "skills"}
     return MachineState(
         all_datasets=tuple(all_datasets(ctx)),
-        loaded_datasets=frozenset(loaded_datasets(manifest)) if manifest and "datasets" in need else frozenset(),
+        loaded_datasets=frozenset(loaded_datasets(manifest, ctx.catalog.kit.legacy_flags)) if manifest and "datasets" in need else frozenset(),
         client_states=client_states(ctx) if "mcp_clients" in need else None,
         addon_states=addon_states(ctx, manifest) if "addons" in need else {},
         all_addons=tuple(ctx.catalog.addon_ids()),

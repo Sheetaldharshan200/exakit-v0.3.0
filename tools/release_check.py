@@ -42,7 +42,7 @@ SECRETS = [
     (re.compile(r"(?i)\b(password|passwd|secret)\s*[:=]\s*[\"'][^\"'\s]{8,}[\"']"), "password literal"),
 ]
 TEXT_SUFFIXES = {".py", ".md", ".json", ".sh", ".ps1", ".cmd", ".yml", ".yaml", ".toml", ".properties", ".txt", ".sql", ".cfg", ""}
-SKIP_DIRS = {".git", "__pycache__", "reports", "static", "test_data", ".claude"}
+SKIP_DIRS = {".git", "__pycache__", "reports", "static", "fixtures", ".claude"}
 
 
 def version_of_kit() -> str:

@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 
 from exakit.adapters.process.runner import Completed
-from exakit.app import data, data_files, data_folder
+from exakit.app.loading import data, data_files, data_folder
 from exakit.domain.errors import BadInput, Failed
 from tests.unit.app.harness import MANIFEST, Sandbox
 from tests.unit.fakes import FakeExapump, FakeRuntime

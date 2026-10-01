@@ -353,7 +353,7 @@ class KitSelfUpdateTest(unittest.TestCase):
                         "versions.json": json.dumps({"schema_version": 1, "kit": {"version": "0.3.0"}, "components": {}}),
                         "help/whats-new.json": json.dumps({"0.3.0": ["Python kit"]}), "help/exakit.json": "{}"}
             box.downloader.pages["https://github.com/exasol-labs/exasol-personal-local-starterkit/archive/refs/heads/main.tar.gz"] = tarball(new_tree)
-            with mock.patch("exakit.app.skills.install", lambda ctx: 0):
+            with mock.patch("exakit.app.addons.skills.install", lambda ctx: 0):
                 for_component(box.ctx, "exakit").update()
             self.assertEqual((box.ctx.paths.kit / "setup" / "exakit").read_text(), "new launcher")
             self.assertEqual((box.ctx.paths.bin_dir / "exakit").read_text(), "new launcher")
@@ -393,7 +393,7 @@ class SkillSetTest(unittest.TestCase):
     def test_source_checkout_places_what_it_carries(self):
         box = Sandbox(manifest={**MANIFEST, "components": {**MANIFEST["components"], "skills": {"version": "0.0.1"}}})
         try:
-            with mock.patch("exakit.app.skills.install", lambda ctx: 3):
+            with mock.patch("exakit.app.addons.skills.install", lambda ctx: 3):
                 for_component(box.ctx, "skills").update()
             self.assertIn("source checkout", box.screen())
         finally:
@@ -412,7 +412,7 @@ class SkillSetTest(unittest.TestCase):
             def place(ctx):
                 ctx.manifest_store.update(lambda m: m.set("components.skills.version", "1.12.2"))
                 return 1
-            with mock.patch("exakit.app.skills.install", place):
+            with mock.patch("exakit.app.addons.skills.install", place):
                 for_component(box.ctx, "skills").update()
             self.assertTrue((kit / "skills" / "new" / "SKILL.md").exists())
             self.assertFalse((kit / "skills" / "old").exists())

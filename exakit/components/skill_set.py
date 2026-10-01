@@ -30,7 +30,7 @@ class Lifecycle(ComponentBase):
 
     def install(self, version: str) -> None:
         """Place the skills."""
-        from exakit.app import skills
+        from exakit.app.addons import skills
         skills.install(self.ctx)
 
     def _stage(self, latest: str, current: str | None) -> Path | None:
@@ -63,7 +63,7 @@ class Lifecycle(ComponentBase):
 
     def update(self, options: list[str] | None = None) -> None:
         """Re-place the skills from the kit copy."""
-        from exakit.app import skills
+        from exakit.app.addons import skills
         from exakit.app.machine import kit_root
         try:
             latest = self.target_version()
@@ -112,7 +112,7 @@ class Lifecycle(ComponentBase):
 
     def uninstall(self, *, dry_run: bool) -> list[str]:
         """Remove the skills from the agents' folders."""
-        from exakit.app import skills
+        from exakit.app.addons import skills
         removed: list[str] = []
         names = [s.id for s in skills.shipped(self.ctx)] or list(self.recorded("installed") or [])
         for root in skills.roots(self.ctx):

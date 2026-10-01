@@ -2,7 +2,7 @@ import json
 import unittest
 from pathlib import Path
 
-from exakit.app import skills
+from exakit.app.addons import skills
 from exakit.domain.errors import Failed
 from tests.unit.app.harness import MANIFEST, Sandbox
 

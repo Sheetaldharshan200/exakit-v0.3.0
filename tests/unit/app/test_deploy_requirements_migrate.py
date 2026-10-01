@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 from exakit.adapters.process.containers import Engine
-from exakit.app import deploy, legacy_db, migrate, requirements
+from exakit.app.installing import deploy, legacy_db, migrate, requirements
 from exakit.domain.errors import BadInput, Failed, NotRunning
 from exakit.domain.platform import Platform
 from tests.unit.app.harness import MANIFEST, Sandbox
@@ -55,7 +55,7 @@ class DeployTest(unittest.TestCase):
             box.close()
         box = box_with("stopped", True, env={"EXAKIT_REUSE_DB": "0", "EXAKIT_REPLACE_DB": "1"})
         try:
-            with mock.patch("exakit.app.deploy.port_in_use", lambda port: False):
+            with mock.patch("exakit.app.installing.deploy.port_in_use", lambda port: False):
                 self.assertTrue(deploy.deploy_local(box.ctx))
             self.assertEqual((box.ctx.runtime.destroyed, box.ctx.runtime.installed_local), (1, 1))
             self.assertIn("Exasol Personal deployed and answering", box.screen())
@@ -66,7 +66,7 @@ class DeployTest(unittest.TestCase):
         box = box_with("stopped", False)
         box.ctx.runtime.install_ok = False
         try:
-            with mock.patch("exakit.app.deploy.port_in_use", lambda port: False):
+            with mock.patch("exakit.app.installing.deploy.port_in_use", lambda port: False):
                 self.assertFalse(deploy.deploy_local(box.ctx))
             self.assertIn("The launcher could not deploy the database locally", box.ctx.paths.failure_note.read_text())
         finally:
@@ -78,8 +78,8 @@ class RequirementsTest(unittest.TestCase):
         box = Sandbox(manifest=MANIFEST)
         box.ctx.runtime = FakeRuntime("stopped")
         try:
-            with mock.patch("exakit.app.requirements.machine.ram_gb", lambda p, r: 4), \
-                 mock.patch("exakit.app.requirements.machine.free_disk_gb", lambda p, r, path: 100):
+            with mock.patch("exakit.app.installing.requirements.machine.ram_gb", lambda p, r: 4), \
+                 mock.patch("exakit.app.installing.requirements.machine.free_disk_gb", lambda p, r, path: 100):
                 with self.assertRaises(Failed) as caught:
                     requirements.check(box.ctx)
                 self.assertEqual(caught.exception.message, "Insufficient memory: 4 GB.")
@@ -93,8 +93,8 @@ class RequirementsTest(unittest.TestCase):
         box = Sandbox(manifest=MANIFEST, platform=Platform("macos", "x86_64"))
         box.ctx.runtime = FakeRuntime("stopped")
         try:
-            with mock.patch("exakit.app.requirements.machine.ram_gb", lambda p, r: 16), \
-                 mock.patch("exakit.app.requirements.machine.free_disk_gb", lambda p, r, path: 100), \
+            with mock.patch("exakit.app.installing.requirements.machine.ram_gb", lambda p, r: 16), \
+                 mock.patch("exakit.app.installing.requirements.machine.free_disk_gb", lambda p, r, path: 100), \
                  self.assertRaises(Failed) as caught:
                 requirements.check(box.ctx)
             self.assertIn("macOS on Intel", caught.exception.message)
@@ -104,9 +104,9 @@ class RequirementsTest(unittest.TestCase):
             box.close()
         box = Sandbox(manifest=MANIFEST, platform=Platform("macos", "x86_64"), json_mode=True)
         try:
-            with mock.patch("exakit.app.requirements.machine.ram_gb", lambda p, r: 16), \
-                 mock.patch("exakit.app.requirements.machine.free_disk_gb", lambda p, r, path: 100), \
-                 mock.patch("exakit.app.requirements.machine.macos_translated", lambda p, r: False):
+            with mock.patch("exakit.app.installing.requirements.machine.ram_gb", lambda p, r: 16), \
+                 mock.patch("exakit.app.installing.requirements.machine.free_disk_gb", lambda p, r, path: 100), \
+                 mock.patch("exakit.app.installing.requirements.machine.macos_translated", lambda p, r: False):
                 result = requirements.preflight(box.ctx)
             self.assertEqual(result.status, "blocked")
             self.assertTrue(any("macOS on Intel" in f for f in result.data["failures"]), result.data)
@@ -132,9 +132,9 @@ class RequirementsTest(unittest.TestCase):
         runner = FakeRunner(which={"curl": "/usr/bin/curl", "tar": "/usr/bin/tar", "bash": "/bin/bash"})
         box = Sandbox(manifest=MANIFEST, runner=runner)
         try:
-            with mock.patch("exakit.app.requirements.machine.ram_gb", lambda p, r: 16), \
-                 mock.patch("exakit.app.requirements.machine.free_disk_gb", lambda p, r, path: 10), \
-                 mock.patch("exakit.app.requirements.machine.macos_translated", lambda p, r: False):
+            with mock.patch("exakit.app.installing.requirements.machine.ram_gb", lambda p, r: 16), \
+                 mock.patch("exakit.app.installing.requirements.machine.free_disk_gb", lambda p, r, path: 10), \
+                 mock.patch("exakit.app.installing.requirements.machine.macos_translated", lambda p, r: False):
                 result = requirements.preflight(box.ctx)
             self.assertEqual((result.status, result.exit_code), ("blocked", 1))
             self.assertEqual(len(result.data["failures"]), 1)
@@ -156,13 +156,13 @@ class MigrateArgsTest(unittest.TestCase):
     def test_no_container_and_no_password_are_exit_3_with_the_state_keys(self):
         box = Sandbox(manifest=MANIFEST, json_mode=True)
         try:
-            with mock.patch("exakit.app.legacy_db.containers.find_engine", lambda runner, container, timeout=0, prefer=None: None), \
+            with mock.patch("exakit.app.installing.legacy_db.containers.find_engine", lambda runner, container, timeout=0, prefer=None: None), \
                  self.assertRaises(NotRunning) as caught:
                 migrate.migrate(box.ctx, ["docker-nano"])
             self.assertEqual(caught.exception.refusal()["status"], "no container")
             engine = Engine("docker", "/usr/bin/docker")
-            with mock.patch("exakit.app.legacy_db.containers.find_engine", lambda runner, container, timeout=0, prefer=None: engine), \
-                 mock.patch("exakit.app.legacy_db.containers.published_port", lambda runner, e, c, timeout=0: 8563), \
+            with mock.patch("exakit.app.installing.legacy_db.containers.find_engine", lambda runner, container, timeout=0, prefer=None: engine), \
+                 mock.patch("exakit.app.installing.legacy_db.containers.published_port", lambda runner, e, c, timeout=0: 8563), \
                  self.assertRaises(NotRunning) as caught:
                 migrate.migrate(box.ctx, ["docker-nano"])
             self.assertEqual(caught.exception.refusal()["status"], "no password")
@@ -173,8 +173,8 @@ class MigrateArgsTest(unittest.TestCase):
         box = Sandbox(manifest=MANIFEST)
         try:
             catalog = {"TPCH.NATION": ("tpch", 25), "TPCH.REGION": ("tpch", 5)}
-            with mock.patch("exakit.app.legacy_db.sample_catalog", lambda ctx: catalog), \
-                 mock.patch("exakit.app.legacy_db.table_rows", lambda ctx, schemas: {"TPCH.NATION": 25, "TPCH.REGION": 7}):
+            with mock.patch("exakit.app.installing.legacy_db.sample_catalog", lambda ctx: catalog), \
+                 mock.patch("exakit.app.installing.legacy_db.table_rows", lambda ctx, schemas: {"TPCH.NATION": 25, "TPCH.REGION": 7}):
                 found = legacy_db.classify(box.ctx, ["TPCH.NATION", "TPCH.REGION", "MINE.T1"])
             self.assertEqual((found.own, found.sample, found.sample_ids), (["TPCH.REGION", "MINE.T1"], ["TPCH.NATION"], ["tpch"]))
         finally:

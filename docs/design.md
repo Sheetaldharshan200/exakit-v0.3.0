@@ -121,17 +121,16 @@ exakit/
     silent.py            used under --json: everything goes to the log, nothing to stdout
     widgets.py           shared: wrap(), visible_len(), the wordmark, Option, the progress bar
     tui/                 the Textual screens (6.1): __init__ (wanted/load/run), app.py, renderer.py, screens.py, app.tcss
-  app/
-    __init__.py          Context dataclass; UseCase Protocol (plan/apply)
-    status.py info.py version.py help.py
-    persona.py marketplace.py skills.py mcp.py mcp_readonly.py data.py data_files.py data_folder.py sql.py logs.py
-    install.py install_steps.py deploy.py requirements.py update.py uninstall.py repair.py
-    legacy_db.py legacy_crossing.py migrate.py                 the old-kit container database crossing (D24)
-    status.py info.py runtime.py                                status, info, start, stop, autostart
-    services.py          the database plus each installed service add-on: status/start/stop/autostart
-    runtime_ops.py       credentials, exapump and the personal runtime as the use cases reach them; ensure_running()
-    notice.py            the once-a-day pending-update notice
-    machine.py           MachineState probe: what is on THIS machine (datasets, clients, add-ons, skills)
+  app/                   the use cases, grouped by what they are for (D40)
+    __init__.py          Context dataclass; run_plan (the one apply loop)
+    machine.py           MachineState probe: what is on THIS machine (datasets, clients, add-ons, skills); shared by every group
+    installing/          install.py install_steps.py requirements.py deploy.py repair.py migrate.py components_kit.py
+                         legacy_db.py legacy_crossing.py        the old-kit container database crossing (D24)
+    loading/             data.py (the bundled datasets) data_files.py data_folder.py sql.py
+    bridge/              mcp.py (the AI clients' configs) mcp_readonly.py (the read-only database user)
+    addons/              marketplace.py skills.py services.py (the database plus each service add-on: status/start/stop/autostart)
+    kit/                 status.py info.py version.py update.py uninstall.py help.py help_docs.py whats_new.py notice.py about.py guide.py logs.py persona.py
+    db/                  runtime.py (start, stop, autostart) runtime_ops.py (credentials, exapump and the personal runtime; ensure_running())
   components/
     __init__.py          for_component(ctx, id): the kit's own parts, one lifecycle each (D22)
     base.py              ComponentBase: record, advertised version, verified downloads, runtime facts
@@ -865,6 +864,7 @@ deletes `setup/`.
 | D33 | The Log protocol lives in `domain/log.py`; the UI imports nothing from `adapters/`. Daemons start through `Runner.spawn`, HTTP probes through `adapters.net.http.http_status`. | The layer rule of section 9, held by the checker. The one exception, the terminal device in `ui/__init__.py`, is named in the checker. |
 | D34 | Every default is data: `catalog/kit.json` for the kit (repository, installer URLs, fetch URLs and cache budgets, endpoint templates, the managed Python, the machine requirements, the runtime's port and budgets, the MCP and data defaults), the `source` and `config` blocks of the catalog for each component and add-on (tags, asset names per platform, pins, mirrors, service users). The code reads them through `ctx.catalog`; an environment variable overrides where documented. A test holds the literals out of `exakit/`. | The fallback order (GitHub, cache, ours) is only as good as the "ours" it ends in; a value that lives in a module cannot be changed by a kit update without a code change, and the same value lived in three places. |
 | D36 | The kit is a bundler, not the maintainer of the add-ons: an add-on's binaries come from the add-on's own GitHub release first (`exasol-labs/exasol-scheduler`, `exasol-labs/exasol-json-tables`: the upstream archives, verified by the digests upstream publishes, the binary extracted), and the kit's mirror release answers only when that download cannot complete, or for a platform upstream does not publish (the JSON Tables linux-aarch64 engine). The sites are catalog data (`source.releases`); `versions.json` pins the mirror's digests and names the mirror release. | The mirror pinned a release tag that did not exist in this repository and digests of another build; the installs failed on a download the source repository was answering all along. The upstream release is the authority on what the add-on is; the mirror is a fallback and must never be the only path. |
+| D40 | `exakit/app` is six packages named for what the use cases are for (`installing`, `loading`, `bridge`, `addons`, `kit`, `db`) over the shared `machine.py` and the `Context`; the layer rule is unchanged (`app` is still the first path part). | Thirty-five modules in one folder are found by grep, not by reading; a folder per purpose is where a reader looks first. |
 | D39 | `exakit ui` is the dashboard (6.1a): the kit's state, catalog, marketplace and updates browsed with the keys, the mouse and a search bar, actions run as the ordinary commands inside it; a bare `exakit` in a terminal opens it once the kit is installed, everywhere else `exakit` stays the help page and every `--json` contract is untouched. | A listing is not a way to find things; the screens already exist and the kit's data is one facade away. |
 | D38 | One progress line for every long job (6.2), the legacy kit's design kept: milestones are the truth and the creep between them is honest; the launcher's deploy lines are data on the Personal component (`deploy_milestones`), streamed through `Runner.stream`. | A spinner that says nothing for two minutes, or a bar that jumps from 5% to done, is what the shell kit had already solved; its users expect the same line for the deploy, the datasets and the add-ons. |
 | D37 | The interactive screens are Textual, in a venv of their own (architecture A3, revised): the core stays standard-library, the console renderer stays the fallback, the Textual app owns the main thread and the command runs in a worker whose renderer hands every call to the app; the transcript is printed when the app closes. | A hand-rolled full-screen UI (arrow menus, spinners, bars drawn with escape codes) is the second UI toolkit to maintain; Textual gives layout, widgets, modals and a test pilot for the price of one pinned package that the installer can live without. |

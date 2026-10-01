@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from exakit.app import marketplace
+from exakit.app.addons import marketplace
 from exakit.domain.errors import BadInput, Failed, NotConfirmed
 from exakit.lifecycles.base import ServiceHooks
 from exakit.ui.console import ConsoleRenderer
@@ -79,7 +79,7 @@ class Fixture:
         return self.made[addon.id]
 
     def __enter__(self):
-        self.patches = [mock.patch("exakit.lifecycles.for_addon", self.factory), mock.patch("exakit.app.marketplace.for_addon", self.factory)]
+        self.patches = [mock.patch("exakit.lifecycles.for_addon", self.factory), mock.patch("exakit.app.addons.marketplace.for_addon", self.factory)]
         for p in self.patches:
             p.start()
         return self
@@ -269,7 +269,7 @@ class InstallLoopTest(unittest.TestCase):
         try:
             registered = []
             with Fixture(box, **{"dash-server": {"service": True}}) as fx, \
-                 mock.patch("exakit.app.services.register_autostart", lambda ctx, s: registered.append(s.id) or True):
+                 mock.patch("exakit.app.addons.services.register_autostart", lambda ctx, s: registered.append(s.id) or True):
                 marketplace.run(box.ctx, ["dash-server"])
             self.assertEqual(fx.made["dash-server"].started, 1)
             self.assertEqual(registered, ["dash-server"])

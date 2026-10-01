@@ -28,7 +28,7 @@ def _machine(**over) -> MachineState:
 
 class AnswersTest(unittest.TestCase):
     def test_persona_alone_expands_all_and_words(self):
-        a = answers_for(_persona(), {}, all_datasets=ALL_DS)
+        a = answers_for(_persona(), {}, all_datasets=ALL_DS, default_datasets=("tpch",))
         self.assertEqual(a.datasets, ("tpch", "energy", "weather"))
         self.assertEqual(a.mcp_clients, "all")
         self.assertEqual(a.addons, ("dash-server", "json-tables"))
@@ -37,35 +37,35 @@ class AnswersTest(unittest.TestCase):
                                    "EXAKIT_MARKETPLACE_ADDONS": "dash-server,json-tables"})
 
     def test_minimal_persona_answers_no_to_everything(self):
-        a = answers_for(_persona("minimal", datasets="none", clients="skip", addons="none"), {}, all_datasets=ALL_DS)
+        a = answers_for(_persona("minimal", datasets="none", clients="skip", addons="none"), {}, all_datasets=ALL_DS, default_datasets=("tpch",))
         self.assertIsNone(a.datasets)
         self.assertEqual(a.env(), {"EXAKIT_LOAD_SAMPLE": "0", "EXAKIT_MCP_CLIENTS": "skip", "EXAKIT_MARKETPLACE_ADDONS": "none"})
 
     def test_explicit_env_wins_per_variable(self):
         env = {"EXAKIT_DATASETS": "tpch", "EXAKIT_MCP_CLIENTS": "codex"}
-        a = answers_for(_persona(), env, all_datasets=ALL_DS)
+        a = answers_for(_persona(), env, all_datasets=ALL_DS, default_datasets=("tpch",))
         self.assertEqual(a.datasets, ("tpch",))
         self.assertEqual(a.mcp_clients, "codex")
         self.assertEqual(a.addons, ("dash-server", "json-tables"))
         self.assertEqual(a.explicit, frozenset({"datasets", "mcp_clients"}))
 
     def test_load_sample_and_skip_mcp_are_explicit_answers_too(self):
-        a = answers_for(_persona(), {"EXAKIT_LOAD_SAMPLE": "0", "EXAKIT_SKIP_MCP": "1"}, all_datasets=ALL_DS)
+        a = answers_for(_persona(), {"EXAKIT_LOAD_SAMPLE": "0", "EXAKIT_SKIP_MCP": "1"}, all_datasets=ALL_DS, default_datasets=("tpch",))
         self.assertIsNone(a.datasets)
         self.assertEqual(a.mcp_clients, "skip")
-        a = answers_for(_persona(datasets="none"), {"EXAKIT_LOAD_SAMPLE": "1"}, all_datasets=ALL_DS)
+        a = answers_for(_persona(datasets="none"), {"EXAKIT_LOAD_SAMPLE": "1"}, all_datasets=ALL_DS, default_datasets=("tpch",))
         self.assertEqual(a.datasets, ("tpch",))
 
     def test_explicit_marketplace_answer_words_and_lists(self):
-        self.assertEqual(answers_for(_persona(), {"EXAKIT_MARKETPLACE_ADDONS": "None"}, all_datasets=ALL_DS).addons, "none")
-        self.assertEqual(answers_for(_persona(), {"EXAKIT_MARKETPLACE_ADDONS": "a, b"}, all_datasets=ALL_DS).addons, ("a", "b"))
+        self.assertEqual(answers_for(_persona(), {"EXAKIT_MARKETPLACE_ADDONS": "None"}, all_datasets=ALL_DS, default_datasets=("tpch",)).addons, "none")
+        self.assertEqual(answers_for(_persona(), {"EXAKIT_MARKETPLACE_ADDONS": "a, b"}, all_datasets=ALL_DS, default_datasets=("tpch",)).addons, ("a", "b"))
 
     def test_explicit_client_skip_words(self):
-        self.assertEqual(answers_for(_persona(), {"EXAKIT_MCP_CLIENTS": "none"}, all_datasets=ALL_DS).mcp_clients, "skip")
+        self.assertEqual(answers_for(_persona(), {"EXAKIT_MCP_CLIENTS": "none"}, all_datasets=ALL_DS, default_datasets=("tpch",)).mcp_clients, "skip")
 
     def test_dataset_list_from_persona_and_empty_all_falls_back_to_tpch(self):
-        self.assertEqual(answers_for(_persona(datasets=("energy",)), {}, all_datasets=ALL_DS).datasets, ("energy",))
-        self.assertEqual(answers_for(_persona(), {}, all_datasets=[]).datasets, ("tpch",))
+        self.assertEqual(answers_for(_persona(datasets=("energy",)), {}, all_datasets=ALL_DS, default_datasets=("tpch",)).datasets, ("energy",))
+        self.assertEqual(answers_for(_persona(), {}, all_datasets=[], default_datasets=("tpch",)).datasets, ("tpch",))
 
 
 class PlanTest(unittest.TestCase):
@@ -112,7 +112,7 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(ghost.state, StepState.SKIPPED)
 
     def test_explicit_answers_shape_the_plan(self):
-        answers = answers_for(_persona(), {"EXAKIT_DATASETS": "energy"}, all_datasets=ALL_DS)
+        answers = answers_for(_persona(), {"EXAKIT_DATASETS": "energy"}, all_datasets=ALL_DS, default_datasets=("tpch",))
         plan = plan_for(_persona(), _machine(), answers)
         self.assertEqual([s.id for s in plan.steps if s.section == "datasets"], ["energy"])
 

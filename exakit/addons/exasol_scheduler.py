@@ -108,7 +108,7 @@ class Lifecycle(BinaryLifecycle):
 
     def ensure_db_user(self) -> None:
         """Create the service user with its own password file and the grants the first run needs, once."""
-        from exakit.app.runtime_ops import credentials, exapump
+        from exakit.app.db.runtime_ops import credentials, exapump
         pump = exapump(self.ctx)
         if pump is None:
             raise Failed("exapump is required to create the scheduler's database user")
@@ -127,7 +127,7 @@ class Lifecycle(BinaryLifecycle):
 
     def _sql(self, pump, sql: str, *, what: str, secret: bool = False) -> str:
         """Run one statement as the kit's admin profile; its output, or Failed naming what did not work (never a secret statement's text)."""
-        from exakit.app.runtime_ops import profile_name
+        from exakit.app.db.runtime_ops import profile_name
         done = pump.sql(profile_name(self.ctx), sql)
         if done.ok:
             return done.out
@@ -137,7 +137,7 @@ class Lifecycle(BinaryLifecycle):
 
     def schema_present(self) -> bool:
         """True when the scheduler's schema exists in the database."""
-        from exakit.app.runtime_ops import exapump, profile_name
+        from exakit.app.db.runtime_ops import exapump, profile_name
         pump = exapump(self.ctx)
         if pump is None:
             return False
@@ -149,7 +149,7 @@ class Lifecycle(BinaryLifecycle):
         """Take back the CREATE grants once the schema exists, so the service user keeps only what jobs need."""
         if self.recorded("bootstrap_revoked") is True:
             return
-        from exakit.app.runtime_ops import exapump, profile_name
+        from exakit.app.db.runtime_ops import exapump, profile_name
         pump = exapump(self.ctx)
         if pump:
             pump.sql(profile_name(self.ctx), f"REVOKE CREATE SCHEMA FROM {self.db_user.upper()}")
@@ -160,7 +160,7 @@ class Lifecycle(BinaryLifecycle):
 
     def launcher_content(self) -> str | None:
         """The supervising launcher script, or None before the credentials exist."""
-        from exakit.app.runtime_ops import credentials
+        from exakit.app.db.runtime_ops import credentials
         dsn, _, _ = self.runtime_credentials()
         host, _, port = dsn.rpartition(":")
         return LAUNCHER.format(pidfile=self.pidfile, engine=self.engine, giveup=self.giveup, host=host or "127.0.0.1",
@@ -279,7 +279,7 @@ class Lifecycle(BinaryLifecycle):
 
     def uninstall(self, *, dry_run: bool) -> list[str]:
         """Remove the engine, the launcher, the service user and the records; the schema and its history stay."""
-        from exakit.app.runtime_ops import credentials, exapump, profile_name
+        from exakit.app.db.runtime_ops import credentials, exapump, profile_name
         if not dry_run:
             with contextlib.suppress(Failed):
                 self.stop()

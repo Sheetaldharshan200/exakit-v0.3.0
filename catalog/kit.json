@@ -52,7 +52,13 @@
     "readonly_schemas": "STARTER_KIT"
   },
   "data": {
-    "schema": "STARTER_KIT"
+    "schema": "STARTER_KIT",
+    "default_datasets": [
+      "tpch"
+    ],
+    "legacy_flags": {
+      "data.loaded": "tpch"
+    }
   },
   "notice": {
     "interval_seconds": 86400

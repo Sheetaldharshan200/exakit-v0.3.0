@@ -8,7 +8,13 @@ from __future__ import annotations
 
 import sys
 
-from exakit.app import Context, data as data_app, guide as guide_app, help as help_app, info as info_app, install as install_app, migrate as migrate_app, repair as repair_app, requirements as requirements_app, uninstall as uninstall_app, runtime as runtime_app, status as status_app, update as update_app, logs as logs_app, marketplace as marketplace_app, mcp as mcp_app, persona as persona_app, skills as skills_app, sql as sql_app, version as version_app, whats_new
+from exakit.app import Context
+from exakit.app.loading import data as data_app, sql as sql_app
+from exakit.app.kit import guide as guide_app, help as help_app, info as info_app, uninstall as uninstall_app, status as status_app, update as update_app, logs as logs_app, persona as persona_app, version as version_app, whats_new
+from exakit.app.installing import install as install_app, migrate as migrate_app, repair as repair_app, requirements as requirements_app
+from exakit.app.db import runtime as runtime_app
+from exakit.app.addons import marketplace as marketplace_app, skills as skills_app
+from exakit.app.bridge import mcp as mcp_app
 from exakit.app.machine import kit_root
 from exakit.domain.errors import BadInput, Failed
 from exakit.domain.result import Result
