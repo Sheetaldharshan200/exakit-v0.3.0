@@ -61,22 +61,8 @@ jobs:
         run: python tools/run_tests.py --coverage
       - name: what icacls says about a protected file (Windows, diagnostic)
         if: runner.os == 'Windows' && always()
-        shell: pwsh
-        run: |
-          python - <<'PY'
-          import os, subprocess, tempfile
-          from pathlib import Path
-          from mcp.runtime import filesystem as fs
-          d = Path(tempfile.mkdtemp(prefix="acl-diag-"))
-          f = d / "config.json"; f.write_text("{}")
-          print("USERNAME:", os.environ.get("USERNAME"), "| realpath:", os.path.realpath(f))
-          print("protect_path ->", fs.protect_path(f))
-          print(subprocess.run(["icacls", str(f)], capture_output=True, text=True).stdout)
-          print("describe_protection ->", fs.describe_protection(f))
-          fs.FileSystem().write_text(d / "written.json", "{}")
-          print(subprocess.run(["icacls", str(d / "written.json")], capture_output=True, text=True).stdout)
-          print("describe(written) ->", fs.describe_protection(d / "written.json"))
-          PY
+        shell: bash
+        run: python tools/acl_diag.py
       - name: the bootstrap and the launcher parse under Windows PowerShell 5.1
         if: runner.os == 'Windows'
         shell: powershell

@@ -81,7 +81,7 @@ function Confirm-ExakitPython {
     if ($env:EXAKIT_READONLY_QUERY -eq "1") { return 3 }
     $uv = Find-ExakitUv $home_
     if (-not $uv) {
-        if (-not (Install-ExakitUv -Home $home_ -KitDir $kitDir)) { return 1 }
+        if (-not (Install-ExakitUv -KitHome $home_ -KitDir $kitDir)) { return 1 }
         $uv = Join-Path $home_ "tools\uv\uv.exe"
     }
     Write-Host "  - Setting up the kit's Python $script:ExakitPythonVersion (managed by uv, never the system one)"

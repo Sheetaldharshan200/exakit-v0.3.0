@@ -181,8 +181,14 @@ jobs:
       - name: install with the analyst persona
         run: |
           $start = Get-Date
+          $Error.Clear()
           Get-Content install.ps1 -Raw | Invoke-Expression
           Write-Host "install exit $LASTEXITCODE after $([int]((Get-Date) - $start).TotalSeconds)s"
+          if ($Error.Count -gt 0) {
+            Write-Host "--- where the installer failed (the last error's position and stack) ---"
+            $Error[0].InvocationInfo.PositionMessage
+            $Error[0].ScriptStackTrace
+          }
           exit 0
 
       - name: status, and the commands an agent runs
