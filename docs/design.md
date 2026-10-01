@@ -761,6 +761,14 @@ the refusal object, exit codes, and every `EXAKIT_*` variable in
    Windows with `setup/exakit.ps1`. So the very update that brings the tree
    also installs the launcher, with no change to the 0.2.0 code. `setup/`
    holds those two files and nothing else.
+   The 0.2.0 self-update refuses a tarball that lacks `setup/lib/common.sh`,
+   `setup/lib/runtime-personal.sh`, `setup/lib/exapump.sh`, `setup/lib/mcp.sh`
+   and `setup/lib/exakit-common.ps1` ("incomplete"), so the new tree ships
+   those five paths as comment-only stubs that nothing reads: the one
+   concession the old code demands. `.github/workflows/upgrade-from-0.2.0.yml`
+   installs the real 0.2.0 kit from the root repository on a scratch machine
+   and takes both routes (`exakit update`, and the installer re-run) to this
+   version, asserting the database and its data survive.
 3. First `exakit` run after the update: the launcher finds no managed Python,
    runs `ensure-python`, then `python -m exakit`. `Manifest.migrate()` runs on
    the first write.

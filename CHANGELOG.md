@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+**Upgrading from 0.2.0 works both ways.** `exakit update` on a 0.2.0 kit
+and a re-run of the install command both bring this version with the
+database, its data, the credentials and the AI client configs untouched.
+The 0.2.0 self-update insisted on five library files this tree no longer
+has, so they ship as empty stubs; a workflow installs the real 0.2.0 kit
+on scratch machines and proves both routes.
+
 **`exakit ui`: the kit has a dashboard.** A bare `exakit` in a terminal
 (or `exakit ui`) opens it: Status, Catalog, Marketplace (add-ons and
 updates), Virtual schemas (coming soon) and Commands in a sidebar, each

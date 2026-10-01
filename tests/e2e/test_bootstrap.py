@@ -103,8 +103,17 @@ class UpdatePathLayoutTest(unittest.TestCase):
     def test_setup_exakit_is_the_launcher_and_nothing_else_lives_in_setup(self):
         self.assertEqual((REPO / "setup" / "exakit").read_bytes(), (REPO / "bootstrap" / "exakit").read_bytes())
         self.assertIn("python -m exakit", (REPO / "setup" / "exakit").read_text())
-        self.assertEqual(sorted(p.name for p in (REPO / "setup").iterdir()), ["exakit", "exakit.cmd", "exakit.ps1"])
+        self.assertEqual(sorted(p.name for p in (REPO / "setup").iterdir()), ["exakit", "exakit.cmd", "exakit.ps1", "lib"])
         self.assertEqual((REPO / "setup" / "exakit.cmd").read_bytes(), (REPO / "bootstrap" / "exakit.cmd").read_bytes())
+
+    def test_setup_lib_holds_only_the_stubs_the_0_2_0_self_update_demands(self):
+        """The 0.2.0 kit refuses a tree without these five paths; each is a comment-only placeholder (design 10)."""
+        stubs = sorted(p.name for p in (REPO / "setup" / "lib").iterdir())
+        self.assertEqual(stubs, ["common.sh", "exakit-common.ps1", "exapump.sh", "mcp.sh", "runtime-personal.sh"])
+        for path in (REPO / "setup" / "lib").iterdir():
+            lines = [line for line in path.read_text().splitlines() if line.strip() and not line.startswith("#")]
+            self.assertEqual(lines, [], f"{path.name} must hold nothing but comments")
+            self.assertIn("placeholder", path.read_text())
 
     def test_versions_json_pins_uv_with_a_digest_per_platform(self):
         doc = json.loads((REPO / "versions.json").read_text())

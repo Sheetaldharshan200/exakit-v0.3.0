@@ -1,0 +1,143 @@
+name: upgrade from 0.2.0
+
+# The update path from the shell kit, on scratch machines (design 10, D4b/M-4):
+# the real 0.2.0 kit is installed from the root repository
+# (exasol-labs/exasol-personal-local-starterkit), then this version is taken by
+# each of the two routes a user has - `exakit update` on the old kit, and a
+# re-run of the install command - and the database, its data, the credentials
+# and the record must survive. Dispatched by hand, like real-install.yml.
+
+on:
+  workflow_dispatch:
+
+env:
+  ROOT_REPO: exasol-labs/exasol-personal-local-starterkit
+
+jobs:
+  update-command:
+    name: 0.2.0 then exakit update (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      EXAKIT_SKIP_MCP: "1"
+      EXAKIT_DATASETS: tpch
+      EXAKIT_MARKETPLACE_ADDONS: none
+      EXAKIT_NO_UPDATE_NOTICE: "1"
+      NO_COLOR: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: make room
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/share/swift
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          echo "PATH=$HOME/.local/bin:$PATH" >> "$GITHUB_ENV"
+      - name: install the real 0.2.0 kit from the root repository
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/$ROOT_REPO/main/install.sh" | EXAKIT_REPO="$ROOT_REPO" sh
+          exakit status --json | tee status-020.json
+          python3 -c 'import json; d=json.load(open("status-020.json")); assert d["running"], d; print("0.2.0 running, datasets:", d.get("datasets_loaded"))'
+          python3 -c 'import json; print("kit.version before:", json.load(open("'"$HOME"'/.exasol-starter-kit/manifest.json"))["kit"]["version"])'
+      - name: the old kit updates itself to this version
+        run: |
+          EXAKIT_KIT_REPO="${{ github.repository }}" exakit update --yes 2>&1 | tee update.log
+          grep -q "exakit updated to" update.log
+          test -d "$HOME/.exasol-starter-kit/kit/exakit"
+          ls -d "$HOME"/.exasol-starter-kit/kit.backup-* >/dev/null
+      - name: the Python kit answers, the database and its data are still there
+        env:
+          EXAKIT_KIT_REPO: ${{ github.repository }}
+        run: |
+          exakit version --json | tee version.json
+          python3 -c 'import json; d=json.load(open("version.json")); assert "0.3.0" in json.dumps(d), d; print("kit rows:", len(d.get("components", d)))'
+          exakit status --json | tee status.json
+          python3 -c 'import json; d=json.load(open("status.json")); assert d["running"], d; assert "tpch" in d["datasets_loaded"], d; print("still running with", d["datasets_loaded"])'
+          exakit help >/dev/null
+          exakit catalog --json >/dev/null
+          test -f "$HOME/.exasol-starter-kit/credentials/sys_password" || ls "$HOME/.exasol-starter-kit/credentials"
+      - name: keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: update-command-logs
+          path: |
+            ~/.exasol-starter-kit/logs/
+            update.log
+            status*.json
+            version.json
+          if-no-files-found: ignore
+
+  rerun-installer:
+    name: 0.2.0 then the installer re-run (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      EXAKIT_SKIP_MCP: "1"
+      EXAKIT_DATASETS: tpch
+      EXAKIT_MARKETPLACE_ADDONS: none
+      EXAKIT_NO_UPDATE_NOTICE: "1"
+      NO_COLOR: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: make room (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/share/swift
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          echo "PATH=$HOME/.local/bin:$PATH" >> "$GITHUB_ENV"
+      - name: install the real 0.2.0 kit from the root repository (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/$ROOT_REPO/main/install.sh" | EXAKIT_REPO="$ROOT_REPO" sh
+          exakit status --json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["running"], d; print("0.2.0 running")'
+      - name: install the real 0.2.0 kit from the root repository (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $env:EXAKIT_REPO = "$env:ROOT_REPO"
+          irm "https://raw.githubusercontent.com/$env:ROOT_REPO/main/install.ps1" | iex
+          $env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
+          exakit status --json | Out-File status-020.json -Encoding utf8
+          python -c "import json; d=json.load(open('status-020.json', encoding='utf-8-sig')); print('0.2.0 status:', d.get('status'), d.get('datasets_loaded'))"
+      - name: re-run this version's installer over it (Linux)
+        if: runner.os == 'Linux'
+        env:
+          EXAKIT_LOCAL_KIT: ${{ github.workspace }}
+          EXAKIT_KIT_REPO: ${{ github.repository }}
+          EXAKIT_PERSONA: analyst
+        run: |
+          sh install.sh 2>&1 | tee rerun.log
+          test -d "$HOME/.exasol-starter-kit/kit/exakit"
+          exakit status --json | tee status.json
+          python3 -c 'import json; d=json.load(open("status.json")); assert d["running"], d; assert "tpch" in d["datasets_loaded"], d; print("still running with", d["datasets_loaded"])'
+          exakit version --json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "0.3.0" in json.dumps(d), d; print("version ok")'
+      - name: re-run this version's installer over it (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        env:
+          EXAKIT_LOCAL_KIT: ${{ github.workspace }}
+          EXAKIT_KIT_REPO: ${{ github.repository }}
+          EXAKIT_PERSONA: analyst
+          EXAKIT_FORCE: "1"
+        run: |
+          $env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
+          & "$env:GITHUB_WORKSPACE\install.ps1" 2>&1 | Tee-Object rerun.log
+          if (-not (Test-Path "$env:USERPROFILE\.exasol-starter-kit\kit\exakit")) { throw "the Python kit copy is missing" }
+          exakit version --json | Out-File version.json -Encoding utf8
+          python -c "import json; d=json.load(open('version.json', encoding='utf-8-sig')); assert '0.3.0' in json.dumps(d), d; print('version ok')"
+          exakit status --json | Out-File status.json -Encoding utf8
+          python -c "import json; d=json.load(open('status.json', encoding='utf-8-sig')); print('status:', d.get('status'), d.get('datasets_loaded'))"
+      - name: keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rerun-${{ matrix.os }}-logs
+          path: |
+            ~/.exasol-starter-kit/logs/
+            rerun.log
+            status*.json
+            version.json
+          if-no-files-found: ignore

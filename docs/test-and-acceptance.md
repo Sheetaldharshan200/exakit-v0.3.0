@@ -115,6 +115,7 @@ Recorded on 2026-10-01 on this Mac (macOS, Python 3.12) by `tools/run_tests.py`;
 | lint (`ruff.toml`, ruff 0.14.0) | clean |
 | release gate (`tools/release_check.py`) | pass with warnings: CHANGELOG still Unreleased; one pushed commit carries an attribution trailer |
 | real install (`real-install.yml`: ubuntu full, macOS Apple silicon everything but the database, Windows full, Intel Mac refused) | pass |
+| upgrade from 0.2.0 (`upgrade-from-0.2.0.yml`: the real 0.2.0 kit from the root repository, then `exakit update` on Linux, the installer re-run on Linux and Windows) | see the workflow's latest run |
 | the Textual screens in a real terminal (`exakit marketplace` on a sandbox home, 2026-10-01) | the venv built by uv on the first run, the app drawn, the refusal carried out of it, Ctrl-C restored the terminal, exit 4 |
 
 The legacy suites were deleted with the shell tree in Phase D (ADR 0007).

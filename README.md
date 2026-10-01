@@ -210,6 +210,15 @@ exakit update     # apply what is pending (asks before it stops the database)
 
 `exakit update` refreshes the kit scripts, exapump, the MCP server, pyexasol, the agent skills and installed add-ons in seconds, without downtime. While an update is pending, other commands print one dim line to say so. A database runtime update stops the database for a minute or two, so the kit asks first and does not run it unattended unless you pass `exakit update --yes`. Updates never touch your data, credentials or MCP configs. The kit keeps the previous copy of itself and never downgrades a component.
 
+## Upgrade path for starterkit
+
+Already have the kit (0.1.0 or 0.2.0)? Either route brings this version:
+
+- **Re-run the install command** from the top of this page. The installer finds your kit, keeps the database, its data, the credentials and the AI client configs, and replaces only the kit itself. On Windows have Podman Desktop installed before you start, and Podman on Linux; on macOS there is nothing to prepare.
+- **`exakit update`** on a 0.2.0 kit does the same job: it downloads this version, swaps the kit copy (the previous one is kept beside it) and installs the new `exakit` command. The first `exakit` call after that sets up the kit's own Python once, then every command answers as before.
+
+Nothing you loaded or configured is touched by either route. `.github/workflows/upgrade-from-0.2.0.yml` proves both on a scratch machine.
+
 ## Safety and operations
 
 - The MCP server uses a dedicated read-only login. The kit creates and validates this least-privilege database user before any MCP setup continues.
@@ -221,11 +230,11 @@ exakit update     # apply what is pending (asks before it stops the database)
 - The installer makes one edit outside its own directory: it appends a PATH line to your shell profile, marked with a kit comment so you can find it, and tells you when it does.
 - `exakit` manages the kit from start to finish: `status`, `start`/`stop`, `data-load`, MCP setup and maintenance (`mcp-setup`, `mcp-doctor`), `logs`, and a guarded `uninstall`. Run `exakit help` (or `exakit catalog`) to see the commands it offers.
 
-## See it in action
+<!-- ## See it in action
 
-This recording shows the whole flow: installing the kit, connecting an AI client and running the first query.
+This recording shows the whole flow: installing the kit, connecting an AI client and running the first query. -->
 
-https://github.com/user-attachments/assets/77916db0-d273-4720-8d59-1aedac95d5e8
+<!-- https://github.com/user-attachments/assets/77916db0-d273-4720-8d59-1aedac95d5e8 -->
 
 ## Quick answers
 
