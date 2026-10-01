@@ -6,12 +6,15 @@ name: real install
 # with a persona, then the commands an agent runs, then a re-run, then the
 # full uninstall. Nothing here is mocked; the runner is thrown away after.
 #
-# ubuntu-latest is the machine that proves the database: Podman is there and
-# the deployment runs. macos-latest is a VM itself and Apple's Virtualization
-# framework is not available inside it, so the launcher cannot deploy the
-# database there; that job proves everything around it (the bootstrap, the
-# launcher download, the persona's add-ons and skills, status with no
-# database, the uninstall) and is allowed to fail at "status must be running".
+# ubuntu-latest is the machine that proves the database on Linux: Podman is
+# there and the deployment runs. macos-15-intel is the machine that proves it
+# on macOS: GitHub's Intel macOS runners allow nested virtualisation, which
+# Apple's Virtualization framework needs. macos-latest (Apple silicon) is a
+# VM without it and ships with 7 GB, so the launcher cannot deploy there; that
+# job proves everything around the database (the bootstrap, the launcher
+# download, the persona's add-ons and skills, status with no database, the
+# uninstall) under the documented EXAKIT_FORCE hatch and is allowed to fail
+# at "status must be running".
 # windows-latest is the same story under Windows PowerShell 5.1: the hosted
 # runner has no WSL2 and no nested virtualisation, so install.ps1, the
 # bootstrap, the kit's Python, the persona, the skills, status and the
@@ -28,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-15-intel, macos-latest]
     continue-on-error: ${{ matrix.os == 'macos-latest' }}
     env:
       EXAKIT_LOCAL_KIT: ${{ github.workspace }}
@@ -36,13 +39,16 @@ jobs:
       EXAKIT_PERSONA: analyst
       EXAKIT_NO_UPDATE_NOTICE: "1"
       NO_COLOR: "1"
+      # Apple silicon runners: 7 GB and no virtualisation; the database cannot
+      # deploy there anyway, so the RAM guard is passed to prove the rest.
+      EXAKIT_FORCE: ${{ matrix.os == 'macos-latest' && '1' || '' }}
     steps:
       - uses: actions/checkout@v4
 
       - name: the machine
         run: |
           uname -a
-          if command -v free >/dev/null 2>&1; then free -g; else sysctl -n hw.memsize; fi
+          if command -v free >/dev/null 2>&1; then free -g; else sysctl -n hw.memsize; sysctl -n kern.hv_support || true; fi
           df -h "$HOME" | tail -1
           command -v podman >/dev/null 2>&1 && podman --version || echo "no podman (macOS: the launcher brings its own VM)"
           echo "PATH=$HOME/.local/bin:$PATH" >> "$GITHUB_ENV"
@@ -55,7 +61,8 @@ jobs:
           df -h "$HOME" | tail -1
 
       - name: preflight (installs nothing)
-        run: EXAKIT_PREFLIGHT=1 sh install.sh
+        # Apple silicon runners fail the RAM check by design (7 GB); the verdict is printed, not enforced, there.
+        run: EXAKIT_PREFLIGHT=1 sh install.sh || { [ "${{ matrix.os }}" = "macos-latest" ] && echo "preflight blocked, as expected on this runner"; }
 
       - name: dry run (installs nothing)
         run: |
