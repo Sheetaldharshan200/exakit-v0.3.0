@@ -58,7 +58,7 @@
   "launcher": "exasol-scheduler",
   "skill": "exasol-scheduler",
   "help": "exasol-scheduler",
-  "fallback_version": "v0.2",
+  "fallback_version": "v0.3.1",
   "config": {
     "db_user": "scheduler_svc",
     "schema": "SCHED"
