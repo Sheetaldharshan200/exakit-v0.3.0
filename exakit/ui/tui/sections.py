@@ -187,6 +187,16 @@ class StatusView(VerticalScroll):
             event.stop()
 
 
+LIST_MIN, LIST_MAX = 20, 48
+
+
+def fitted_width(rows: list[Option], most: int = LIST_MAX) -> int:
+    """The columns a list needs: pointer and gutter, the widest name, the widest status after two spaces, its border."""
+    names = max((len(r.label) for r in rows if not r.heading), default=0)
+    hints = max((len(r.hint) for r in rows if r.hint and not r.heading), default=0)
+    return max(LIST_MIN, min(most, 3 + names + (2 + hints if hints else 0) + 3))
+
+
 class EntryList(Horizontal):
     """A list on the left, the selected entry's detail on the right; shared by the catalog, the marketplace and the commands."""
 
@@ -198,7 +208,10 @@ class EntryList(Horizontal):
 
     def compose(self) -> ComposeResult:
         """The list and the detail."""
-        yield ChoiceList([Option(str(e[self.key]), *self._columns(e)) for e in self.entries], single=True, widget_id="entries", classes="entries", marks=False)
+        rows = [Option(str(e[self.key]), *self._columns(e)) for e in self.entries]
+        choices = ChoiceList(rows, single=True, widget_id="entries", classes="entries", marks=False)
+        choices.styles.width = fitted_width(rows)          # as wide as its rows: the detail starts right after it
+        yield choices
         with VerticalScroll(classes="detail"):
             yield Static(self.detail_of(self.entries[0]) if self.entries else Text("Nothing here yet.", style="dim"), classes="detail-text")
             if self.action:

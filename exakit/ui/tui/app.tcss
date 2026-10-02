@@ -152,9 +152,9 @@ Toast {
 }
 
 .entries {
-    width: 44%;
-    min-width: 24;
-    max-width: 48;
+    width: 44%;              /* an EntryList sets its own width from its rows (sections.fitted_width) */
+    min-width: 20;
+    max-width: 60;
     border-right: solid $foreground 20%;
     background: transparent;
 }

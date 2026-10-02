@@ -376,10 +376,19 @@ class DataLoadViewTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause(0.3)
             view = app.query_one(DataLoadView)
             rows = view.query_one(ChoiceList)
-            self.assertEqual([(o.label, o.hint) for o in rows.options], [("TPC-H", "loaded"), ("Energy", "not loaded"), ("Your own file or folder", "")])
+            self.assertEqual([(o.label, o.hint, o.heading) for o in rows.options],
+                             [("Your own file or folder", "", False), ("", "", True), ("Sample data", "", True),
+                              ("TPC-H", "loaded", False), ("Energy", "not loaded", False)])
+            self.assertEqual(rows.cursor, 0, "your own data first")
+            self.assertTrue(view.query_one("#data-path", Input).display)
+            rows.move(1)
+            await pilot.pause(0.1)
+            self.assertEqual(rows.cursor, 3, "Down skips the gap and the heading")
             self.assertEqual(str(view.query_one(Button).label), "Reload (replace)")
             self.assertFalse(view.query_one("#data-path", Input).display)
-            rows.go_to(1)
+            rows.go_to(2)
+            self.assertEqual(rows.cursor, 3, "a heading never takes the cursor")
+            rows.go_to(4)
             await pilot.pause(0.1)
             self.assertEqual(str(view.query_one(Button).label), "Load")
             self.assertIn("ENERGY", view.query_one("#data-detail", Static).content.plain if hasattr(view.query_one("#data-detail", Static).content, "plain") else str(view.query_one("#data-detail", Static).content))
@@ -407,7 +416,7 @@ class DataLoadViewTest(unittest.IsolatedAsyncioTestCase):
             await app.open_entry("dataset", "energy")
             await pilot.pause(0.2)
             view = app.query_one(DataLoadView)
-            self.assertEqual(view.query_one(ChoiceList).cursor, 1)
+            self.assertEqual(view.query_one(ChoiceList).cursor, 4)
             view.select("local")
             await pilot.pause(0.1)
             box = view.query_one("#data-path", Input)
@@ -437,7 +446,7 @@ class DataLoadRebuildTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause(0.3)
             self.assertTrue(app.is_running, "the app is still up")
             view = app.query_one(DataLoadView)
-            self.assertEqual(str(view.query_one("#data-load-button").label), "Reload (replace)")
+            self.assertEqual(str(view.query_one("#data-load-button").label), "Load", "your own file or folder is first")
 
     async def test_a_detached_view_ignores_a_late_refresh(self):
         from exakit.ui.tui.dashboard import DashboardApp
@@ -456,3 +465,51 @@ class DataLoadRebuildTest(unittest.IsolatedAsyncioTestCase):
             old._refresh()                            # a callback that outlived its view
             old.on_choice_list_moved(None)
             self.assertTrue(app.is_running)
+
+
+@unittest.skipUnless(HAVE_TEXTUAL, "textual is not installed here")
+class CatalogListTest(unittest.IsolatedAsyncioTestCase):
+    async def test_the_catalog_lists_names_only_in_a_list_as_wide_as_its_rows(self):
+        from exakit.ui.tui.choices import ChoiceList
+        from exakit.ui.tui.dashboard import DashboardApp
+        from exakit.ui.tui.sections import LIST_MIN, fitted_width
+        from exakit.ui.widgets import Option
+        app = DashboardApp(FakeData(), title="t")
+        async with app.run_test(size=(140, 40)) as pilot:
+            for _ in range(400):
+                await pilot.pause(0.02)
+                if app.state.get("catalog") and app.query("#view"):
+                    break
+            await app.show_section("catalog")
+            await pilot.pause(0.2)
+            rows = app.query_one("#entries", ChoiceList)
+            self.assertEqual([o.hint for o in rows.options], ["", "", ""], "no status column: the detail says it")
+            self.assertEqual(rows.outer_size.width, LIST_MIN, "three short ids: the narrowest list, not 44% of the screen")
+        self.assertEqual(fitted_width([Option("exasol-scheduler", "exasol-scheduler", "installed")]), 3 + 16 + 2 + 9 + 3)
+        self.assertEqual(fitted_width([Option("x" * 90, "x" * 90, "")]), 48)
+
+
+@unittest.skipUnless(HAVE_TEXTUAL, "textual is not installed here")
+class HeadingRowsTest(unittest.IsolatedAsyncioTestCase):
+    async def test_a_heading_is_drawn_but_never_takes_the_cursor_a_click_or_a_tick(self):
+        from textual.app import App
+        from exakit.ui.tui.choices import ChoiceList
+        from exakit.ui.widgets import Option
+
+        class Box(App):
+            def compose(self):
+                yield ChoiceList([Option("h", "Group", heading=True), Option("a", "A"), Option("b", "B")], marks=True)
+
+        async with Box().run_test(size=(40, 8)) as pilot:
+            rows = pilot.app.query_one(ChoiceList)
+            self.assertEqual(rows.cursor, 1, "the cursor starts on the first row it can stand on")
+            rows.move(-1)
+            self.assertEqual(rows.cursor, 2, "Up from the first row wraps past the heading")
+            rows.toggle(0)
+            rows.all(True)
+            self.assertEqual(rows.chosen, {"a", "b"})
+            await pilot.click(ChoiceList, offset=(3, 0))
+            self.assertEqual(rows.cursor, 2, "a click on the heading does nothing")
+            self.assertIn("Group", rows.render().plain.splitlines()[0])
+            self.assertNotIn("▸", rows.render().plain.splitlines()[0])
+

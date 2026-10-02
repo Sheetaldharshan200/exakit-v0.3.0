@@ -15,18 +15,17 @@ from textual.screen import ModalScreen
 from textual.suggester import Suggester
 from textual.widgets import Footer, Input
 
-from exakit.ui.widgets import Option
-
 from exakit.domain.errors import ExakitError
 from exakit.domain.plan import Plan, Step
 from exakit.ui.progress import ProgressState
+from exakit.ui.widgets import Option
 
 from .choices import ChoiceList
 from .copying import CopyKeys
 from .data_view import DataLoadView
 from .palette import KitProvider
 from .panels import Loader, LogPane, ProgressRow, WordmarkHeader
-from .sections import SECTIONS, ComingSoonView, EntryList, JobView, MarketplaceView, RunJob, StatusView, catalog_detail
+from .sections import SECTIONS, ComingSoonView, EntryList, JobView, MarketplaceView, RunJob, StatusView, catalog_detail, fitted_width
 
 LOADING = ("status", "versions", "catalog", "marketplace", "commands", "info", "scheduler", "datasets")
 QUIET_LEVELS = {"INFO", "OK"}        # these lines came through the renderer already; the tail shows the rest (CMD, LAUNCHER, DATA, WARN...)
@@ -204,7 +203,7 @@ class DashboardApp(CopyKeys, App[None]):
         if name == "status":
             return StatusView(self.state)
         if name == "catalog":
-            return EntryList(self.state.get("catalog") or [], label=lambda e: f"{e['id']:<18} {e.get('status', '')}",
+            return EntryList(self.state.get("catalog") or [], label=lambda e: str(e["id"]),        # the state is in the detail
                              detail=lambda e: catalog_detail(e, self.data.help_page(e["id"], width=self._help_width())), key="id")
         if name == "data-load":
             return DataLoadView(self.state)
@@ -394,4 +393,5 @@ class DashboardApp(CopyKeys, App[None]):
     def _help_width(self) -> int:
         """The columns a help page is wrapped to in the detail pane: the content minus the sidebar and the entry list."""
         content = max(self.size.width - 26, 40)
-        return max(40, min(100, content - min(48, max(24, int(content * 0.44))) - 6))
+        ids = [Option(str(e["id"]), str(e["id"])) for e in self.state.get("catalog") or []]
+        return max(40, min(100, content - fitted_width(ids) - 8))     # the list is as wide as its ids (sections.fitted_width)

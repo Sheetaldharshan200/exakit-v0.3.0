@@ -11,6 +11,10 @@ which schemas before anything loads, and a folder load's `--json` names what
 became of every file. A new release gate fails when the docs, the skills or the
 code name a command the CLI does not answer.
 
+**The dashboard reads tighter.** The catalog lists component names only and
+its detail sits right beside the list; on the Data load page your own file or
+folder comes first and the bundled datasets follow under "Sample data".
+
 **The dashboard no longer crashes on the Data load page** when its data
 refreshes while the page is open.
 

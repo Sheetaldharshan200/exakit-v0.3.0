@@ -12,7 +12,7 @@ from exakit.ui.widgets import Option
 
 from .choices import ChoiceList
 from .facts import Facts
-from .sections import RunJob
+from .sections import RunJob, fitted_width
 
 LOCAL = "local"
 
@@ -28,9 +28,11 @@ class DataLoadView(Horizontal):
 
     def compose(self) -> ComposeResult:
         """The list and the detail."""
-        rows = [Option(d["id"], d["label"], "loaded" if d.get("loaded") else "not loaded") for d in self.items]
-        rows.append(Option(LOCAL, "Your own file or folder", ""))
-        yield ChoiceList(rows, single=True, widget_id="entries", classes="entries", marks=False)
+        rows = [Option(LOCAL, "Your own file or folder", ""), Option("_gap", "", heading=True), Option("_sample", "Sample data", heading=True)]
+        rows += [Option(d["id"], d["label"], "loaded" if d.get("loaded") else "not loaded") for d in self.items]
+        choices = ChoiceList(rows, single=True, widget_id="entries", classes="entries", marks=False)
+        choices.styles.width = fitted_width(rows, most=60)       # dataset labels are long; their state stays readable
+        yield choices
         with VerticalScroll(classes="detail"):
             yield Static(self._detail(self.current()), classes="detail-text", id="data-detail")
             yield Input(placeholder="~/exports  or  ./sales.csv", id="data-path")
@@ -42,10 +44,13 @@ class DataLoadView(Horizontal):
         self._refresh()
 
     def current(self) -> dict[str, Any] | None:
-        """The dataset under the cursor; None for the local row."""
+        """The dataset under the cursor; None for "your own file or folder" (the first row)."""
         lists = self.query(ChoiceList)
-        index = lists.first().cursor if lists else 0
-        return self.items[index] if 0 <= index < len(self.items) else None
+        if not lists or not lists.first().options:
+            return None
+        rows = lists.first()
+        ident = rows.options[rows.cursor].id
+        return next((d for d in self.items if d["id"] == ident), None)
 
     def select(self, ident: str) -> None:
         """Put the cursor on a row (the search, the palette)."""

@@ -143,6 +143,7 @@ class Option:
     disabled: bool = False
     exclusive: bool = False      # ticking it unticks the others, and ticking any other unticks it (a "Skip" row)
     everything: bool = False     # ticking it ticks every row; unticking any row unticks it (an "Everything" row)
+    heading: bool = False        # a section title in a list (the screens only): drawn, never under the cursor, never ticked
 
 
 def progress_bar(done: int, total: int | None, width: int = 20) -> str:
