@@ -307,7 +307,7 @@ def _tree(root: Path, layout: dict[str, str]) -> Path:
     for rel, body in layout.items():
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
         (root / rel).write_text(body)
-    return root
+    return root.resolve()             # the loader names resolved paths (macOS: /var is /private/var)
 
 
 class NamesTest(unittest.TestCase):
@@ -319,7 +319,10 @@ class NamesTest(unittest.TestCase):
         self.assertEqual(identifier("2024", lead="DATA"), "DATA_2024")
         self.assertEqual(identifier("order", lead="DATA"), "ORDER_DATA")
         self.assertEqual(identifier("données", lead="DATA"), "DONNEES")
-        self.assertEqual(identifier("--", lead="DATA"), "DATA")
+        self.assertEqual(identifier("--", lead="T"), "T")
+        self.assertEqual(identifier("data", lead="T"), "DATA_DATA", "DATA is reserved in Exasol")
+        self.assertEqual(identifier("Отчёт", lead="T")[:2], "T_", "no Latin letter: the lead and a digest")
+        self.assertNotEqual(identifier("Отчёт", lead="T"), identifier("报告", lead="T"), "two such names stay apart")
         long_a, long_b = identifier("x" * 200 + "a", lead="DATA"), identifier("x" * 200 + "b", lead="DATA")
         self.assertEqual((len(long_a), len(long_b)), (MAX_IDENTIFIER, MAX_IDENTIFIER))
         self.assertNotEqual(long_a, long_b, "two long names stay apart")
@@ -372,11 +375,37 @@ class TreeTest(unittest.TestCase):
     def test_folders_that_fold_to_one_name_are_told_apart(self):
         from exakit.app.loading import data_tree
         with tempfile.TemporaryDirectory() as tmp:
-            root = _tree(Path(tmp) / "data", {"a.csv": "id\n1\n", "data/b.csv": "id\n2\n", "north/archive/c.csv": "id\n3\n",
-                                                "north_archive/d.csv": "id\n4\n", "north-archive/e.csv": "id\n5\n"})
+            root = _tree(Path(tmp) / "exports", {"a.csv": "id\n1\n", "exports/b.csv": "id\n2\n", "north/archive/c.csv": "id\n3\n",
+                                                   "north_archive/d.csv": "id\n4\n", "north-archive/e.csv": "id\n5\n"})
             names = [p.schema for p in data_tree.scan_tree(root)]
             self.assertEqual(len(names), len(set(names)), names)
-            self.assertEqual(names, ["DATA", "DATA_DATA", "NORTH_ARCHIVE", "DATA_NORTH_ARCHIVE", "NORTH_ARCHIVE_2"])
+            self.assertEqual(names, ["EXPORTS", "EXPORTS_EXPORTS", "NORTH_ARCHIVE", "EXPORTS_NORTH_ARCHIVE", "NORTH_ARCHIVE_2"])
+
+    def test_a_folder_that_already_loaded_keeps_its_schema_when_a_colliding_folder_appears(self):
+        from exakit.app.loading import data_tree
+        box = Sandbox(manifest=MANIFEST)
+        try:
+            root = _tree(Path(box.tmp.name) / "my-data", {"north_archive/q.csv": "id\n1\n"})
+            receipts = data_files.Receipts.load(box.ctx.paths.cache / "load-receipts.tsv")
+            receipts.record("NORTH_ARCHIVE.Q", root / "north_archive" / "q.csv", 1)
+            _tree(root, {"north/archive/r.csv": "id\n2\n"})          # a later folder whose path folds to the same name
+            named = {p.path.relative_to(root).as_posix(): p.schema for p in data_tree.scan_tree(root, receipts=receipts)}
+            self.assertEqual(named["north_archive"], "NORTH_ARCHIVE", "the loaded folder keeps its schema")
+            self.assertEqual(named["north/archive"], "MY_DATA_NORTH_ARCHIVE")
+        finally:
+            box.close()
+
+    def test_dot_names_the_folder_it_is(self):
+        from exakit.app.loading import data_tree
+        import os
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _tree(Path(tmp) / "sales-2024", {"a.csv": "id\n1\n"})
+            here = os.getcwd()
+            try:
+                os.chdir(root)
+                self.assertEqual([p.schema for p in data_tree.scan_tree(Path("."))], ["SALES_2024"])
+            finally:
+                os.chdir(here)
 
     def test_digits_reserved_words_hidden_and_linked_folders(self):
         from exakit.app.loading import data_tree
@@ -426,7 +455,7 @@ class TreeTest(unittest.TestCase):
             box.ctx.runtime = FakeRuntime()
             result = data_folder.load_folder(box.ctx, root)
             self.assertEqual(result.data["schemas"], ["EXPORTS", "ORDERS", "ORDERS_ARCHIVE", "ZONE_DATA"])
-            self.assertEqual({u[1] for u in pump.uploads}, {"EXPORTS.SALES", "ORDERS.LINES", "ORDERS_ARCHIVE.OLD", "ZONE_DATA.Z"})
+            self.assertEqual({u[1] for u in pump.uploads}, {"EXPORTS.SALES", "ORDERS.LINES", "ORDERS_ARCHIVE.OLD_DATA", "ZONE_DATA.Z"}, "OLD is reserved in Exasol")
             self.assertIn("archive/ -> ORDERS_ARCHIVE", box.screen())
             self.assertEqual(box.manifest().get("data.last_load.target"), "EXPORTS, ORDERS, ORDERS_ARCHIVE, ZONE_DATA")
         finally:
@@ -485,6 +514,24 @@ class DryRunTest(unittest.TestCase):
             rows = data.data_load(box.ctx, []).data["datasets"]
             self.assertEqual([(r["id"], r["schema"]) for r in rows], [("tpch", "TPCH")], "what would load; an unknown id is warned about, as in a real run")
             self.assertIn("Unknown dataset id 'nope'", box.screen())
+        finally:
+            box.close()
+
+    def test_the_dry_run_refuses_what_the_load_refuses_and_reads_the_same_inputs(self):
+        box = self._box()
+        try:
+            tsv = Path(box.tmp.name) / "n.tsv"
+            tsv.write_text("a\tb\n1\t2\n")
+            with self.assertRaises(Failed) as caught:
+                data.data_load(box.ctx, [str(tsv)])
+            self.assertIn("rename it to .csv", caught.exception.message)
+            folder = _tree(Path(box.tmp.name) / "exports", {"a.csv": "id\n1\n"})
+            box.env["EXAKIT_DATA_FILE"] = str(folder)
+            self.assertEqual([s["schema"] for s in data.data_load(box.ctx, []).data["schemas"]], ["EXPORTS"], "EXAKIT_DATA_FILE, as the load")
+            del box.env["EXAKIT_DATA_FILE"]
+            box.env["EXAKIT_DATASETS"] = "bogus"
+            with self.assertRaises(Failed):
+                data.data_load(box.ctx, [])
         finally:
             box.close()
 

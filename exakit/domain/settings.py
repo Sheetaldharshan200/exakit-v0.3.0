@@ -42,7 +42,6 @@ FIELDS: tuple[tuple[str, str, type], ...] = (
     ("exapump", "glibc_shim_image", str),
     ("ui", "package", str), ("ui", "venv_dir", str),
     ("feedback", "email", str), ("feedback", "note", str),
-    ("agents", "markers", list),
     ("notice", "interval_seconds", int),
 )
 
@@ -132,7 +131,7 @@ class KitSettings:
             ui_package=value("ui", "package"), ui_venv_dir=value("ui", "venv_dir"),
             feedback_email=value("feedback", "email"), feedback_note=value("feedback", "note"),
             notice_interval=value("notice", "interval_seconds"),
-            agent_markers=tuple(value("agents", "markers")),
+            agent_markers=tuple(_optional(doc, "agents", "markers")),
         )
 
     def install_command(self, windows: bool = False) -> str:
@@ -140,6 +139,21 @@ class KitSettings:
         if windows:
             return f"irm {self.install_ps1_url} | iex"
         return f"curl -fsSL {self.install_sh_url} | sh"
+
+
+# Settings added after a kit copy may already be installed: a missing one takes this value instead of making the copy
+# "incomplete". A wrong type is still refused. Everything in FIELDS stays required.
+OPTIONAL: tuple[tuple[str, str, type, Any], ...] = (
+    ("agents", "markers", list, []),      # no markers: only EXAKIT_AGENT=1 marks an agent session
+)
+
+
+def _optional(doc: dict[str, Any], section: str, key: str) -> Any:
+    for s, k, _kind, default in OPTIONAL:
+        if (s, k) == (section, key):
+            block = doc.get(section)
+            return block[key] if isinstance(block, dict) and key in block else default
+    raise KeyError(f"{section}.{key} is not an optional setting")
 
 
 def _reader(doc: dict[str, Any]):
@@ -173,6 +187,18 @@ def validate_settings(doc: Any) -> Problems:
             problems.append(f"{section}.{key} must not be negative")
         elif kind is str and key.endswith("url") and not block[key].startswith("https://"):
             problems.append(f"{section}.{key} must be an https:// URL")
+    return problems + _optional_problems(doc)
+
+
+def _optional_problems(doc: dict[str, Any]) -> Problems:
+    """An optional setting may be missing; when present it has its type (a list of non-empty names, for a list)."""
+    problems: Problems = []
+    for section, key, kind, _default in OPTIONAL:
+        block = doc.get(section)
+        if isinstance(block, dict) and key in block and not isinstance(block[key], kind):
+            problems.append(f"{section}.{key} must be a {kind.__name__}")
+        elif kind is list and isinstance(block, dict) and not all(isinstance(v, str) and v for v in block.get(key) or []):
+            problems.append(f"{section}.{key} must list non-empty names")
     return problems
 
 

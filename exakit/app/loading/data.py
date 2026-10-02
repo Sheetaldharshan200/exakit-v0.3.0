@@ -278,9 +278,13 @@ def parse_env_datasets(ctx: Context) -> list[Dataset] | None:
 def data_load(ctx: Context, args: list[str]) -> Result:
     """``exakit data-load [--force | <path>]``."""
     force, path = _parse_data_load_args(args)
-    if ctx.dry_run:                          # a plan needs no install and no database
+    if ctx.dry_run:                          # a plan needs no install and no database; it reads the inputs the load reads
         from .data_plan import plan
+        if path is None and ctx.env.get("EXAKIT_DATA_FILE"):
+            path = Path(ctx.env["EXAKIT_DATA_FILE"]).expanduser()
         chosen = parse_env_datasets(ctx)
+        if path is None and chosen == []:
+            raise Failed(f"EXAKIT_DATASETS='{ctx.env.get('EXAKIT_DATASETS')}' matched no bundled dataset - nothing was loaded.")
         return plan(ctx, path, [d.id for d in chosen] if chosen is not None else list(ctx.catalog.kit.default_datasets))
     ctx.manifest()
     if path is not None and not path.exists():

@@ -11,6 +11,17 @@ which schemas before anything loads, and a folder load's `--json` names what
 became of every file. A new release gate fails when the docs, the skills or the
 code name a command the CLI does not answer.
 
+**Every schema and table name is checked against Exasol's full list of
+reserved words** (468, read from the database itself), so a file called
+`returns.csv` or a folder called `data` loads instead of failing; a preview with
+`--dry-run` and the load always name things the same, and a folder that was
+loaded keeps its schema when folders are added beside it.
+
+**The installer's output is plain when it is captured**: no colour codes in a
+log, a CI run or an agent's shell. Its dry run shows the answers it would take
+(the persona's datasets, AI clients and add-ons) and writes nothing under the
+kit home.
+
 **`exakit status` lists the AI clients the install connected.** It said "none"
 after every new install, and a re-run of the installer offered the client setup
 again; both read the record from a place the MCP setup no longer writes. Plain

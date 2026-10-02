@@ -42,7 +42,8 @@ def _help_docs(ctx: Context):
 
 
 def _help_color(ctx: Context) -> bool:
-    return sys.stdout.isatty() and ctx.env.get("EXAKIT_HELP_PLAIN") != "1" and not ctx.json
+    plain = ctx.env.get("EXAKIT_HELP_PLAIN") == "1" or ctx.env.get("EXAKIT_AGENT") == "1" or ctx.env.get("NO_COLOR") or ctx.env.get("EXAKIT_NO_FANCY") == "1"
+    return sys.stdout.isatty() and not plain and not ctx.json
 
 
 # --- help / catalog / whats-new ---------------------------------------------------

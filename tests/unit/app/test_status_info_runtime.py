@@ -328,10 +328,14 @@ class McpRecordTest(unittest.TestCase):
         finally:
             box.close()
 
-    def test_both_places_answer_and_the_component_one_wins(self):
+    def test_both_places_answer_and_the_newer_setup_wins(self):
         from exakit.domain.manifest import Manifest
         self.assertEqual(Manifest({"client_setup": {"completed": True}}).mcp_client_setup(), {"completed": True})
-        both = Manifest({"client_setup": {"completed": False}, "components": {"mcp_server": {"client_setup": {"completed": True}}}})
-        self.assertEqual(both.mcp_client_setup(), {"completed": True})
+        old = {"completed": True, "configured_clients": ["cursor"], "updated_at": "2026-06-01T00:00:00Z"}
+        new = {"completed": True, "configured_clients": ["cursor", "codex"], "updated_at": "2026-10-02T00:00:00Z"}
+        migrated = Manifest({"client_setup": new, "components": {"mcp_server": {"client_setup": old}}})
+        self.assertEqual(migrated.mcp_client_setup(), new, "a 0.2.0 block left behind by the migration does not win")
+        tie = Manifest({"client_setup": {"completed": False}, "components": {"mcp_server": {"client_setup": {"completed": True}}}})
+        self.assertEqual(tie.mcp_client_setup(), {"completed": False}, "no dates: where the helper writes today")
         self.assertEqual(Manifest({}).mcp_client_setup(), {})
 

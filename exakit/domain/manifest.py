@@ -134,11 +134,12 @@ class Manifest:
         """What the MCP helper recorded about the AI-client setup. On a 0.2.0 record it sits under components.mcp_server;
         on a schema-2 record the helper keeps its own state at the top level (it treats a record with schema_version as its
         own document). Empty when no setup ran."""
-        for key in ("components.mcp_server.client_setup", "client_setup"):
-            value = self.get(key)
-            if isinstance(value, dict) and value:
-                return value
-        return {}
+        found = [v for v in (self.get("client_setup"), self.get("components.mcp_server.client_setup")) if isinstance(v, dict) and v]
+        if not found:
+            return {}
+        # A 0.2.0 record migrated to schema 2 keeps its old block while the helper now writes the top-level one: the newer
+        # setup wins, and the top-level one (where the helper writes today) on a tie.
+        return max(found, key=lambda v: str(v.get("updated_at") or ""))
 
     def persona_id(self) -> str | None:
         """The recorded persona id, or None."""

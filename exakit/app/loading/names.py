@@ -3,26 +3,30 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import unicodedata
+from pathlib import Path
 
 MAX_IDENTIFIER = 128            # Exasol's limit for a schema or table name
 KEYWORDS_SQL = ("SELECT 'EXAKIT_KW[' || LISTAGG(\"KEYWORD\", ',') WITHIN GROUP (ORDER BY \"KEYWORD\") || ']' AS K "
                 "FROM SYS.EXA_SQL_KEYWORDS WHERE \"RESERVED\"")
+WORDS_FILE = Path(__file__).resolve().parents[3] / "catalog" / "sql" / "reserved-words.json"
 
-# Always treated as reserved, whatever the database answers: a word here that the database does not reserve only costs a
-# "_DATA" suffix, while a reserved word missing from it would break CREATE SCHEMA - and a load whose keyword query fails
-# must name things exactly as one whose query worked.
-BUILT_IN_RESERVED = frozenset((
-    "ALL", "ALTER", "AND", "ANY", "AS", "ASC", "AT", "BETWEEN", "BY", "CASE", "CAST", "CHECK", "COLUMN", "CONNECT",
-    "CONSTRAINT", "CREATE", "CROSS", "CURRENT", "DATE", "DAY", "DEFAULT", "DELETE", "DESC", "DISTINCT", "DROP", "ELSE",
-    "END", "ESCAPE", "EXCEPT", "EXISTS", "FALSE", "FETCH", "FOR", "FOREIGN", "FROM", "FULL", "FUNCTION", "GRANT", "GROUP",
-    "HAVING", "HOUR", "IF", "IN", "INNER", "INSERT", "INTERSECT", "INTERVAL", "INTO", "IS", "JOIN", "LEFT", "LEVEL", "LIKE",
-    "LIMIT", "LOCAL", "MINUS", "MINUTE", "MONTH", "NATURAL", "NOT", "NULL", "OF", "ON", "OR", "ORDER", "OUTER", "PRIMARY",
-    "PRIOR", "REFERENCES", "REVOKE", "RIGHT", "ROLE", "ROW", "ROWS", "SCHEMA", "SECOND", "SELECT", "SESSION", "SET", "SOME",
-    "START", "TABLE", "THEN", "TIME", "TIMESTAMP", "TO", "TRUE", "UNION", "UNIQUE", "UNKNOWN", "UPDATE", "USER", "USING",
-    "VALUE", "VALUES", "VIEW", "WHEN", "WHERE", "WITH", "YEAR",
-))
+
+def _built_in() -> frozenset[str]:
+    """Exasol's reserved words as the kit ships them (catalog/sql/reserved-words.json, read from the database itself).
+
+    Every name is checked against these AND what the running database answers, so a load whose keyword query fails
+    names things exactly as one whose query worked; the live answer only adds what a newer Exasol reserves.
+    """
+    try:
+        return frozenset(str(w).upper() for w in json.loads(WORDS_FILE.read_text(encoding="utf-8"))["words"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return frozenset()          # an incomplete kit copy: the live list still answers; tests keep the file shipped
+
+
+BUILT_IN_RESERVED = _built_in()
 
 _VALID = re.compile(r"[A-Z][A-Z0-9_]*")
 
@@ -35,10 +39,13 @@ def parse_keywords(out: str) -> frozenset[str]:
 
 def identifier(text: str, *, lead: str, reserved: frozenset[str] = BUILT_IN_RESERVED, key: str = "") -> str:
     """``text`` as a name usable unquoted. Accents are dropped (données -> DONNEES), anything else becomes one underscore;
-    a name starting with a digit gets ``lead`` in front (2024 -> DATA_2024), a reserved word gets ``_DATA`` after (ORDER -> ORDER_DATA),
-    and a name over 128 characters is cut and ends in a short digest of ``key`` (or the text) so two long names stay apart."""
+    a name starting with a digit gets ``lead`` in front (2024 -> DATA_2024), a reserved word gets ``_DATA`` after
+    (ORDER -> ORDER_DATA), a name with no Latin letter or digit at all is ``lead`` and a digest of the text (Отчёт ->
+    T_3F2A9C1B, so two such files stay apart), and a name over 128 characters is cut and ends in a digest of ``key``."""
     ascii_text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
-    name = re.sub(r"_+", "_", re.sub(r"[^A-Z0-9_]+", "_", ascii_text.upper())).strip("_") or lead
+    name = re.sub(r"_+", "_", re.sub(r"[^A-Z0-9_]+", "_", ascii_text.upper())).strip("_")
+    if not name:
+        name = f"{lead}_{_digest(text)}" if text.strip(" ._-") else lead
     if not name[0].isalpha():
         name = f"{lead}_{name}"
     if name in reserved | BUILT_IN_RESERVED:
@@ -46,12 +53,15 @@ def identifier(text: str, *, lead: str, reserved: frozenset[str] = BUILT_IN_RESE
     return fit(name, key or text)
 
 
+def _digest(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:8].upper()
+
+
 def fit(name: str, key: str) -> str:
     """``name`` cut to the identifier limit, with a digest of ``key`` at the end when it had to be cut."""
     if len(name) <= MAX_IDENTIFIER:
         return name
-    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:8].upper()
-    return f"{name[: MAX_IDENTIFIER - 9].rstrip('_')}_{digest}"
+    return f"{name[: MAX_IDENTIFIER - 9].rstrip('_')}_{_digest(key)}"
 
 
 def problem(name: str, reserved: frozenset[str] = BUILT_IN_RESERVED) -> str | None:

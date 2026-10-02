@@ -80,14 +80,26 @@ main() {
         *[Uu][Tt][Ff]*) _say_glyph='*' ;;
         *)              _say_glyph='*' ;;
     esac
-    say() { printf '  \033[1;34m%s\033[0m %s\n' "$_say_glyph" "$*"; }
+    # Colour only on a terminal, and never under NO_COLOR, EXAKIT_NO_FANCY=1, a
+    # dumb terminal or an agent session: a captured log (an agent's, a CI's)
+    # gets plain text, the same rule the kit's own renderer follows.
+    _color_out=0; _color_err=0
+    if [ -z "${NO_COLOR:-}" ] && [ "${EXAKIT_NO_FANCY:-}" != "1" ] && [ "${TERM:-}" != "dumb" ] && ! agent_session; then
+        [ -t 1 ] && _color_out=1
+        [ -t 2 ] && _color_err=1
+    fi
+    say() {
+        if [ "$_color_out" = 1 ]; then printf '  \033[1;34m%s\033[0m %s\n' "$_say_glyph" "$*"
+        else printf '  %s %s\n' "$_say_glyph" "$*"; fi
+    }
     # Record the reason before exiting. This runs before the kit's own logging
     # exists, so a failure here used to leave NOTHING behind: no log, no note.
     # An agent whose `curl | sh` died at platform detection had no artifact to
     # read in the next session and no way to tell "never ran" from "ran and
     # refused". Best-effort: a note is a nicety and must not mask the real error.
     fail() {
-        printf '\033[1;31m  x\033[0m %s\n' "$*" >&2
+        if [ "${_color_err:-0}" = 1 ]; then printf '\033[1;31m  x\033[0m %s\n' "$*" >&2
+        else printf '  x %s\n' "$*" >&2; fi
         _fail_home="${EXAKIT_HOME:-$HOME/.exasol-starter-kit}"
         if mkdir -p "$_fail_home" 2>/dev/null; then
             # TWO lines, matching exakit_note_failure: line 1 the reason, line 2

@@ -15,7 +15,7 @@ from exakit.domain.result import Result
 
 from .. import Context
 from ..db.runtime_ops import exapump, is_running
-from .data_files import file_kind, table_name_from_path
+from .data_files import Receipts, file_kind, file_problem, file_target
 from .names import BUILT_IN_RESERVED
 
 IGNORED = {"unsupported": "not a CSV, Parquet or JSON file", "empty": "empty", "header-only": "a header and no rows",
@@ -27,6 +27,7 @@ def plan(ctx: Context, path: Path | None, datasets: list[str]) -> Result:
     """The plan for a path, or for the bundled datasets when no path was named."""
     if path is None:
         return _datasets_plan(ctx, datasets)
+    path = path.resolve()                       # "." and ".." name the folder they are, as the load does
     if not path.exists():
         raise Failed(f"No such file or folder: {path}")
     reserved, source = _reserved(ctx)
@@ -49,7 +50,8 @@ def _reserved(ctx: Context) -> tuple[frozenset[str], str]:
 def _folder_plan(ctx: Context, folder: Path, reserved: frozenset[str], source: str) -> Result:
     from .data_folder import _top_schema
     from .data_tree import scan_tree
-    plans = scan_tree(folder, top_schema=_top_schema(ctx, reserved), reserved=reserved)
+    receipts = Receipts.load(ctx.paths.cache / "load-receipts.tsv")      # read only: who already holds a schema name
+    plans = scan_tree(folder, top_schema=_top_schema(ctx, reserved), reserved=reserved, receipts=receipts)
     schemas = []
     for p in plans:
         files = [{"file": str(e.path), "table": e.table, "kind": e.kind} for e in p.loadable]
@@ -70,11 +72,11 @@ def _folder_plan(ctx: Context, folder: Path, reserved: frozenset[str], source: s
 
 
 def _file_plan(ctx: Context, path: Path, reserved: frozenset[str], source: str) -> Result:
+    refusal = file_problem(path)
+    if refusal:
+        raise Failed(refusal)                   # exactly what the load itself would refuse
     kind = file_kind(path)
-    schema = (ctx.env.get("EXAKIT_SCHEMA") or ctx.catalog.kit.data_schema).upper()
-    target = (ctx.env.get("EXAKIT_DATA_TABLE") or f"{schema}.{table_name_from_path(path, reserved)}").upper()
-    if kind == "unknown":
-        raise Failed(f"{path.name} is not a CSV, Parquet or JSON file the kit can load.")
+    target = file_target(ctx, path, reserved)
     ctx.ui.ok(f"Dry run: {path.name} -> {target}{' (a nested file fans out to ' + target + '_* tables)' if kind == 'json' else ''}; "
               f"nothing was loaded. Load it with: exakit data-load {path}")
     return Result(True, "planned", remedy=f"exakit data-load {path}",

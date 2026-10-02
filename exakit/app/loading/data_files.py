@@ -23,7 +23,7 @@ from exakit.domain.manifest import Manifest
 from exakit.domain.result import Result
 
 from .. import Context
-from .names import BUILT_IN_RESERVED, identifier
+from .names import BUILT_IN_RESERVED, identifier, problem
 from ..db.runtime_ops import exapump, profile_name
 
 CUT_SHORT = ("ETL-5105", "transfer closed with outstanding read data", "Transferred a partial file", "Connection reset by peer",
@@ -37,7 +37,7 @@ COMPRESSED = (".gz", ".bz2", ".zst", ".xz")
 def table_name_from_path(path: Path, reserved: frozenset[str] = BUILT_IN_RESERVED) -> str:
     """The table name a file loads into: its stem as an unquoted identifier (2024.csv -> T_2024, order.csv -> ORDER_DATA)."""
     stem = path.name.split("?")[0].rsplit(".", 1)[0] if "." in path.name else path.name
-    return identifier(stem, lead="T", reserved=reserved, key=str(path)) if stem.strip("._-") else "MY_TABLE"
+    return identifier(stem, lead="T", reserved=reserved, key=path.name) if stem.strip("._-") else "MY_TABLE"
 
 
 def file_kind(path: Path) -> str:
@@ -298,20 +298,43 @@ def load_local_path(ctx: Context, path: Path) -> Result:
     return load_file(ctx, path)
 
 
+def file_problem(path: Path) -> str | None:
+    """Why one file cannot load, or None: the refusal a load and its dry run share."""
+    if not path.is_file() or not path.stat().st_size:
+        return f"File not found or empty: {path}"
+    kind = file_kind(path)
+    if kind == "csv" and not path.name.lower().endswith((".csv", ".csv.gz")):
+        return f"{path.name} looks tabular but exapump reads .csv and .parquet only - rename it to .csv and retry."
+    if kind == "unknown":
+        return f"{path.name} is not a CSV, Parquet or JSON file the kit can load."
+    return None
+
+
+def file_target(ctx: Context, path: Path, reserved: frozenset[str]) -> str:
+    """One file's default SCHEMA.TABLE: EXAKIT_DATA_TABLE, else EXAKIT_SCHEMA (checked) or the data schema, and the file's name."""
+    given = (ctx.env.get("EXAKIT_DATA_TABLE") or "").strip()
+    if given:
+        if not valid_target(given):
+            raise BadInput(f"EXAKIT_DATA_TABLE='{given}' is not SCHEMA.TABLE (letters, digits and underscores).")
+        return given.upper()
+    schema = (ctx.env.get("EXAKIT_SCHEMA") or ctx.catalog.kit.data_schema).strip()
+    reason = problem(schema, reserved)
+    if reason:
+        raise BadInput(f"EXAKIT_SCHEMA='{schema}' cannot be used: {reason}.")
+    return f"{schema.upper()}.{table_name_from_path(path, reserved)}"
+
+
 def load_file(ctx: Context, path: Path) -> Result:
     """Load one file into the schema: CSV and Parquet through exapump, JSON through json-tables."""
+    from .data_folder import reserved_words
     pump = exapump(ctx)
     if pump is None:
         raise Failed("exapump (the data-loading CLI) is not installed", remedy="exakit update")
-    if not path.is_file() or not path.stat().st_size:
-        raise Failed(f"File not found or empty: {path}")
+    refusal = file_problem(path)
+    if refusal:
+        raise Failed(refusal)
     kind = file_kind(path)
-    if kind == "csv" and not path.name.lower().endswith((".csv", ".csv.gz")):
-        raise Failed(f"{path.name} looks tabular but exapump reads .csv and .parquet only - rename it to .csv and retry.")
-    if kind == "unknown":
-        raise Failed(f"{path.name} is not a CSV, Parquet or JSON file the kit can load.")
-    schema = (ctx.env.get("EXAKIT_SCHEMA") or ctx.catalog.kit.data_schema).upper()
-    default_target = ctx.env.get("EXAKIT_DATA_TABLE") or f"{schema}.{table_name_from_path(path)}"
+    default_target = file_target(ctx, path, reserved_words(ctx, pump))
     target = ctx.ui.prompt("Target table (SCHEMA.TABLE, back to return)", default_target) if ctx.ui.interactive else default_target
     if target.lower() in ("b", "back"):
         return Result(True, "cancelled")

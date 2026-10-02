@@ -8,8 +8,10 @@ re-run - with folders added or removed beside it - loads into the same schema ag
     my-data/north/archive/   NORTH_ARCHIVE
     my-data/south/archive/   SOUTH_ARCHIVE
 
-Two folders whose paths fold to one name (north/archive and north_archive) are told apart in walk order: the first keeps
-the name, the next carries the top folder's name in front, and after that a number.
+Two folders whose paths fold to one name (north/archive and north_archive) are told apart: the top folder first, then
+a folder whose files already landed in that schema (the load receipts say so), then the rest in walk order; the one
+that comes later carries the top folder's name in front, and after that a number. So a folder that was loaded keeps
+its schema however many folders are added beside it.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from exakit.domain.errors import BadInput
 from exakit.ui.widgets import Option
 
 from .. import Context
+from .data_files import Receipts, _sha256
 from .data_folder import ScanEntry, scan_folder
 from .names import BUILT_IN_RESERVED, fit, identifier, problem
 
@@ -48,14 +51,16 @@ def schema_name(folder: Path, top: Path | None = None, reserved: frozenset[str] 
     return identifier("_".join(relative), lead=LEAD, reserved=reserved, key="/".join(relative))
 
 
-def scan_tree(folder: Path, *, top_schema: str | None = None, reserved: frozenset[str] = BUILT_IN_RESERVED) -> list[FolderPlan]:
+def scan_tree(folder: Path, *, top_schema: str | None = None, reserved: frozenset[str] = BUILT_IN_RESERVED,
+              receipts: Receipts | None = None) -> list[FolderPlan]:
     """The folder and every subfolder under it that holds loadable files, top down, each with its own schema; hidden folders are skipped."""
+    folder = folder.resolve()
     plans: list[FolderPlan] = []
     _walk(folder, folder, 0, plans, reserved)
     for plan in plans:
         if top_schema and plan.path == folder:
             plan.schema = top_schema
-    _keep_apart(plans, folder, reserved)
+    _keep_apart(plans, folder, reserved, receipts)
     return plans
 
 
@@ -67,11 +72,13 @@ def _walk(top: Path, folder: Path, depth: int, plans: list[FolderPlan], reserved
         _walk(top, sub, depth + 1, plans, reserved)
 
 
-def _keep_apart(plans: list[FolderPlan], top: Path, reserved: frozenset[str]) -> None:
-    """No two folders share a schema: the first keeps it, the next gets the top folder's name in front, then a number."""
+def _keep_apart(plans: list[FolderPlan], top: Path, reserved: frozenset[str], receipts: Receipts | None) -> None:
+    """No two folders share a schema: the top folder, then one that already holds its name, keep it; a later one gets the
+    top folder's name in front, then a number."""
     taken: set[str] = set()
     prefix = identifier(top.name, lead=LEAD, reserved=reserved)
-    for plan in plans:
+    order = sorted(plans, key=lambda p: (p.path != top, not _holds(p, receipts), plans.index(p)))
+    for plan in order:
         name, number = plan.schema, 2
         if name in taken and plan.path != top:
             name = fit(f"{prefix}_{plan.schema}", str(plan.path))
@@ -80,6 +87,15 @@ def _keep_apart(plans: list[FolderPlan], top: Path, reserved: frozenset[str]) ->
             number += 1
         plan.schema = name
         taken.add(name)
+
+
+def _holds(plan: FolderPlan, receipts: Receipts | None) -> bool:
+    """True when a file of this folder already landed in the schema the folder is named: the receipts name the file and its digest."""
+    if receipts is None:
+        return False
+    landed = {(row[5], row[2]) for row in receipts.rows if len(row) > 5 and row[0].startswith(f"{plan.schema}.")}
+    names = {name for name, _ in landed}
+    return any(e.path.name in names and (e.path.name, _sha256(e.path)) in landed for e in plan.loadable)
 
 
 def choose_plans(ctx: Context, plans: list[FolderPlan], *, reserved: frozenset[str] = BUILT_IN_RESERVED,

@@ -35,3 +35,10 @@ class CommandSyncTest(unittest.TestCase):
         self.assertEqual((rows["uninstall"]["effect"], rows["uninstall"]["prompt_free"]), ("destructive", False))
         self.assertEqual(rows["persona"]["read_forms"], ["list", "show <id>", "plan <id>"])
         self.assertTrue(rows["ui"]["interactive_only"])
+
+
+class ReservedWordsTest(unittest.TestCase):
+    def test_the_kit_ships_exasols_reserved_words(self):
+        from exakit.app.loading.names import BUILT_IN_RESERVED
+        self.assertGreater(len(BUILT_IN_RESERVED), 400, "the full list read from Exasol, not a sample")
+        self.assertTrue({"DATA", "ORDER", "USER", "RETURNS", "OLD", "TABLE"} <= BUILT_IN_RESERVED)

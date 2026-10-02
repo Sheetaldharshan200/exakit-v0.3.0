@@ -39,6 +39,14 @@ class InstallerDryRunTest(unittest.TestCase):
             self.assertFalse((Path(tmp) / "home" / "manifest.json").exists())
             self.assertFalse((Path(tmp) / "home" / "python").exists())
 
+    def test_a_captured_run_carries_no_colour_codes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {k: v for k, v in os.environ.items() if k not in ("NO_COLOR", "EXAKIT_NO_FANCY", "CLAUDECODE", "EXAKIT_AGENT")}
+            env.update({"HOME": tmp, "EXAKIT_HOME": f"{tmp}/home", "EXAKIT_LOCAL_KIT": str(REPO), "EXAKIT_DRY_RUN": "1", "TERM": "xterm-256color"})
+            done = _run(["sh", str(REPO / "install.sh")], env)
+            self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+            self.assertNotIn("\x1b[", done.stdout + done.stderr, "stdout and stderr are pipes here: plain text only")
+
     def test_installer_names_the_python_hand_over(self):
         text = (REPO / "install.sh").read_text()
         self.assertIn("bootstrap/ensure-python.sh", text)

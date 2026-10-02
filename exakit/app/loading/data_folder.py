@@ -85,15 +85,16 @@ def load_folder(ctx: Context, folder: Path) -> Result:
     pump = exapump(ctx)
     if pump is None:
         raise Failed("exapump (the data-loading CLI) is not installed", remedy="exakit update")
+    folder = folder.resolve()
     reserved = reserved_words(ctx, pump)
     top = _top_schema(ctx, reserved)
-    plans = scan_tree(folder, top_schema=top, reserved=reserved)
+    receipts = Receipts.load(ctx.paths.cache / "load-receipts.tsv")
+    plans = scan_tree(folder, top_schema=top, reserved=reserved, receipts=receipts)
     if not plans:
         _refuse_empty_folder(folder, scan_folder(folder, reserved))
     chosen = choose_plans(ctx, plans, reserved=reserved, top_given=top is not None)
     if chosen is None:
         return Result(True, "cancelled")
-    receipts = Receipts.load(ctx.paths.cache / "load-receipts.tsv")
     inflight = ctx.paths.cache / "load-inflight"
     results = [_load_plan(ctx, pump, plan, receipts, inflight, say_folder=len(chosen) > 1) for plan in chosen]
     files = [row for _, rows in results for row in rows]

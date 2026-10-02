@@ -109,6 +109,15 @@ discoverable with its effect, a dry run before a change, and docs generated from
   - [x] I5.1 AGENTS.md: agent sessions, effects and `prompt_free`, the folder tree and its names, `--dry-run`, the ownership variables, personas in the catalog, every add-on with a help page
   - [x] I5.2 The skills that load data or operate the kit say the same; the skill set's version is bumped so installs take it
   - [x] I5.3 `skills/reducing-agent-prompts.md` lists exactly what the kit writes (checked by the gate)
+- [x] I7 An independent review of Phase I (D54)
+  - [x] I7.1 The dry run and the load agree: the same refusal for a file (`.tsv` / `.txt`), `EXAKIT_DATA_FILE` previewed, an `EXAKIT_DATASETS` that matches nothing fails, the same reserved words and `EXAKIT_SCHEMA` check for a single file
+  - [x] I7.2 A folder that already loaded keeps its schema when a colliding folder appears (the receipts decide); `.` and `..` name the folder they are
+  - [x] I7.3 The built-in reserved words are Exasol's full list, shipped as `catalog/sql/reserved-words.json` from the database itself; a name with no Latin letter gets a stable digest instead of colliding as `T`
+  - [x] I7.4 The newer AI-client record wins over a migrated 0.2.0 block; `help` and `catalog` are plain for an agent and under `NO_COLOR`
+- [x] I6 Found while running the acceptance items on this Mac (2026-10-02)
+  - [x] I6.1 `install.sh` colours only on a terminal, never under `NO_COLOR`, `EXAKIT_NO_FANCY=1`, a dumb terminal or an agent session: a captured log had ANSI codes in every line
+  - [x] I6.2 The install's dry run shows the answers it would take (persona, datasets, AI clients, add-ons; `answers` in its JSON) and writes no log under the kit home it promises not to change
+  - [x] I6.3 `agents.markers` is an optional setting (default: none, `EXAKIT_AGENT=1` still works): a kit copy whose settings predate it refused every command as "incomplete"
 
 ## Phase H: the dashboard (2026-10-01)
 

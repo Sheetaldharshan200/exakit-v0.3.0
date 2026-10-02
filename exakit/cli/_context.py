@@ -29,7 +29,8 @@ def build(*, json: bool, yes: bool, dry_run: bool, readonly: bool, mutating: boo
     env = dict(os.environ)
     paths = Paths.from_env(env, Path.home())
     root = kit_root_for(paths)
-    log = FileLog(paths.logs) if mutating and paths.home.exists() else NullLog()
+    quiet = dry_run or env.get("EXAKIT_DRY_RUN") == "1"        # a dry run promises to change nothing under the kit home
+    log = FileLog(paths.logs) if mutating and paths.home.exists() and not quiet else NullLog()
     warnings: list[str] = []
     catalog = Catalog.load(root, paths.personas_user, warn=warnings.append)
     if agent_session(env, catalog.kit.agent_markers):

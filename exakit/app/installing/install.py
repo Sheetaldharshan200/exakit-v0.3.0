@@ -329,6 +329,15 @@ def banner(ctx: Context, root: Path) -> None:
     ctx.ui.text("")
 
 
+def answers_shown(ctx: Context, answers: Answers) -> dict[str, str]:
+    """What the install would choose, in words: the persona (or none), datasets, AI clients, add-ons."""
+    addons = answers.addons if isinstance(answers.addons, str) else ", ".join(answers.addons) or "none"
+    return {"Persona": ctx.env.get("EXAKIT_PERSONA") or "none",
+            "Datasets": "none (EXAKIT_LOAD_SAMPLE=0)" if answers.datasets is None else ", ".join(answers.datasets) or "none",
+            "AI clients": "every one detected on this machine" if answers.mcp_clients == "all" else answers.mcp_clients,
+            "Add-ons": addons}
+
+
 def run(ctx: Context) -> Result:
     """``exakit install``: the whole install, resumable; a dry run shows the plan."""
     answers = resolve_answers(ctx)      # an unknown persona stops here, dry run or not
@@ -336,8 +345,10 @@ def run(ctx: Context) -> Result:
     the_plan = plan(ctx)
     ctx.ui.plan(the_plan)
     if ctx.dry_run:
+        shown = answers_shown(ctx, answers)
+        ctx.ui.panel("The answers this install would take", [f"{k:<11} {v}" for k, v in shown.items()])
         ctx.ui.info("Dry run: nothing was installed. Run the same command without the dry run to install.")
-        return Result(True, "dry-run", data=the_plan.to_dict())
+        return Result(True, "dry-run", data={**the_plan.to_dict(), "answers": shown})
     prepare_home(ctx)
     init_manifest(ctx)
     acquire_lock(ctx)

@@ -269,6 +269,18 @@ class HousekeepingTest(unittest.TestCase):
         finally:
             box.close()
 
+    def test_a_dry_run_shows_the_answers_a_persona_resolves_to(self):
+        box = Sandbox(env={"EXAKIT_PERSONA": "data-scientist", "EXAKIT_MCP_CLIENTS": "claude_code"})
+        box.ctx.dry_run = True
+        try:
+            answers = install.run(box.ctx).data["answers"]
+            self.assertEqual(answers["Persona"], "data-scientist")
+            self.assertEqual(answers["AI clients"], "claude_code", "an explicit environment answer wins over the persona")
+            self.assertIn("The answers this install would take", box.screen())
+            self.assertFalse(box.ctx.manifest_store.exists())
+        finally:
+            box.close()
+
     def test_a_corrupt_manifest_is_quarantined_and_its_ticks_recovered(self):
         box = Sandbox()
         try:
