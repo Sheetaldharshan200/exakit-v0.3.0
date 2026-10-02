@@ -253,7 +253,7 @@ def step_mcp(session: Session, title: str) -> None:
 def mcp_clients(session: Session) -> None:
     """Configure the chosen AI clients as a soft step; nothing when the answer is ``skip``."""
     ctx = session.ctx
-    if ctx.manifest().get("components.mcp_server.client_setup.completed") is True:
+    if ctx.manifest().mcp_client_setup().get("completed") is True:
         return
     if ctx.env.get("EXAKIT_SKIP_MCP") == "1":
         ctx.ui.info("Skipping AI client setup (EXAKIT_SKIP_MCP=1). Run it any time with: exakit mcp-setup")

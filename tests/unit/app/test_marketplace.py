@@ -56,7 +56,9 @@ class FakeLifecycle:
             return None
         def start():
             self.started += 1
-        return ServiceHooks(status=lambda: "running", start=start, stop=lambda: None, url=lambda: None,
+        def status():
+            return "running" if self.started or getattr(self, "running_after_validate", False) else "stopped"
+        return ServiceHooks(status=status, start=start, stop=lambda: None, url=lambda: None,
                             log_path=lambda: None, autostart=lambda: None)
 
     def uninstall(self, *, dry_run):
@@ -273,6 +275,29 @@ class InstallLoopTest(unittest.TestCase):
                 marketplace.run(box.ctx, ["dash-server"])
             self.assertEqual(fx.made["dash-server"].started, 1)
             self.assertEqual(registered, ["dash-server"])
+        finally:
+            box.close()
+
+    def test_a_service_the_validation_already_started_is_not_started_twice(self):
+        box = Sandbox(manifest=MANIFEST)
+        try:
+            with Fixture(box, **{"dash-server": {"service": True}}) as fx:
+                addon = box.ctx.catalog.addon("dash-server")
+                lifecycle = fx.factory(box.ctx, addon)
+                lifecycle.running_after_validate = True
+                marketplace._start_service(box.ctx, addon, lifecycle)
+            self.assertEqual(lifecycle.started, 0)
+            self.assertNotIn("already running", box.screen())
+        finally:
+            box.close()
+
+    def test_an_add_on_install_narrates_once_in_plain_output(self):
+        box = Sandbox(manifest=MANIFEST)
+        try:
+            with Fixture(box, **{"dash-server": {"service": True}}):
+                marketplace.run(box.ctx, ["dash-server"])
+            self.assertNotIn("dash-server · installing", box.screen())
+            self.assertNotIn("dash-server · starting", box.screen())
         finally:
             box.close()
 

@@ -118,12 +118,18 @@ tree, not a table. For JSON, the kit offers the **JSON Tables** add-on, which
 shreds it into relational tables; `exakit data-load` offers it on the spot when
 you hand it a `.json` file.
 
-For the bundled sample data, prefer the kit's own menu over hand-rolled uploads:
+For the bundled sample data and the user's own files, prefer the kit's loader over hand-rolled uploads:
 
 ```bash
-exakit data-load           # bundled datasets or a local CSV/Parquet/JSON file
-exakit data-load --force   # reload the bundled sample directly
+exakit data-load                          # bundled datasets or a local CSV/Parquet/JSON file
+exakit data-load --force                  # reload the bundled sample directly
+exakit data-load ~/exports --dry-run      # the plan: folders -> schemas, files -> tables; loads nothing
+exakit data-load ~/exports --json         # load it; files[] says what became of every file
 ```
+
+A folder becomes a schema named after it, and each subfolder a schema named by its path (`north/archive/` is
+`NORTH_ARCHIVE`); every file becomes a table named after it. Show the user the `--dry-run` plan before loading
+a folder they have not loaded before.
 
 ## Profiles
 

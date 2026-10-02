@@ -74,5 +74,13 @@
   "feedback": {
     "email": "starter-kit-feedback@example.com",
     "note": "If something did not work, or you have a minute to tell us why you are leaving, we would like to hear from you."
+  },
+  "agents": {
+    "markers": [
+      "CLAUDECODE",
+      "GEMINI_CLI",
+      "CODEX_SANDBOX"
+    ],
+    "note": "Environment variables an AI agent's shell sets; any one of them (or EXAKIT_AGENT=1) makes a run an agent session: plain output, no question, no screens. EXAKIT_AGENT=0 is a human whatever is set."
   }
 }

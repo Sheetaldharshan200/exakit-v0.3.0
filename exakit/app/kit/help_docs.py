@@ -47,7 +47,9 @@ def catalog_rows(docs: dict[str, dict[str, Any]], include_hidden: bool = False) 
                 row_tool, row_command = parts[0], " ".join(parts[1:])
             rows.append({"tool": row_tool, "command": row_command, "options": entry.get("options", ""),
                          "description": entry.get("summary") or entry.get("description", ""),
-                         "source": key, "hidden": bool(entry.get("hidden"))})
+                         "source": key, "hidden": bool(entry.get("hidden")),
+                         "effect": entry.get("effect"), "prompt_free": bool(entry.get("prompt_free")),
+                         "read_forms": list(entry.get("read_forms") or []), "interactive_only": bool(entry.get("interactive_only"))})
     at: dict[tuple[str, str], int] = {}
     unique: list[dict[str, Any]] = []
     for row in rows:

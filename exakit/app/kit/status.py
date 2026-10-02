@@ -260,7 +260,7 @@ def _addon_lines(ctx: Context, manifest: Manifest, service_states: dict[str, str
 
 
 def _client_lines(manifest: Manifest) -> list[str]:
-    configured = manifest.get("components.mcp_server.client_setup.configured_clients") or []
+    configured = manifest.mcp_client_setup().get("configured_clients") or []
     lines = [_pad(LABELS.get(cid, cid), "configured") for cid in LABELS if cid in configured]
     return lines or [_pad("none", "connect one with: exakit mcp-setup")]
 

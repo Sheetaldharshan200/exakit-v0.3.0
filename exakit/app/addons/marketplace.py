@@ -190,14 +190,14 @@ def install_one(ctx: Context, addon: Addon) -> bool:
         ctx.ui.warn(f"The {addon.id} module is not part of this kit copy - update the kit first: exakit update")
         return False
     with ctx.ui.progress(f"Installing {addon.id}", unit="percent") as bar:
-        bar.stage(0, 65, 40, f"{addon.id} · installing")
+        bar.stage(0, 65, 40, "")                     # the bar moves; the add-on narrates its own steps
         try:
             lifecycle.install(lifecycle.target_version())
         except ExakitError as err:
             lifecycle.note_failure(err.message)
             ctx.log.line("WARN", f"{addon.id} did not finish installing: {err.message}")
             return False
-        bar.stage(65, 90, 8, f"{addon.id} · validating")
+        bar.stage(65, 90, 8, "")
         try:
             lifecycle.validate()
         except ExakitError as err:
@@ -206,9 +206,9 @@ def install_one(ctx: Context, addon: Addon) -> bool:
             skills.install_for_addon(ctx, addon.id)
         except ExakitError as err:
             ctx.log.line("WARN", f"{addon.id} skills: {err.message}")
-        bar.stage(90, 100, 3, f"{addon.id} · starting")
+        bar.stage(90, 100, 3, "")
         _start_service(ctx, addon, lifecycle)
-        bar.stage(100, 100, 0, f"{addon.id} · installed")
+        bar.stage(100, 100, 0, "")
     return True
 
 
@@ -219,6 +219,9 @@ def _start_service(ctx: Context, addon: Addon, lifecycle) -> None:
         return
     if services.autostart_wanted(ctx):
         services.register_autostart(ctx, services.Service(addon.id, hooks))
+    if str(hooks.status()).startswith("running"):
+        ctx.log.line("INFO", f"{addon.id} already running after its validation; not started twice")
+        return
     try:
         hooks.start()
     except ExakitError:

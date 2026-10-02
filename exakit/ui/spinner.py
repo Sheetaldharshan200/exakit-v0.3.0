@@ -33,9 +33,9 @@ class Milestones:
         if not state.total:
             return
         quarter = min(4, state.done * 4 // state.total)
-        while self.quarter < quarter:
-            self.quarter += 1
-            self.console._w(f"      {p.dim}{state.label}: {self.quarter * 25}%  {state.text().split(' · ')[-1]}{p.reset}")
+        if quarter > self.quarter:                  # one line for the quarter reached: a fast chunk that crosses three says 100% once
+            self.quarter = quarter
+            self.console._w(f"      {p.dim}{state.label}: {quarter * 25}%  {state.text().split(' · ')[-1]}{p.reset}")
 
 
 class Spinner:

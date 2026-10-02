@@ -278,6 +278,10 @@ def parse_env_datasets(ctx: Context) -> list[Dataset] | None:
 def data_load(ctx: Context, args: list[str]) -> Result:
     """``exakit data-load [--force | <path>]``."""
     force, path = _parse_data_load_args(args)
+    if ctx.dry_run:                          # a plan needs no install and no database
+        from .data_plan import plan
+        chosen = parse_env_datasets(ctx)
+        return plan(ctx, path, [d.id for d in chosen] if chosen is not None else list(ctx.catalog.kit.default_datasets))
     ctx.manifest()
     if path is not None and not path.exists():
         raise Failed(f"No such file or folder: {path}")

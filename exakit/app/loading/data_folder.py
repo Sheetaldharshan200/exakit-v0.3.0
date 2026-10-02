@@ -96,14 +96,17 @@ def load_folder(ctx: Context, folder: Path) -> Result:
     receipts = Receipts.load(ctx.paths.cache / "load-receipts.tsv")
     inflight = ctx.paths.cache / "load-inflight"
     results = [_load_plan(ctx, pump, plan, receipts, inflight, say_folder=len(chosen) > 1) for plan in chosen]
-    _record_last_load(ctx, "local_folder", ", ".join(p.schema for p in chosen), str(folder), files=sum(n for _, n in results))
+    files = [row for _, rows in results for row in rows]
+    _record_last_load(ctx, "local_folder", ", ".join(p.schema for p in chosen), str(folder), files=sum(1 for f in files if f["status"] == "loaded"))
     worst = max((r.exit_code for r, _ in results), default=0)
     loaded, failed = sum(r.data.get("loaded", 0) for r, _ in results), sum(r.data.get("failed", 0) for r, _ in results)
-    return Result(True, "loaded" if not worst else "partial", exit_code=worst, data={"loaded": loaded, "failed": failed, "schemas": [p.schema for p in chosen]})
+    return Result(True, "loaded" if not worst else "partial", exit_code=worst,
+                  remedy="exakit logs setup" if worst else None,
+                  data={"loaded": loaded, "failed": failed, "schemas": [p.schema for p in chosen], "files": files})
 
 
-def _load_plan(ctx: Context, pump: Exapump, plan, receipts: Receipts, inflight: Path, *, say_folder: bool) -> tuple[Result, int]:
-    """One folder into its schema; (the folder's result, the files that loaded)."""
+def _load_plan(ctx: Context, pump: Exapump, plan, receipts: Receipts, inflight: Path, *, say_folder: bool) -> tuple[Result, list[dict]]:
+    """One folder into its schema; (the folder's result, one row per file: what became of it)."""
     schema, loadable = plan.schema, plan.loadable
     if say_folder:
         ctx.ui.info(f"{plan.path.name}/ -> {schema}")
@@ -122,7 +125,20 @@ def _load_plan(ctx: Context, pump: Exapump, plan, receipts: Receipts, inflight: 
     after = table_listing(pump.sql(profile_name(ctx), LISTING_SQL)) or {}
     settled = _settle(outcomes, schema, after, receipts)
     _print_outcomes(ctx, schema, settled)
-    return _summarise(ctx, schema, settled), sum(1 for s in settled if s[0] == "ok")
+    rows = [_file_row(schema, s) for s in settled]
+    rows += [{"file": str(e.path), "schema": schema, "table": None, "rows": None, "status": "ignored", "reason": e.kind}
+             for e in plan.entries if e.action != "load"]
+    return _summarise(ctx, schema, settled), rows
+
+
+STATUS = {"ok": "loaded", "skip": "skipped", "fail": "failed"}
+
+
+def _file_row(schema: str, outcome: Outcome) -> dict:
+    """One file's outcome as data: the file, where it went, how many rows, and why when it did not load."""
+    mark, entry, table_text, rows_text, reason = outcome
+    rows = int(rows_text.split()[0]) if rows_text.split() and rows_text.split()[0].isdigit() else None
+    return {"file": str(entry.path), "schema": schema, "table": table_text or None, "rows": rows, "status": STATUS[mark], "reason": reason or None}
 
 
 def reserved_words(ctx: Context, pump: Exapump) -> frozenset[str]:

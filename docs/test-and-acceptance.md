@@ -100,6 +100,7 @@ Personas x answers x platform x mode. Each cell is covered by the check named.
 | M-6 | In Terminal.app and iTerm2: `exakit ui`, drag over a few lines, release, Cmd-V into another app; then Ctrl-C in the screens | the text pastes after the release alone; "Copied" shows; Ctrl-C copies again | pending |
 | M-7 | `exakit data-load ~/exports` where `exports/` holds CSVs and the subfolders `north/` and `south/` with CSVs | the tree is offered with all three ticked; EXPORTS, NORTH and SOUTH are created, each with its folder's tables; the receipt names the three schemas | pending |
 | M-9 | `exakit ui`, sidebar "Data load": pick a dataset not loaded, Load; then "Your own file or folder", type a folder, Load | the job view shows the load with its progress rows; back on the view the dataset reads loaded with its tables and rows; the folder's schemas are created | pending |
+| M-10 | In Claude Code (or Codex): ask "load ~/exports into Exasol"; then "is everything running" | the agent runs `exakit data-load ~/exports --dry-run`, shows the schemas, loads on the user's yes and reports the per-file outcome; `exakit status --json` lists the connected AI clients; no menu appears and nothing waits for a key | pending |
 | M-8 | On a machine with Exasol Personal already running: install the kit, answer yes to "Use it?"; then `exakit stop`, `exakit uninstall --yes` | status says "yours before the kit, adopted into it"; stop stops it; uninstall leaves it in place and says so; with `EXAKIT_REMOVE_ADOPTED=1` it is removed | pending |
 
 ## 5. Latest local run

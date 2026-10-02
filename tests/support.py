@@ -21,7 +21,7 @@ REPO = Path(__file__).resolve().parents[1]
 MANIFEST = {
     "manifest_version": 1, "kit_level": 1, "installed_at": "2026-09-30T00:00:00Z", "os": "macos", "arch": "arm64",
     "runtime": {"type": "personal", "status": "running", "version": "2.3.0", "dsn": "127.0.0.1:1", "user": "sys"},
-    "components": {"skills": {"version": "1.12.2"}, "mcp_server": {"version": "2.2.0"}},
+    "components": {"skills": {"version": "1.13.0"}, "mcp_server": {"version": "2.2.0"}},
     "data": {"loaded": True, "datasets": {"tpch": {"loaded": True}}},
     "steps_completed": ["launcher", "runtime", "exapump", "mcp", "pyexasol", "exakit_helper"], "log_dir": "/tmp/x",
 }

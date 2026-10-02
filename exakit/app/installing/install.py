@@ -168,7 +168,7 @@ def connection_summary(ctx: Context) -> None:
         f"{'DSN':<13} {manifest.get('runtime.dsn') or 'unknown'}   (admin {manifest.get('runtime.user') or 'sys'}, TLS self-signed)",
         f"{'Passwords':<13} {creds}/",
         f"{'SQL client':<13} DBeaver (https://dbeaver.io/download/) or DbVisualizer (https://www.dbvis.com/download/)",
-        f"{'Everything':<13} exakit info  ·  exakit guide",
+        f"{'Everything':<13} exakit (the dashboard)  ·  exakit info",
     ])
 
 

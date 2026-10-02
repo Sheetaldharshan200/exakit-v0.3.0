@@ -14,6 +14,7 @@ from exakit.adapters.platform.detect import detect
 from exakit.adapters.process.runner import SubprocessRunner
 from exakit.app import Context
 from exakit.domain.catalog import Catalog
+from exakit.domain.settings import agent_session
 from exakit.ui import make_renderer
 
 def kit_root_for(paths: Paths) -> Path:
@@ -31,6 +32,8 @@ def build(*, json: bool, yes: bool, dry_run: bool, readonly: bool, mutating: boo
     log = FileLog(paths.logs) if mutating and paths.home.exists() else NullLog()
     warnings: list[str] = []
     catalog = Catalog.load(root, paths.personas_user, warn=warnings.append)
+    if agent_session(env, catalog.kit.agent_markers):
+        env["EXAKIT_AGENT"] = "1"               # plain output, no question, no screens - read by the renderers and the TUI gate
     ui = make_renderer(json=json, env=env, log=log, home=str(Path.home()))
     for warning in warnings:
         ui.warn(warning)
@@ -77,9 +80,21 @@ def dashboard_wanted() -> bool:
     import sys
     from exakit.ui import tui
     env = dict(os.environ)
+    if agent_session(env, _agent_markers(env)):
+        return False
     if not tui.terminal_ok(env, sys.stdout, json=False, dry_run=False):
         return False
     return Paths.from_env(env, Path.home()).manifest.exists()
+
+
+def _agent_markers(env: dict[str, str]) -> tuple[str, ...]:
+    """The agent markers from the kit's settings, read without loading the catalog (a bare ``exakit`` decides early)."""
+    import json
+    root = kit_root_for(Paths.from_env(env, Path.home()))
+    try:
+        return tuple(json.loads((root / "catalog" / "kit.json").read_text(encoding="utf-8"))["agents"]["markers"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return ()
 
 
 def clipboard_copier():

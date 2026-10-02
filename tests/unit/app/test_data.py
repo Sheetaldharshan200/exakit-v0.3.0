@@ -443,3 +443,69 @@ class TreeTest(unittest.TestCase):
             self.assertEqual(data_folder.load_folder(box.ctx, root).data["schemas"], ["ORDER_DATA"])
         finally:
             box.close()
+
+
+class DryRunTest(unittest.TestCase):
+    """``exakit data-load --dry-run``: the plan an agent shows before loading, with nothing loaded and no database needed."""
+
+    def _box(self, **env):
+        box = Sandbox(manifest=MANIFEST, env=env)
+        box.ctx.dry_run = True
+        box.ctx.runtime = FakeRuntime("stopped")
+        box.ctx.exapump = FakeExapump([])
+        return box
+
+    def test_a_folder_tree_plans_schemas_files_and_ignored_entries(self):
+        box = self._box()
+        try:
+            root = _tree(Path(box.tmp.name) / "my-data", {"a.csv": "id\n1\n", "b.csv": "id\n1\n", "notes.pdf": "x",
+                                                           "north/archive/day1.csv": "id\n2\n"})
+            result = data.data_load(box.ctx, [str(root)])
+            self.assertEqual(result.status, "planned")
+            self.assertEqual(result.remedy, f"exakit data-load {root}")
+            schemas = {s["schema"]: s for s in result.data["schemas"]}
+            self.assertEqual(sorted(schemas), ["MY_DATA", "NORTH_ARCHIVE"])
+            self.assertEqual([f["table"] for f in schemas["MY_DATA"]["files"]], ["A"])
+            reasons = {Path(i["file"]).name: i["reason"] for i in schemas["MY_DATA"]["ignored"]}
+            self.assertEqual(reasons["notes.pdf"], "not a CSV, Parquet or JSON file")
+            self.assertIn("identical to another file", reasons["b.csv"])
+            self.assertEqual(result.data["reserved_words"], "built-in")
+            self.assertEqual(box.ctx.exapump.uploads, [])
+            self.assertEqual(box.ctx.runtime.started, 0, "a dry run never starts the database")
+            self.assertIn("nothing was loaded", box.screen())
+        finally:
+            box.close()
+
+    def test_a_file_plans_its_target_and_the_datasets_plan_without_a_path(self):
+        box = self._box(EXAKIT_DATASETS="tpch,nope")
+        try:
+            f = Path(box.tmp.name) / "2024.csv"
+            f.write_text("id\n1\n")
+            self.assertEqual(data.data_load(box.ctx, [str(f)]).data["target"], "STARTER_KIT.T_2024")
+            rows = data.data_load(box.ctx, []).data["datasets"]
+            self.assertEqual([(r["id"], r["schema"]) for r in rows], [("tpch", "TPCH")], "what would load; an unknown id is warned about, as in a real run")
+            self.assertIn("Unknown dataset id 'nope'", box.screen())
+        finally:
+            box.close()
+
+    def test_a_missing_path_is_refused(self):
+        box = self._box()
+        try:
+            with self.assertRaises(Failed):
+                data.data_load(box.ctx, [str(Path(box.tmp.name) / "nope")])
+        finally:
+            box.close()
+
+
+class FolderFilesTest(unittest.TestCase):
+    def test_a_folder_load_answers_with_one_row_per_file(self):
+        box = Sandbox(manifest=MANIFEST)
+        try:
+            root = _tree(Path(box.tmp.name) / "exports", {"sales.csv": "a,b\n1,2\n", "readme.md": "x"})
+            box.ctx.exapump = FakeExapump([("EXA_ALL_SCHEMAS", Completed(0, "EXAKIT_SCHEMA_PRESENT", "")), ("LISTING_ANSWERED", LISTING_EMPTY)])
+            box.ctx.runtime = FakeRuntime()
+            files = {Path(f["file"]).name: f for f in data_folder.load_folder(box.ctx, root).data["files"]}
+            self.assertEqual((files["sales.csv"]["schema"], files["sales.csv"]["table"], files["sales.csv"]["status"]), ("EXPORTS", "SALES", "loaded"))
+            self.assertEqual((files["readme.md"]["status"], files["readme.md"]["reason"]), ("ignored", "unsupported"))
+        finally:
+            box.close()

@@ -33,6 +33,21 @@ exakit sql --json "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_ROW_COUNT FROM SYS.EXA
 - Step 2's `export PATH` is the once-per-shell fix for a bare `PATH`; in a shell that has not had it, call the binary by absolute path (`~/.local/bin/exakit`) instead. Where a command takes `--json` (the state queries, `sql`, `skills`, `catalog`, `logs`, `help`), the answer is one object on stdout and nothing else there.
 - **Only the five state queries report on this machine.** `catalog`, `help`, `logs`, `skills` and `sql` answer with their own shapes and are never a liveness probe — the first four exit `0` on a machine with nothing installed at all, because they report on the kit's own contents.
 
+## You are an agent session: what changes
+
+When your shell sets `CLAUDECODE` (Claude Code), `GEMINI_CLI` (Gemini CLI) or `CODEX_SANDBOX` (Codex in its sandbox) - the list is `agents.markers` in `catalog/kit.json` - or `EXAKIT_AGENT=1`, every `exakit` command runs as an **agent session**: plain ASCII output with no colour or spinner, **no question is ever asked** (each takes the default an unattended run takes, or a mutating command exits `5` naming `--yes`), the Textual screens and the dashboard never open, and `install.sh` does not reattach its menus to `/dev/tty`. This holds even when your tool runs commands in a pseudo-terminal, where a menu would otherwise wait for a key nobody presses. Set `EXAKIT_AGENT=1` if your agent sets none of those; `EXAKIT_AGENT=0` makes a run a human's whatever else is set.
+
+**Before you run a command, read its effect.** Every row of `exakit catalog --json` (`commands[]`, `tool: "exakit"`) carries:
+
+| Key | Meaning |
+|---|---|
+| `effect` | `read` (changes nothing), `write` (changes the machine or the database: start, load, install, configure) or `destructive` (deletes data: `uninstall`, `repair-runtime`) |
+| `prompt_free` | `true` for the commands the kit itself allowlists in Claude Code: run them without asking |
+| `read_forms` | the forms of a `write` command that change nothing (`persona list`, `show <id>`, `plan <id>`) |
+| `interactive_only` | `true` for `ui`, the dashboard: a human's screen, never yours |
+
+Run `read` and `prompt_free` commands freely. Run a `write` command when the user asked for that change. Run a `destructive` one only after the user agreed to that exact command, and preview it first (`exakit uninstall --dry-run`).
+
 ## Install (one command)
 
 macOS / Linux / WSL:
@@ -70,7 +85,11 @@ Flags do not travel through a pipe, so choices are env vars. They work on all pl
 | `EXAKIT_PERSONA=data-scientist` | Apply a **persona**: a named bundle of the answers above (datasets, AI clients, add-ons). Shipped: `analyst`, `data-scientist`, `data-engineer`, `minimal`; your own go in `~/.exasol-starter-kit/personas/<id>.json`. An explicit `EXAKIT_DATASETS`, `EXAKIT_MCP_CLIENTS` or `EXAKIT_MARKETPLACE_ADDONS` still wins over it, per variable. An add-on the persona names that cannot run on this machine is skipped with a reason, never fatal. An unknown id stops the install before anything is installed (exit 2) |
 | `EXAKIT_LEGACY_DATA=migrate\|skip` | What to do with the database of an installation made by an OLDER kit (one that put it in a container). `migrate` copies every non-system table into the new deployment; `skip` sets the new one up empty and leaves the old one alone. **Neither deletes the old container or its data volume** — both stop it, because it holds the port the new deployment needs, and the removal command is printed. Unset in an unattended run means **skip**. Asked at most ONCE per machine: a fresh machine, one that has already crossed, and one whose container is gone all pass through silently. The kit's own bundled sample data, when unchanged in the old database, is left out of the copy (the install loads it itself). A skipped copy can be made later with `exakit migrate docker-nano`; `status --json` names that container under `legacy_database` with `copied: false` until it is |
 | `EXAKIT_LEGACY_PASSWORD=...` | The old container database's password for a scripted `exakit migrate docker-nano`, when it is not on file. `--password-file <path>` is preferred; there is deliberately no `--password` option, because argv is readable by every process |
-| `EXAKIT_REUSE_DB=0\|1` | Adopt an existing database (`1`, the default) or decline the adoption (`0`). Declining is harmless on its own: a running database makes the install stop with guidance, and a stopped deployment is only ever deleted with the separate `EXAKIT_REPLACE_DB=1` consent below |
+| `EXAKIT_REUSE_DB=0\|1` | Adopt an existing database (`1`, the default) or decline the adoption (`0`). A database found running is recorded as **adopted** (yours before the kit): the kit starts, stops and reads it, and `exakit uninstall` leaves it in place. Declined, it is recorded as **external** and the kit never starts, stops or removes it; the install then stops with guidance. A stopped deployment is only ever deleted with the separate `EXAKIT_REPLACE_DB=1` consent below |
+| `EXAKIT_REUSE_LAUNCHER=0\|1` | An Exasol launcher already on `PATH` (not the kit's own): use it (`1`, the default; recorded as **adopted**, never replaced by `exakit update`) or install the kit's own beside it (`0`) |
+| `EXAKIT_REMOVE_ADOPTED=1` | Let `exakit uninstall` delete an **adopted** database and its data too. Unset, it is left in place and said so; an **external** one is never removed |
+| `EXAKIT_SCHEMA=SALES` | The schema the top folder of `exakit data-load <folder>` lands in (default: the folder's own name). Refused with the reason (exit 2) when it is not a valid unquoted name or is a reserved word |
+| `EXAKIT_AGENT=1\|0` | Force an agent session (`1`) or a human one (`0`); see "You are an agent session" above |
 | `EXAKIT_REPLACE_DB=1` | macOS only: consent to **delete a stopped Exasol deployment and its data** and deploy fresh. Without it, `EXAKIT_REUSE_DB=0` (or answering no) stops the install with guidance instead of destroying anything. `exakit repair-runtime` sets it itself after asking its own destructive question |
 | `EXAKIT_PODMAN_SELFHEAL=1` | Consent, for a run with no terminal, to the one system change the kit can make to get Podman working. On Linux and WSL: add your missing rootless subuid/subgid range with `sudo` (this needs passwordless sudo when nothing can type the password). On Windows: switch Podman Desktop's default machine to rootless, which restarts it (containers made under the rootful machine are no longer visible, not deleted). With a terminal the kit asks instead; without this variable an unattended install skips the fix and prints the command to run. |
 | `EXAKIT_PREFLIGHT=1` | Check machine requirements only, installs nothing. Both installers: `... \| EXAKIT_PREFLIGHT=1 sh`, or `$env:EXAKIT_PREFLIGHT = '1'` before `irm ... \| iex` |
@@ -238,6 +257,24 @@ curl -s -X POST http://127.0.0.1:5100/mcp \
 
 4. **Report the browser URL** (`http://127.0.0.1:<port>/apps/<app-name>`) only after the healthcheck's `data_layer` and `sql_smoke` probes pass — a `200` from the page alone does not prove the dashboard can query.
 
+## Loading the user's own files and folders
+
+`exakit data-load <path>` loads a file or a whole folder tree. **Preview first and show the user the plan** - it needs no database and no install, and loads nothing:
+
+```bash
+exakit data-load ~/exports --dry-run --json   # schemas[]: each folder's schema, its files -> tables, what is ignored and why
+exakit data-load ~/exports --json             # the load; files[]: file, schema, table, rows, status, reason per file
+```
+
+- **A folder becomes a schema named after it**; below it, a folder's schema is its **path** joined by underscores: `exports/` is `EXPORTS`, `exports/north/` is `NORTH`, `exports/north/archive/` is `NORTH_ARCHIVE`. The name depends on the folder's own path only, so a later run with folders added beside it lands in the same schemas. Two paths that fold to one name are told apart (the second gets the top folder's name in front, then a number). `EXAKIT_SCHEMA` renames the top folder's schema only.
+- **Each file becomes a table named after it**, in its folder's schema. Names are always valid unquoted identifiers: a leading digit is prefixed (`2024/` is `DATA_2024`, `2024.csv` is `T_2024`), a reserved SQL word gets `_DATA` (`order/` is `ORDER_DATA`), accents are dropped and nothing exceeds 128 characters. The reserved words are the database's own (`SYS.EXA_SQL_KEYWORDS`) plus a built-in list; the dry run's `reserved_words` says which answered.
+- **Without a terminal every folder in the tree loads**; with one, the user ticks folders. Byte-identical files and two names for one table are skipped with the reason. Re-running is safe: what already landed is skipped, and a table holding rows the kit did not load is left alone unless `EXAKIT_ON_EXISTING=replace`.
+- Status per file: `loaded`, `skipped` (already there), `failed` (its `reason` says why), `ignored` (not loadable). A load with a failure exits `1` and names `exakit logs setup`.
+
+## What is the user's, and what is the kit's
+
+The record tags the Exasol launcher and the database as `kit` (the kit installed it), `adopted` (it was there before and the user said to use it) or `external` (it was there and the user kept it apart). `exakit status` and `exakit info --json` (`ownership`) say which. The kit starts, stops, updates and removes only what is its own: an adopted launcher is never replaced by `exakit update` (unless `EXAKIT_FORCE_COMPONENT_INSTALL=1`), an adopted database survives `exakit uninstall` unless `EXAKIT_REMOVE_ADOPTED=1`, and an external database is never touched - `exakit start` and `exakit stop` say so and name the `exasol` command instead.
+
 ## Personas
 
 A persona is a named bundle of the install's optional choices, as data (`catalog/personas/<id>.json`). Four ship: `analyst`, `data-scientist`, `data-engineer`, `minimal`.
@@ -300,7 +337,7 @@ Then see `skills/local-agent-ready-starter/SKILL.md` for the full query-loop dis
 - `exakit status --json`: `platform` (`macos` | `linux` | `wsl` | `windows` — **branch on this before you run a remedy on WSL**) and `wsl_version` (`1` | `2`, null elsewhere); `running`, `datasets_loaded` (**verified against the database**, not the manifest; `datasets_source` says which of the two answered), `services` (state per add-on service id), `urls` (the address of each service that has one — this is where dash-server's URL comes from), `steps_completed`, `steps_missing`, `remedies` (component to the exact repair **command**, runnable as written) and `remedy_hints` (the prose for the same keys; an install step that never finished is in both, so a session picking up after a crash sees `remedies.mcp: "exakit mcp-setup"`), `last_failure` and `last_failure_at`. **On WSL, not every `remedies` value is runnable in your shell**: some are actions on the Windows host (a `%USERPROFILE%\.wslconfig` edit, `wsl --shutdown` from PowerShell, a `/etc/wsl.conf` line plus a distro restart). `platform` is how you know to read the `remedy_hints` sentence and escalate to the user instead of executing it. `legacy_database` appears only on a machine where the installer found an older kit's container database: `container`, `engine`, `choice`, `copied`, `restored_tables`, `sample_left_out`, and `command` — `exakit migrate docker-nano` while the data is not copied, else null.
 - `exakit info --json`: the install record. `exakit mcp-doctor --json`: per-client MCP state under `details.clients` (`connected`, `needs_attention`, `configured_client_missing`, `not_set_up`, `not_installed`); its `remedy` is null unless a WARNING or ERROR names one, and `--json` only reports where the plain command also repairs.
 - `exakit persona list --json`: the personas and the recorded one; `exakit persona plan <id> --json`: the plan for this machine.
-- `exakit catalog --json`: every supported command (a handful of internal upgrade paths are marked hidden and are not for you to call). `exakit logs --json`: every log target and its path. `exakit help <id> --json`: a component's page. All rendered from `help/*.json`, so read these rather than scraping the decorated screen.
+- `exakit catalog --json`: every supported command, each with `effect`, `prompt_free`, `read_forms` and `interactive_only` (see "You are an agent session"); a handful of internal upgrade paths are marked hidden and are not for you to call. `exakit logs --json`: every log target and its path. `exakit help <id> --json`: a component's page. All rendered from `help/*.json`, so read these rather than scraping the decorated screen.
 - `exakit preflight`: re-runs the installer's machine-requirement checks (RAM, free disk, the container engine or the macOS runtime, the database port) against an installed kit and changes nothing — the same checks `EXAKIT_PREFLIGHT=1` runs before an install.
 
 ### Exit codes, precisely
@@ -323,7 +360,7 @@ Then see `skills/local-agent-ready-starter/SKILL.md` for the full query-loop dis
 ### Discovering the data and the commands
 
 - Table and column comments ship with every bundled dataset: `SYS.EXA_ALL_TABLES` (`TABLE_COMMENT`) and `SYS.EXA_ALL_COLUMNS` (`COLUMN_COMMENT`, filter by `COLUMN_SCHEMA` / `COLUMN_TABLE`). Sub-100 ms, and it returns units, value domains and FK targets, not just types. The kit copy's `data/data-dictionary.md` says the same in prose.
-- `exakit catalog` lists every supported command (searchable: `exakit catalog logs`). `exakit <component> --help` prints a component's page: what it is, how to start it, its commands, environment variables and troubleshooting table. Components: `exapump`, `mcp`, `pyexasol`, `personal`, `dash-server`, `json-tables`, `exasol-vscode`. Every command answers `--help`.
+- `exakit catalog` lists every supported command (searchable: `exakit catalog logs`). `exakit <component> --help` prints a component's page: what it is, how to start it, its commands, environment variables and troubleshooting table. Components: `exapump`, `mcp`, `pyexasol`, `personal`, `dash-server`, `dbt-exasol`, `exasol-scheduler`, `json-tables`, `exasol-vscode`. Every command answers `--help`.
 
 ### Fewer approval prompts
 

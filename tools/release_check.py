@@ -9,7 +9,8 @@ Checks (each a function; a failure names what is wrong):
   changelog      CHANGELOG.md has a section for the version (Unreleased is a warning, --strict makes it a failure)
   settings-agree the shell layer's defaults (repository, thresholds, Python, installer URLs) equal catalog/kit.json
   launchers      setup/exakit* are byte-identical copies of bootstrap/exakit*
-  commands       every command in help/exakit.json has a handler and every handler a help entry
+  commands       the CLI, the help contract (with each command's effect), the read-only set, the Claude Code allowlist
+                 and its guide agree, and every `exakit <command>` an agent can read names a real one (tools/command_sync.py)
   catalog        every catalog file validates, every persona names known datasets and add-ons
   fallbacks      each add-on's catalog fallback_version equals its versions.json version
   attribution    no AI attribution in the tree or the last 50 commits
@@ -96,6 +97,9 @@ def check_settings_agree() -> Check:
             problems.append(f"{name}: the preflight threshold {needle.strip('-ge ]')} GB differs from kit.json")
     if f"else {{ {doc['requirements']['min_ram_gb']} }}" not in ps1:
         problems.append("install.ps1: the minimum RAM differs from kit.json")
+    markers = " ".join(doc["agents"]["markers"])
+    if f'EXAKIT_AGENT_MARKERS="{markers}"' not in sh:
+        problems.append(f"install.sh's EXAKIT_AGENT_MARKERS is not \"{markers}\" (agents.markers in kit.json)")
     python = doc["python"]["managed_version"]
     for name, needle in (("bootstrap/ensure-python.sh", f":-{python}}}"), ("bootstrap/ensure-python.ps1", f'"{python}"')):
         if needle not in (REPO / name).read_text(encoding="utf-8"):
@@ -115,11 +119,8 @@ def check_launchers() -> Check:
 
 
 def check_commands() -> Check:
-    from exakit.cli.main import ALIASES, HANDLERS
-    documented = {c["command"] for c in json.loads((REPO / "help" / "exakit.json").read_text(encoding="utf-8"))["commands"]}
-    handled = {name for name in HANDLERS if name not in ALIASES}
-    problems = [f"documented but no handler: {c}" for c in sorted(documented - handled)]
-    problems += [f"handler without a help entry: {c}" for c in sorted(handled - documented - {"persona"})]
+    from tools import command_sync
+    problems = command_sync.findings()
     return "commands", "fail" if problems else "pass", problems
 
 

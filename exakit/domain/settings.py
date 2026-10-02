@@ -10,6 +10,8 @@ where the reading code says so; the file is the fallback behind every one.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,6 +42,7 @@ FIELDS: tuple[tuple[str, str, type], ...] = (
     ("exapump", "glibc_shim_image", str),
     ("ui", "package", str), ("ui", "venv_dir", str),
     ("feedback", "email", str), ("feedback", "note", str),
+    ("agents", "markers", list),
     ("notice", "interval_seconds", int),
 )
 
@@ -101,6 +104,7 @@ class KitSettings:
     feedback_email: str
     feedback_note: str
     notice_interval: int
+    agent_markers: tuple[str, ...] = ()       # environment variables an AI agent's shell sets
 
     @classmethod
     def from_doc(cls, doc: dict[str, Any]) -> KitSettings:
@@ -128,6 +132,7 @@ class KitSettings:
             ui_package=value("ui", "package"), ui_venv_dir=value("ui", "venv_dir"),
             feedback_email=value("feedback", "email"), feedback_note=value("feedback", "note"),
             notice_interval=value("notice", "interval_seconds"),
+            agent_markers=tuple(value("agents", "markers")),
         )
 
     def install_command(self, windows: bool = False) -> str:
@@ -182,3 +187,11 @@ def load_settings(path: Path) -> KitSettings:
         raise Failed(f"The kit's settings file {path} is missing or invalid ({'; '.join(problems[:3])}): this kit copy is incomplete.",
                      remedy="exakit update", hint="a fresh copy of the kit carries catalog/kit.json")
     return KitSettings.from_doc(doc)
+
+
+def agent_session(env: Mapping[str, str], markers: Sequence[str]) -> bool:
+    """True when an AI agent runs this command: EXAKIT_AGENT=1, or a marker its shell sets; EXAKIT_AGENT=0 is a human regardless."""
+    explicit = (env.get("EXAKIT_AGENT") or "").strip()
+    if explicit in ("0", "1"):
+        return explicit == "1"
+    return any((env.get(name) or "").strip() for name in markers)

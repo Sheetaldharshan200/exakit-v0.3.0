@@ -130,6 +130,16 @@ class Manifest:
         value = self.get("runtime.type")
         return value if isinstance(value, str) and value else None
 
+    def mcp_client_setup(self) -> dict[str, Any]:
+        """What the MCP helper recorded about the AI-client setup. On a 0.2.0 record it sits under components.mcp_server;
+        on a schema-2 record the helper keeps its own state at the top level (it treats a record with schema_version as its
+        own document). Empty when no setup ran."""
+        for key in ("components.mcp_server.client_setup", "client_setup"):
+            value = self.get(key)
+            if isinstance(value, dict) and value:
+                return value
+        return {}
+
     def persona_id(self) -> str | None:
         """The recorded persona id, or None."""
         value = self.get("persona.id")

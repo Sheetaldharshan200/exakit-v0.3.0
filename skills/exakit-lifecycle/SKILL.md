@@ -159,7 +159,10 @@ exakit guide             # how to connect: AI clients, SQL clients, Python
 ```
 
 Prefer `exakit catalog --json` over guessing a flag. If a command or flag is not
-in that output, it does not exist — do not invent one.
+in that output, it does not exist — do not invent one. Each row says its `effect`
+(`read`, `write`, `destructive`) and whether it is `prompt_free`: run `read` ones
+freely, a `write` one when the user asked for that change, a `destructive` one
+only after the user agreed to that exact command.
 
 ## Credentials and connection details
 
@@ -198,6 +201,10 @@ exakit uninstall --yes            # no prompts — only with explicit consent
   confirmation summary and a typed gate for a reason; `--yes` removes both.
 - Removing one add-on is `exakit uninstall <addon-id>` — reach for that before
   anything wider when the user only wants one tool gone.
+- **What was the user's before the kit stays theirs.** A database or launcher the
+  kit found and adopted is left in place by uninstall (`EXAKIT_REMOVE_ADOPTED=1`
+  removes an adopted database too, only with the user's say-so); one recorded as
+  external is never touched. `exakit info --json` (`ownership`) says which is which.
 - Uninstall does not remove `uv`/`uvx` (shared tools) and it does not edit the
   `PATH` line in the shell profile. That line is tagged with the kit's name, so
   the user can delete it themselves.

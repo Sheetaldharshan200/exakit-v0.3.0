@@ -33,7 +33,8 @@
     {
       "title": "Add-ons",
       "commands": [
-        "marketplace"
+        "marketplace",
+        "persona"
       ]
     },
     {
@@ -79,7 +80,9 @@
       "examples": [
         "exakit install --dry-run",
         "EXAKIT_PERSONA=analyst exakit install"
-      ]
+      ],
+      "effect": "write",
+      "prompt_free": false
     },
     {
       "command": "ui",
@@ -93,7 +96,10 @@
       "examples": [
         "exakit ui",
         "exakit"
-      ]
+      ],
+      "effect": "read",
+      "prompt_free": false,
+      "interactive_only": true
     },
     {
       "command": "preflight",
@@ -102,7 +108,9 @@
       "description": "Re-runs the machine-requirement checks the installer runs first - RAM, free disk, the container engine or the macOS runtime, and the ports the database needs - against an installed kit, and changes nothing. The same checks run before an install with EXAKIT_PREFLIGHT=1.",
       "examples": [
         "exakit preflight"
-      ]
+      ],
+      "effect": "read",
+      "prompt_free": true
     },
     {
       "command": "status",
@@ -117,7 +125,9 @@
       "examples": [
         "exakit status",
         "exakit status --json"
-      ]
+      ],
+      "effect": "read",
+      "prompt_free": true
     },
     {
       "command": "version",
@@ -127,7 +137,9 @@
       "examples": [
         "exakit version",
         "exakit version --json"
-      ]
+      ],
+      "effect": "read",
+      "prompt_free": true
     },
     {
       "command": "info",
@@ -142,7 +154,9 @@
       "examples": [
         "exakit info",
         "exakit info --json"
-      ]
+      ],
+      "effect": "read",
+      "prompt_free": true
     },
     {
       "command": "guide",
@@ -151,7 +165,9 @@
       "description": "How to connect AI clients over MCP, SQL clients (DBeaver or DbVisualizer), and Python via pyexasol.",
       "examples": [
         "exakit guide"
-      ]
+      ],
+      "effect": "read",
+      "prompt_free": true
     },
     {
       "command": "start",
@@ -160,7 +176,9 @@
       "description": "Starts everything the kit runs, deploying the database first if it has never been deployed.",
       "examples": [
         "exakit start"
-      ]
+      ],
+      "effect": "write",
+      "prompt_free": false
     },
     {
       "command": "stop",
@@ -169,7 +187,9 @@
       "description": "Your data is kept. Bring it back with exakit start.",
       "examples": [
         "exakit stop"
-      ]
+      ],
+      "effect": "write",
+      "prompt_free": false
     },
     {
       "command": "autostart",
@@ -178,7 +198,9 @@
       "description": "Shows whether the kit's services start at login, then offers to change it.",
       "examples": [
         "exakit autostart"
-      ]
+      ],
+      "effect": "write",
+      "prompt_free": false
     },
     {
       "command": "sql",
@@ -191,13 +213,15 @@
         "exakit sql 'SELECT * FROM TPCH.NATION LIMIT 5'",
         "exakit sql --file ~/.exasol-starter-kit/workflows/top3.sql",
         "exakit sql --json 'SELECT COUNT(*) AS c FROM TPCH.NATION'"
-      ]
+      ],
+      "effect": "write",
+      "prompt_free": false
     },
     {
       "command": "data-load",
-      "options": "[--force | -Force] [<file-or-folder>]",
+      "options": "[--force | -Force] [--dry-run] [<file-or-folder>]",
       "summary": "Load sample data, one file, or a whole folder.",
-      "description": "Opens the data-loading menu: bundled datasets (tpch, energy, weather) or your own data. Name a path to skip the menu. A FILE asks the same two things whatever its kind - the file, then SCHEMA.TABLE - and JSON is shredded into tables by an engine the kit installs for you. A FOLDER is a bulk load into a schema named after the folder (sales-2024/ lands in SALES_2024; EXAKIT_SCHEMA overrides it, and a terminal is asked once): every CSV / Parquet / JSON (.json, .geojson) file in it, one table each named after the file. Names are always usable unquoted: a name starting with a digit gets a prefix (2024/ lands in DATA_2024, 2024.csv in T_2024), a reserved SQL word gets _DATA after it (order/ lands in ORDER_DATA), and a name is cut to 128 characters. Files go to the loader as they are - a ';'-separated CSV with its delimiter, a header with no rows skipped by name, a tabular .txt or .tsv listed with the rename to .csv that exapump needs. Subfolders holding such files are offered as a tree to tick - all of them ticked to begin with - and each loads into its own schema named by its path under the folder you named (north/ lands in NORTH, north/archive/ in NORTH_ARCHIVE), so adding folders later never renames one (unattended, every folder in the tree loads); files of other kinds are ignored, and duplicates - byte-identical files, or two names that resolve to the same table - are skipped with the reason. RUNNING A FOLDER AGAIN IS SAFE: a file already loaded from that folder is skipped rather than loaded on top of itself, a file a stopped run left half-written is reloaded from scratch, and a target table holding rows this kit did not load is left alone unless you say otherwise (EXAKIT_ON_EXISTING). When the load finishes, every file is listed with the table it went into, the rows it landed, and - for one that did not load - the reason against it; a file the engine refuses leaves no empty table behind. --force REPLACES bundled datasets instead of skipping what is already there: their tables are dropped and rebuilt, so anything you changed in those schemas is lost. JSON is macOS, Linux and WSL only; on Windows a folder's JSON files are listed as skipped. Unattended, EXAKIT_DATASETS=tpch,energy,weather loads only what is not loaded yet and exits 0 when everything named is already there.",
+      "description": "Opens the data-loading menu: bundled datasets (tpch, energy, weather) or your own data. Name a path to skip the menu. A FILE asks the same two things whatever its kind - the file, then SCHEMA.TABLE - and JSON is shredded into tables by an engine the kit installs for you. A FOLDER is a bulk load into a schema named after the folder (sales-2024/ lands in SALES_2024; EXAKIT_SCHEMA overrides it, and a terminal is asked once): every CSV / Parquet / JSON (.json, .geojson) file in it, one table each named after the file. Names are always usable unquoted: a name starting with a digit gets a prefix (2024/ lands in DATA_2024, 2024.csv in T_2024), a reserved SQL word gets _DATA after it (order/ lands in ORDER_DATA), and a name is cut to 128 characters. Files go to the loader as they are - a ';'-separated CSV with its delimiter, a header with no rows skipped by name, a tabular .txt or .tsv listed with the rename to .csv that exapump needs. Subfolders holding such files are offered as a tree to tick - all of them ticked to begin with - and each loads into its own schema named by its path under the folder you named (north/ lands in NORTH, north/archive/ in NORTH_ARCHIVE), so adding folders later never renames one (unattended, every folder in the tree loads); files of other kinds are ignored, and duplicates - byte-identical files, or two names that resolve to the same table - are skipped with the reason. RUNNING A FOLDER AGAIN IS SAFE: a file already loaded from that folder is skipped rather than loaded on top of itself, a file a stopped run left half-written is reloaded from scratch, and a target table holding rows this kit did not load is left alone unless you say otherwise (EXAKIT_ON_EXISTING). When the load finishes, every file is listed with the table it went into, the rows it landed, and - for one that did not load - the reason against it; a file the engine refuses leaves no empty table behind. --force REPLACES bundled datasets instead of skipping what is already there: their tables are dropped and rebuilt, so anything you changed in those schemas is lost. JSON is macOS, Linux and WSL only; on Windows a folder's JSON files are listed as skipped. Unattended, EXAKIT_DATASETS=tpch,energy,weather loads only what is not loaded yet and exits 0 when everything named is already there. --dry-run shows what a load would do - which folders become which schemas and which files which tables, and what would be ignored and why - and loads nothing (no database needed); with --json it is one object, schemas[] with each folder's files and ignored entries. A folder load's --json answer carries files[], one row per file: file, schema, table, rows, status (loaded, skipped, failed, ignored) and reason.",
       "environment": [
         "EXAKIT_DATASETS=tpch,energy,weather names exactly which bundled datasets to load",
         "EXAKIT_DATA_FILE=/path/file.json or /path/folder answers the local-data question, so a run without a terminal loads that file or folder",
@@ -209,12 +233,15 @@
         "exakit data-load",
         "exakit data-load ~/exports",
         "exakit data-load ./sales.csv",
+        "exakit data-load ~/exports --dry-run --json",
         "exakit data-load --force",
         "EXAKIT_DATASETS=tpch exakit data-load",
         "EXAKIT_DATA_FILE=./sales.json EXAKIT_DATA_TABLE=STARTER_KIT.SALES exakit data-load",
         "EXAKIT_DATA_FILE=~/exports EXAKIT_SCHEMA=SALES exakit data-load",
         "EXAKIT_ON_EXISTING=replace exakit data-load ~/exports"
-      ]
+      ],
+      "effect": "write",
+      "prompt_free": false
     },
     {
       "command": "logs",
@@ -225,7 +252,9 @@
         "exakit logs",
         "exakit logs setup -f",
         "exakit logs dash-server --path"
-      ]
+      ],
+      "effect": "read",
+      "prompt_free": true
     },
     {
       "command": "mcp-setup",
@@ -239,7 +268,9 @@
       "examples": [
         "exakit mcp-setup",
         "EXAKIT_MCP_CLIENTS=claude,cursor exakit mcp-setup"
-      ]
+      ],
+      "effect": "write",
+      "prompt_free": false
     },
     {
       "command": "mcp-doctor",
@@ -254,7 +285,9 @@
       "examples": [
         "exakit mcp-doctor",
         "exakit mcp-doctor --json"
-      ]
+      ],
+      "effect": "write",
+      "prompt_free": true
     },
     {
       "command": "mcp-status",
@@ -264,7 +297,9 @@
       "examples": [
         "exakit mcp-status",
         "exakit mcp-status --json"
-      ]
+      ],
+      "effect": "read",
+      "prompt_free": true
     },
     {
       "command": "mcp-remove",
@@ -274,7 +309,9 @@
       "examples": [
         "exakit mcp-remove cursor",
         "exakit mcp-remove gemini_cli opencode"
-      ]
+      ],
+      "effect": "write",
+      "prompt_free": false
     },
     {
       "command": "skills",
@@ -284,7 +321,9 @@
       "examples": [
         "exakit skills",
         "exakit skills --json"
-      ]
+      ],
+      "effect": "read",
+      "prompt_free": true
     },
     {
       "command": "skills-install",
@@ -294,7 +333,9 @@
       "examples": [
         "exakit skills-install"
       ],
-      "hidden": true
+      "hidden": true,
+      "effect": "write",
+      "prompt_free": false
     },
     {
       "command": "marketplace",
@@ -310,6 +351,36 @@
         "exakit marketplace --json",
         "exakit marketplace dash-server",
         "EXAKIT_MARKETPLACE_ADDONS=dash-server exakit marketplace"
+      ],
+      "effect": "write",
+      "prompt_free": false
+    },
+    {
+      "command": "persona",
+      "options": "list | show <id> | plan <id> | apply <id> [--yes]",
+      "summary": "Named bundles of the install's choices: datasets, AI clients, add-ons.",
+      "description": "A persona is a named bundle of the install's optional choices (catalog/personas/<id>.json; your own in ~/.exasol-starter-kit/personas/). list names every persona and the one this machine was set up with; show <id> prints its definition; plan <id> says what applying it would do HERE, each item done, pending or skipped with the reason, and changes nothing; apply <id> runs that plan - datasets through the loader, clients through mcp-setup, add-ons through the marketplace, then the skills. Without --yes and without a terminal, apply prints the plan and exits 5. A step that fails does not stop the others: the answer is partial, exit 1, and the remedy retries it.",
+      "environment": [
+        "EXAKIT_PERSONA=<id> applies one during the install"
+      ],
+      "exit_codes": {
+        "0": "done, or nothing to do",
+        "1": "a step did not finish (partial)",
+        "2": "an unknown persona, subcommand or option",
+        "5": "apply was not confirmed"
+      },
+      "examples": [
+        "exakit persona list --json",
+        "exakit persona show data-scientist",
+        "exakit persona plan analyst --json",
+        "exakit persona apply analyst --yes"
+      ],
+      "effect": "write",
+      "prompt_free": false,
+      "read_forms": [
+        "list",
+        "show <id>",
+        "plan <id>"
       ]
     },
     {
@@ -324,7 +395,9 @@
       "examples": [
         "exakit update",
         "exakit update --yes"
-      ]
+      ],
+      "effect": "write",
+      "prompt_free": false
     },
     {
       "command": "repair-runtime",
@@ -346,7 +419,9 @@
         "3": "the rebuild did not finish",
         "4": "not installed",
         "5": "declined - not confirmed, nothing was changed"
-      }
+      },
+      "effect": "destructive",
+      "prompt_free": false
     },
     {
       "command": "migrate",
@@ -371,7 +446,9 @@
         "3": "no deployment to copy into, or no exapump to copy with",
         "4": "not installed",
         "5": "declined - not confirmed, nothing was changed"
-      }
+      },
+      "effect": "write",
+      "prompt_free": false
     },
     {
       "command": "uninstall",
@@ -383,7 +460,9 @@
         "exakit uninstall --dry-run",
         "exakit uninstall --yes",
         "exakit uninstall json-tables --yes"
-      ]
+      ],
+      "effect": "destructive",
+      "prompt_free": false
     },
     {
       "command": "help",
@@ -394,7 +473,9 @@
         "exakit help",
         "exakit help --all",
         "exakit help exapump"
-      ]
+      ],
+      "effect": "read",
+      "prompt_free": true
     },
     {
       "command": "catalog",
@@ -405,7 +486,9 @@
         "exakit catalog",
         "exakit catalog mcp",
         "exakit catalog --json"
-      ]
+      ],
+      "effect": "read",
+      "prompt_free": true
     },
     {
       "command": "whats-new",
@@ -415,7 +498,9 @@
       "examples": [
         "exakit whats-new",
         "exakit whats-new 0.2.0"
-      ]
+      ],
+      "effect": "read",
+      "prompt_free": false
     }
   ],
   "environment": [

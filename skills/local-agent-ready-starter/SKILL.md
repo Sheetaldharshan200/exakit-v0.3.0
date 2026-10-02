@@ -150,8 +150,8 @@ exakit data-load
 
 Safe to run any time; choose the bundled sample option to load it. Use `exakit data-load --force`
 to reload the bundled sample directly. If it reports files as *pending*, the sample data has not shipped in this build —
-the user can still continue with their own data:
-`exapump upload yourfile.csv --table STARTER_KIT.MYTABLE -p starter-kit`.
+the user can still continue with their own data: `exakit data-load ~/their-folder --dry-run` shows which
+folders become which schemas and which files which tables, and `exakit data-load ~/their-folder` loads it.
 
 ## Step 5 — The first trusted query (the payoff, and the point)
 

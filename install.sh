@@ -289,11 +289,25 @@ main() {
     ensure_python || fail "The kit's Python could not be set up. Check your internet connection or proxy (set HTTPS_PROXY if needed) and re-run this installer."
     export EXAKIT_PYTHON
     PYTHONPATH="$kit_dir${PYTHONPATH:+:$PYTHONPATH}"; export PYTHONPATH
-    if [ ! -t 0 ] && (: < /dev/tty) 2>/dev/null; then
+    if [ ! -t 0 ] && ! agent_session && (: < /dev/tty) 2>/dev/null; then
         exec "$EXAKIT_PYTHON" -m exakit install < /dev/tty
     else
         exec "$EXAKIT_PYTHON" -m exakit install
     fi
+}
+
+# agent_session - true when an AI agent runs the installer: EXAKIT_AGENT=1, or a
+# variable its shell sets (the list is agents.markers in catalog/kit.json; the
+# release gate keeps the two equal). An agent's shell may still own a terminal,
+# and a menu reattached to /dev/tty there waits for a key nobody presses.
+EXAKIT_AGENT_MARKERS="CLAUDECODE GEMINI_CLI CODEX_SANDBOX"
+agent_session() {
+    case "${EXAKIT_AGENT:-}" in 1) return 0 ;; 0) return 1 ;; esac
+    for _agent_var in $EXAKIT_AGENT_MARKERS; do
+        eval "_agent_val=\${$_agent_var:-}"
+        [ -n "$_agent_val" ] && return 0
+    done
+    return 1
 }
 
 # preflight_report - EXAKIT_PREFLIGHT=1: what this machine has, nothing

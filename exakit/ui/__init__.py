@@ -56,7 +56,7 @@ def wants_fancy(env: Mapping[str, str], out: IO[str]) -> bool:
             return False
     except (AttributeError, ValueError):
         return False
-    if env.get("NO_COLOR") or env.get("TERM", "") == "dumb" or env.get("EXAKIT_NO_FANCY") == "1":
+    if env.get("NO_COLOR") or env.get("TERM", "") == "dumb" or env.get("EXAKIT_NO_FANCY") == "1" or env.get("EXAKIT_AGENT") == "1":
         return False
     locale = env.get("LC_ALL") or env.get("LC_CTYPE") or env.get("LANG") or ""
     return "utf" in locale.lower()
@@ -105,6 +105,6 @@ def make_renderer(*, json: bool, env: Mapping[str, str], out: IO[str] | None = N
     if json:
         return SilentRenderer(log)
     palette = FANCY if wants_fancy(env, out) else PLAIN
-    interactive = has_terminal(out)
+    interactive = has_terminal(out) and env.get("EXAKIT_AGENT") != "1"     # an agent's pseudo-terminal never gets a question
     return ConsoleRenderer(palette=palette, out=out, interactive=interactive, log=log,
                            reader=_tty_reader(), home=home, keys=key_reader() if interactive else None)

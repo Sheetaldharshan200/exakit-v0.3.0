@@ -2,6 +2,21 @@
 
 ## 0.3.0 (in progress; the date is added when the tag is cut)
 
+**Agents can drive the whole kit.** `exakit catalog --json` says, for every
+command, whether it only reads, writes or deletes data, and which ones an agent
+may run without asking. A run from Claude Code, Gemini CLI or Codex (or with
+`EXAKIT_AGENT=1`) gets plain output and is never asked a question, even in a
+pseudo-terminal. `exakit data-load <folder> --dry-run` shows which folders become
+which schemas before anything loads, and a folder load's `--json` names what
+became of every file. A new release gate fails when the docs, the skills or the
+code name a command the CLI does not answer.
+
+**`exakit status` lists the AI clients the install connected.** It said "none"
+after every new install, and a re-run of the installer offered the client setup
+again; both read the record from a place the MCP setup no longer writes. Plain
+progress no longer prints "25%" for a download that already finished, and an
+add-on install says each thing once.
+
 **The kit knows what is yours.** An Exasol launcher already on PATH is
 used only if you say so (adopted) and is then never replaced by an update;
 a database already running is adopted the same way and `exakit uninstall`

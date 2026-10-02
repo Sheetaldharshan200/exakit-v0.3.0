@@ -165,7 +165,7 @@ class InfoTest(unittest.TestCase):
             self.assertEqual((result.status, result.remedy, result.exit_code), ("stopped", "exakit start", 3))
             self.assertEqual(result.data["database"], "not running")
             self.assertEqual(result.data["runtime"]["dsn"], "127.0.0.1:8563")
-            self.assertEqual(result.data["skills"]["installed_version"], "1.12.2")
+            self.assertEqual(result.data["skills"]["installed_version"], "1.13.0")
             self.assertIn(result.data["skills"]["status"], ("current", "update_pending"))
             box.ctx.runtime = FakeRuntime("running")
             self.assertEqual(info.run(box.ctx).exit_code, 0)
@@ -187,7 +187,7 @@ class InfoTest(unittest.TestCase):
             info.run(box.ctx)
             screen = box.screen()
             for word in ("Setup details", "DSN:          127.0.0.1:8563", "Admin pass:   /u/creds/sys_password", "TLS:          enabled",
-                         "Skills:       1.12.2", "exakit info --json", "Guide:        exakit guide"):
+                         "Skills:       1.13.0", "exakit info --json", "Guide:        exakit guide"):
                 self.assertIn(word, screen, word)
         finally:
             box.close()
@@ -313,3 +313,25 @@ class OwnershipTest(unittest.TestCase):
             self.assertIn("yours, adopted - the kit never replaces it", box.screen())
         finally:
             box.close()
+
+
+class McpRecordTest(unittest.TestCase):
+    """The AI-client record is read where the MCP helper writes it on a schema-2 record (top level), and where 0.2.0 kept it."""
+
+    def test_status_lists_the_clients_the_helper_recorded_at_the_top_level(self):
+        doc = {**MANIFEST, "client_setup": {"completed": True, "configured_clients": ["claude_code", "cursor"]}}
+        box = box_with("running", manifest=doc)
+        try:
+            status.run(box.ctx)
+            self.assertIn("Claude Code", box.screen())
+            self.assertNotIn("connect one with: exakit mcp-setup", box.screen())
+        finally:
+            box.close()
+
+    def test_both_places_answer_and_the_component_one_wins(self):
+        from exakit.domain.manifest import Manifest
+        self.assertEqual(Manifest({"client_setup": {"completed": True}}).mcp_client_setup(), {"completed": True})
+        both = Manifest({"client_setup": {"completed": False}, "components": {"mcp_server": {"client_setup": {"completed": True}}}})
+        self.assertEqual(both.mcp_client_setup(), {"completed": True})
+        self.assertEqual(Manifest({}).mcp_client_setup(), {})
+

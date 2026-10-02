@@ -26,7 +26,7 @@ TUI_COMMANDS = frozenset({"install", "marketplace", "update", "uninstall", "mcp-
 
 def terminal_ok(env: Mapping[str, str], out: IO[str], *, json: bool, dry_run: bool) -> bool:
     """True when the screens may draw here: a UTF-8 terminal, not --json, not a dry run, EXAKIT_TUI not 0."""
-    if json or dry_run or env.get("EXAKIT_DRY_RUN") == "1" or env.get("EXAKIT_TUI") == "0":
+    if json or dry_run or env.get("EXAKIT_DRY_RUN") == "1" or env.get("EXAKIT_TUI") == "0" or env.get("EXAKIT_AGENT") == "1":
         return False
     return has_terminal(out) and wants_fancy(env, out)
 

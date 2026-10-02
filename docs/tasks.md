@@ -79,6 +79,37 @@ Update this file in the same commit as the work. Design sections are in
 - [ ] E8 Five commits in the pushed history carry an attribution trailer (before the rule); the release gate warns until the history is rewritten, which is the owner's call
 - [x] E9 Every public function and method in `exakit/` carries a docstring (the rule counts module-level functions and methods, not closures); `tools/check_standard.py` reports 0
 
+## Phase I: an agent can drive every part of the kit (2026-10-02)
+
+Why: users ask Claude Code, Codex or another agent to "load my exports", "is it running", "add dashboards". A real install
+(2026-10-02) showed the surfaces disagreeing with each other - `exakit status` said no AI client was connected right after the
+install connected eight, a remedy named a command that does not exist, `persona` was missing from `exakit catalog` - and each
+disagreement is a wrong turn for an agent that trusts what it reads. The practices this phase follows: one JSON object on
+stdout, stable exit codes, a remedy that is a runnable command, never a question without a terminal, every command
+discoverable with its effect, a dry run before a change, and docs generated from or checked against the code
+(clig.dev; "Designing a CLI for AI agents"; agentsurface.dev CLI design; agents.md).
+
+- [x] I1 What the real install showed
+  - [x] I1.1 The AI-client record is read where the MCP helper writes it (`Manifest.mcp_client_setup`): `exakit status` lists the connected clients, and an installer re-run no longer offers the client setup again
+  - [x] I1.2 Every remedy names a command that exists: the one `exakit mcp-repair` in the tree is a comment recording an earlier fix; the gate (I2.2) scans string literals, so a live one can no longer slip in
+  - [x] I1.3 `persona` is in the help contract, so `exakit catalog --json` lists every command the CLI answers
+  - [x] I1.4 Plain progress prints the quarter it reached once (no "25%  116 KB/116 KB")
+  - [x] I1.5 An add-on install narrates once in plain output: no "starting" stage and "already running" line for a service the validation already started
+  - [x] I1.6 The connection summary names `exakit` (the dashboard) and `exakit info`, like the closing lines
+- [x] I2 One truth for the command surface
+  - [x] I2.1 Every command in `help/exakit.json` carries `effect` (`read`, `write`, `destructive`) and `prompt_free` (safe to run without asking); `exakit catalog --json` shows both
+  - [x] I2.2 A release gate (`commands`) holds the surfaces together: the CLI's table equals the help contract, the read-only set equals the `read` commands, the Claude Code allowlist equals the `prompt_free` commands, and every `exakit <command>` in AGENTS.md, CLAUDE.md, the READMEs, the skills, the help pages and the code's own remedies names a real command
+- [x] I3 Agent sessions
+  - [x] I3.1 `agents.markers` in `catalog/kit.json` (`CLAUDECODE`, `GEMINI_CLI`, `CODEX_SANDBOX`) or `EXAKIT_AGENT=1`: plain output, no question, no screens, even on a pseudo-terminal; `EXAKIT_AGENT=0` is a human
+  - [x] I3.2 `install.sh` does not reattach `/dev/tty` in an agent session; a test keeps its list equal to the settings
+- [x] I4 Loading data, the agent way
+  - [x] I4.1 `exakit data-load <path> --dry-run` (and `--json`): which folders become which schemas and which files which tables, nothing loaded, no database needed
+  - [x] I4.2 A folder load's `--json` carries every file's outcome (file, schema, table, rows, status, reason)
+- [x] I5 The agent docs say what the code does
+  - [x] I5.1 AGENTS.md: agent sessions, effects and `prompt_free`, the folder tree and its names, `--dry-run`, the ownership variables, personas in the catalog, every add-on with a help page
+  - [x] I5.2 The skills that load data or operate the kit say the same; the skill set's version is bumped so installs take it
+  - [x] I5.3 `skills/reducing-agent-prompts.md` lists exactly what the kit writes (checked by the gate)
+
 ## Phase H: the dashboard (2026-10-01)
 
 - [x] H1 `exakit ui` (help page, HANDLERS, the scenario matrix's refusal without a terminal) and a bare `exakit` in a terminal once installed; `cli/dashboard_data.DashboardData`, the facade the ui layer reads through
