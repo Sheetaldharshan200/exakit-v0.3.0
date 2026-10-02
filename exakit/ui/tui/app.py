@@ -17,10 +17,11 @@ from exakit.domain.plan import Plan, Step
 from exakit.domain.result import Result
 from exakit.ui.progress import ProgressState
 
+from .copying import CopyKeys
 from .panels import LogPane, PlanPanel, ProgressRow, WordmarkHeader
 
 
-class KitApp(App[None]):
+class KitApp(CopyKeys, App[None]):
     """Header, plan, log; ``job`` runs in a thread once the app is mounted."""
 
     CSS_PATH = "app.tcss"
@@ -28,8 +29,10 @@ class KitApp(App[None]):
                 Binding("super+c", "copy_or_hint", "Copy", show=False, priority=True),
                 Binding("enter", "close", "Close when finished", show=False), Binding("q", "close", "Close", show=False)]
 
-    def __init__(self, *, title: str, subtitle: str = "", job: Callable[[], Result] | None = None) -> None:
+    def __init__(self, *, title: str, subtitle: str = "", job: Callable[[], Result] | None = None,
+                 copier: Callable[[str], bool] | None = None) -> None:
         super().__init__(ansi_color=True)
+        self.copier = copier
         self.title_text = title
         self.subtitle_text = subtitle
         self.job = job
@@ -108,15 +111,6 @@ class KitApp(App[None]):
         return await future
 
     # --- keys ---------------------------------------------------------------------------------
-
-    def action_copy_or_hint(self) -> None:
-        """Ctrl-C copies the selected text; without a selection it says how to quit and how to select."""
-        selected = self.screen.get_selected_text()
-        if selected:
-            self.copy_to_clipboard(selected)
-            self.notify("Copied", timeout=2)
-            return
-        self.notify("Ctrl-Q quits. Drag to select text, then Ctrl-C copies (Cmd-C where the terminal passes it on; Option-drag and Cmd-C copy through the terminal itself).", timeout=5)
 
     def action_close(self) -> None:
         """Enter or q close the app once the command finished."""

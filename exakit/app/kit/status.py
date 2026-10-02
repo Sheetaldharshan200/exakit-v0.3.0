@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from exakit.domain import ownership
 from exakit.adapters.fs.notes import lock_holder_alive, read_failure_note
 from exakit.domain.errors import NotInstalled
 from exakit.domain.manifest import Manifest
@@ -230,7 +231,10 @@ def _kit_lines(ctx: Context, manifest: Manifest, db: str, running: bool, install
                                           f"not yet restored - finish with: {ctx.install_command()}"))
     reach = " · reachable" if running else (" · port held by another process (not Exasol) - stop it, then: exakit start" if db == "conflict"
                                              else " · not reachable")
-    lines.append(_pad("Database", f"{manifest.get('runtime.dsn') or 'unknown'}{reach}"))
+    owner = f" · {ownership.describe(manifest, 'database')}" if ownership.tag(manifest, "database") != ownership.KIT else ""
+    lines.append(_pad("Database", f"{manifest.get('runtime.dsn') or 'unknown'}{reach}{owner}"))
+    if ownership.tag(manifest, "launcher") == ownership.ADOPTED:
+        lines.append(_pad("Launcher", f"{manifest.get('runtime.launcher') or 'exasol'} · yours, adopted - the kit never replaces it"))
     if installing:
         lines.append(_pad("Install", f"in progress · step: {step} - poll: exakit status"))
     elif step:

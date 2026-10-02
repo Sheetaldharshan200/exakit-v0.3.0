@@ -1,8 +1,7 @@
-"""A folder of files into one schema: scan, decide per file (load, done, resume, clash), load, receipt, report."""
+"""A folder of files into a schema named after it (a tree: one schema per folder): scan, decide per file (load, done, resume, clash), load, receipt, report."""
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -80,22 +79,34 @@ def _looks_tabular(path: Path) -> bool:
 
 
 def load_folder(ctx: Context, folder: Path) -> Result:
-    """Load a folder's files, skipping what already landed."""
+    """Load a folder tree: each chosen folder into a schema named after it, skipping what already landed."""
+    from .data_tree import choose_plans, scan_tree
     pump = exapump(ctx)
     if pump is None:
         raise Failed("exapump (the data-loading CLI) is not installed", remedy="exakit update")
-    entries = scan_folder(folder)
-    loadable = [e for e in entries if e.action == "load"]
-    if not loadable:
-        _refuse_empty_folder(folder, entries)
-    schema = _choose_schema(ctx)
-    if schema is None:
+    plans = scan_tree(folder)
+    if not plans:
+        _refuse_empty_folder(folder, scan_folder(folder))
+    chosen = choose_plans(ctx, plans, folder)
+    if chosen is None:
         return Result(True, "cancelled")
-    _print_plan(ctx, entries)
-    ensure_schema_for(ctx, pump, schema)
-    tables = table_listing(pump.sql(profile_name(ctx), LISTING_SQL))
     receipts = Receipts.load(ctx.paths.cache / "load-receipts.tsv")
     inflight = ctx.paths.cache / "load-inflight"
+    results = [_load_plan(ctx, pump, plan, receipts, inflight, say_folder=len(chosen) > 1) for plan in chosen]
+    _record_last_load(ctx, "local_folder", ", ".join(p.schema for p in chosen), str(folder), files=sum(n for _, n in results))
+    worst = max((r.exit_code for r, _ in results), default=0)
+    loaded, failed = sum(r.data.get("loaded", 0) for r, _ in results), sum(r.data.get("failed", 0) for r, _ in results)
+    return Result(True, "loaded" if not worst else "partial", exit_code=worst, data={"loaded": loaded, "failed": failed, "schemas": [p.schema for p in chosen]})
+
+
+def _load_plan(ctx: Context, pump: Exapump, plan, receipts: Receipts, inflight: Path, *, say_folder: bool) -> tuple[Result, int]:
+    """One folder into its schema; (the folder's result, the files that loaded)."""
+    schema, loadable = plan.schema, plan.loadable
+    if say_folder:
+        ctx.ui.info(f"{plan.path.name}/ -> {schema}")
+    _print_plan(ctx, plan.entries)
+    ensure_schema_for(ctx, pump, schema)
+    tables = table_listing(pump.sql(profile_name(ctx), LISTING_SQL))
     decisions = {e.path: _decide(e, schema, tables, receipts, inflight) for e in loadable}
     clashes = [e for e in loadable if decisions[e.path][0] == "clash"]
     on_existing = _clash_answer(ctx, schema, clashes, decisions)
@@ -108,9 +119,7 @@ def load_folder(ctx: Context, folder: Path) -> Result:
     after = table_listing(pump.sql(profile_name(ctx), LISTING_SQL)) or {}
     settled = _settle(outcomes, schema, after, receipts)
     _print_outcomes(ctx, schema, settled)
-    loaded_count = sum(1 for s in settled if s[0] == "ok")
-    _record_last_load(ctx, "local_folder", schema, str(folder), files=loaded_count)
-    return _summarise(ctx, schema, settled)
+    return _summarise(ctx, schema, settled), sum(1 for s in settled if s[0] == "ok")
 
 
 def _refuse_empty_folder(folder: Path, entries: list[ScanEntry]) -> None:
@@ -119,19 +128,6 @@ def _refuse_empty_folder(folder: Path, entries: list[ScanEntry]) -> None:
         raise Failed(f"{len(renames)} files in {folder} are tabular but named .txt/.tsv - exapump reads .csv and .parquet only. "
                      "Rename them to .csv to load them.")
     raise Failed(f"No CSV, Parquet or JSON files in {folder}.")
-
-
-def _choose_schema(ctx: Context) -> str | None:
-    """EXAKIT_SCHEMA, else STARTER_KIT; a terminal may change it. None when the user went back."""
-    schema = (ctx.env.get("EXAKIT_SCHEMA") or ctx.catalog.kit.data_schema).upper()
-    if not ctx.ui.interactive:
-        return schema
-    answer = ctx.ui.prompt("Target schema (back to return)", schema)
-    if answer.lower() in ("b", "back"):
-        return None
-    if not re.fullmatch(r"[A-Za-z0-9_]+", answer):
-        raise BadInput(f"'{answer}' is not a schema name (letters, digits and underscores).")
-    return answer.upper()
 
 
 Outcome = tuple[str, ScanEntry, str, str, str]   # mark, entry, table text, rows text, reason

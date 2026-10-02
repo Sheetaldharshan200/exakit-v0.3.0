@@ -281,3 +281,35 @@ class AutostartTest(unittest.TestCase):
             self.assertIsNone(box.manifest().get("autostart.enabled"))
         finally:
             box.close()
+
+
+class OwnershipTest(unittest.TestCase):
+    """The kit starts and stops only what it installed or adopted; the status says whose the pieces are."""
+
+    def test_an_external_database_is_neither_stopped_nor_started_by_the_kit(self):
+        box = box_with("running")
+        try:
+            box.ctx.manifest_store.update(lambda m: m.set("ownership.database", "external"))
+            runtime_app.stop(box.ctx)
+            self.assertEqual(box.ctx.runtime.stopped, 0)
+            self.assertIn("managed outside the kit, so it stays running", box.screen())
+        finally:
+            box.close()
+        box = box_with("stopped")
+        try:
+            box.ctx.manifest_store.update(lambda m: m.set("ownership.database", "external"))
+            runtime_app.start(box.ctx)
+            self.assertEqual(box.ctx.runtime.started, 0)
+            self.assertIn("managed outside the kit, so the kit does not start it", box.screen())
+        finally:
+            box.close()
+
+    def test_the_status_names_an_adopted_database_and_launcher(self):
+        box = box_with("running")
+        try:
+            box.ctx.manifest_store.update(lambda m: (m.set("ownership.database", "adopted"), m.set("ownership.launcher", "adopted")))
+            status.run(box.ctx)
+            self.assertIn("yours before the kit, adopted into it", box.screen())
+            self.assertIn("yours, adopted - the kit never replaces it", box.screen())
+        finally:
+            box.close()

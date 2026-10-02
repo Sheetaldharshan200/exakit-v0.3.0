@@ -7,6 +7,7 @@ import tempfile
 import time
 from pathlib import Path
 
+from exakit.domain import ownership
 from exakit.components import for_component
 from exakit.domain.errors import BadInput, ExakitError, Failed
 from exakit.domain.result import Result
@@ -83,6 +84,10 @@ def _remove_database(ctx: Context, dry: bool, gone: list[str]) -> None:
     manifest = ctx.manifest_or_none()
     rtype = manifest.runtime_type() if manifest else None
     if rtype == "personal":
+        kept = _kept_database(ctx, manifest, dry)
+        if kept:
+            ctx.ui.info(f"  left in place: the local Exasol deployment ({kept}) - the launcher removes it when you decide to: exasol destroy --remove")
+            return
         _say(ctx, dry, f"local Exasol {rtype} deployment and ALL its data")
         if not dry:
             try:
@@ -99,6 +104,22 @@ def _remove_database(ctx: Context, dry: bool, gone: list[str]) -> None:
     ctx.ui.info(f"  {ctx.env.get('EXAKIT_PERSONAL_DEPLOY_DIR') or Path(ctx.env.get('HOME') or Path.home()) / '.exasol/personal/deployments/default'}")
     ctx.ui.info("Remove it by hand, or re-install and then uninstall again to have the kit do it.")
     ctx.env = {**dict(ctx.env), "EXAKIT_UNINSTALL_DB_SKIPPED": "1"}
+
+
+def _kept_database(ctx: Context, manifest, dry: bool) -> str | None:
+    """Why the database stays: it is managed outside the kit, or it was adopted and nobody said to delete it (EXAKIT_REMOVE_ADOPTED=1, or the question)."""
+    tag = ownership.tag(manifest, "database")
+    if tag == ownership.EXTERNAL:
+        return ownership.describe(manifest, "database")
+    if tag != ownership.ADOPTED:
+        return None
+    value = ctx.env.get("EXAKIT_REMOVE_ADOPTED", "").strip().lower()
+    if value in ("1", "y", "yes"):
+        return None
+    if (not dry and value not in ("0", "n", "no") and ctx.ui.interactive
+            and ctx.ui.confirm("The database was yours before the kit (adopted). Delete it and ALL its data as well?", default=False)):
+        return None
+    return ownership.describe(manifest, "database")
 
 
 def _remove_home(ctx: Context, dry: bool, gone: list[str]) -> None:
@@ -157,8 +178,7 @@ def _remove_bins(ctx: Context, dry: bool, gone: list[str]) -> None:
 def remove_component(ctx: Context, key: str) -> None:
     """Remove one piece from the uninstall menu."""
     if key == "database":
-        ctx.ui.working("Removing the local Exasol personal deployment and all data")
-        for_component(ctx, "personal").uninstall(dry_run=False)
+        _remove_database(ctx, False, [])
     elif key == "mcp_configs":
         for_component(ctx, "mcp").uninstall(dry_run=False)
     elif key == "skills":

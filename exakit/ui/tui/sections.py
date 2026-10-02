@@ -12,6 +12,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.widgets import Button, Static, TabbedContent, TabPane
 
+from exakit.domain import ownership
 from exakit.ui.widgets import Option
 
 from .choices import ChoiceList
@@ -169,8 +170,12 @@ class StatusView(VerticalScroll):
         text.kv("Admin user", runtime.get("user") or "sys")
         if runtime.get("password_file"):
             text.kv("Password", _tilde(runtime["password_file"]))
-        text.kv("Launcher", f"{row.get('installed_label') or '-'}  (advertised {row.get('advertised') or '-'})")
+        owners = record.get("ownership") or {}
+        yours = "  - yours, adopted" if owners.get("launcher") == ownership.ADOPTED else ""
+        text.kv("Launcher", f"{row.get('installed_label') or '-'}  (advertised {row.get('advertised') or '-'}){yours}")
         text.kv("TLS", "self-signed certificate")
+        if owners.get("database", ownership.KIT) != ownership.KIT:
+            text.kv("Managed by", ownership.word(owners.get("database")))
         state = "running" if doc.get("running") else str(doc.get("status") or "stopped")
         actions = [("Stop", "service-stop", "database")] if doc.get("running") else [("Start", "service-start", "database")]
         return Card(titles.get("personal", "Exasol Personal (the database)"), text, actions, state=state)
@@ -257,8 +262,8 @@ def _presence(entry: dict[str, Any]) -> tuple[str, str]:
     return str(entry.get("installed") or "not installed"), status if status != "unknown" else ("installed" if market == "installed" else "not installed")
 
 
-def catalog_detail(entry: dict[str, Any]) -> Facts:
-    """A component's or add-on's facts."""
+def catalog_detail(entry: dict[str, Any], help_text: str = "") -> Facts:
+    """A component's or add-on's facts, then its full help page (what ``exakit help <id>`` prints)."""
     text = Facts()
     text.line(f"{entry['title']}\n", "bold")
     if entry.get("tagline"):
@@ -279,10 +284,22 @@ def catalog_detail(entry: dict[str, Any]) -> Facts:
         text.kv("Requires", ", ".join(entry["requires"]))
     if entry.get("launcher"):
         text.kv("Command", entry["launcher"])
+    if entry.get("managed"):
+        text.kv("Managed", entry["managed"])
     if entry.get("role"):
         text.line(f"\n{entry['role']}\n")
-    text.line(f"\nMore: exakit help {entry['id']}", "dim")
+    if help_text.strip():
+        text.line("\n" + _without_header(help_text).rstrip() + "\n")
+    else:
+        text.line(f"\nMore: exakit help {entry['id']}", "dim")
     return text
+
+
+def _without_header(page: str) -> str:
+    """A help page minus its boxed title (two rules around the name): the facts above already say it."""
+    lines = page.splitlines()
+    rules = [i for i, line in enumerate(lines[:6]) if line.strip() and set(line.strip()) <= {"-", "─"}]
+    return "\n".join(lines[rules[1] + 1:]).lstrip("\n") if len(rules) >= 2 else page
 
 
 def marketplace_detail(row: dict[str, Any]) -> Facts:

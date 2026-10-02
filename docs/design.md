@@ -444,6 +444,7 @@ the folder under the kit home it lives in). Section 6.1.
 schema_version: 2                      NEW (absent = 1; migrate() adds it and the two blocks below)
 kit.python: <interpreter path>         NEW
 persona: {id, source: install|apply, requested_at, applied_at, skipped}   NEW, absent when none
+ownership: {launcher, database}: kit | adopted | external   NEW (D47); absent = kit, the only case an older kit knew
 everything else                        exactly today's keys (section 2 map in the codebase audit)
 ```
 
@@ -695,6 +696,11 @@ header; Start buttons are green only while something is stopped, Stop
 buttons always red. During an install the screens keep the plan sidebar (6.1): the
 dashboard is for afterwards.
 
+The catalog's detail is the facts, then the entry's whole help page wrapped
+for the pane (D44). Copying: a selection is on the clipboard the moment the
+mouse is released, through the host's tool and OSC 52 both (D45); Ctrl-C copies
+again, and the hint under Ctrl-C without a selection says so.
+
 ### 6.2 Progress (`ui/progress.py`)
 
 One `ProgressState` for every long job, drawn as the legacy kit drew it: a
@@ -868,6 +874,10 @@ deletes `setup/`.
 
 | # | Decision | Why |
 |---|---|---|
+| D47 | Ownership tags (`domain/ownership.py`, `manifest.ownership.<piece>`): `kit`, `adopted`, `external` for the launcher and the database. The launcher step asks before using a launcher found on PATH (`EXAKIT_REUSE_LAUNCHER`; the kit's own in its bin dir is never asked about); the deploy step tags a reused database `adopted` unless the record already says whose it is, a fresh one `kit`, a declined one `external`. `start`/`stop` skip an external database with the reason; `update` leaves an adopted launcher alone unless forced; `uninstall` leaves an adopted database unless `EXAKIT_REMOVE_ADOPTED=1` or the question is answered yes, and never removes an external one. The status line, the info record, the catalog entry and the database card say which. | A machine that already ran Exasol Personal must not have its launcher replaced or its database destroyed by a kit it merely sat next to; "use yours or ours?" asked once, recorded, and honoured everywhere is the whole rule. |
+| D46 | A folder loads into a schema named after it (`loading/data_tree.py`: `schema_name` upper-cases the name and folds anything else to `_`); the folder's subfolders holding loadable files are a tick list drawn as a tree (depth as indent, the schema and the file count as the hint), all ticked, one schema per chosen folder; `EXAKIT_SCHEMA` names the top folder's schema; unattended, every folder loads. `data_folder.load_folder` runs one `_load_plan` per chosen folder and records the schemas it filled. | "Target schema: STARTER_KIT" for a folder called `sales-2024` was the wrong default, and a tree of exports wanted a schema per folder, not one bucket. |
+| D45 | The screens copy a selection the moment the mouse is released, through the host's clipboard tool (`adapters/clipboard.py`: `pbcopy`, `clip`, `wl-copy`, `xclip`, `xsel`), handed to the apps by the cli as `copier`, and still send OSC 52; Ctrl-C copies again. | Terminal.app and iTerm2 never pass Cmd-C to a program and ignore OSC 52 by default, so "select, then Cmd-C" could only work if the text was already on the clipboard when the terminal swallowed the key. |
+| D44 | The catalog's detail is the facts followed by the full help page of the entry (`DashboardData.help_page(topic, width)`, wrapped for the pane; `catalog_detail(entry, help_text)`). | The catalog showed an overview and pointed at `exakit help <id>`; the page is the point of the catalog. |
 | D8 | `status` and `info` stay on the legacy CLI in Phase A; Python owns `help`, `catalog`, `whats-new`, `version`, `persona`. | Their answers need the database probe (launcher state, port, a SELECT) that belongs to the runtime adapter (C1). Porting half of it would have produced a second, different answer. |
 | D9 | The legacy suites stay at `tests/*.sh` and run against `setup/legacy-exakit*`; new suites live in `tests/unit`, `tests/contract`, `tests/e2e`. | Every legacy suite computes its root as `dirname/..`; moving forty files one level deeper changes nothing about what they prove. |
 | D10 | `setup/exakit` and `setup/exakit.ps1` are byte-identical copies of the launchers in `bootstrap/`; the old CLIs are `setup/legacy-exakit*`. A contract test pins the identity. | The 0.2.0 self-update copies `setup/exakit` to the bin dir; that is how the launcher reaches an installed machine with no change to 0.2.0 code. |
@@ -923,6 +933,8 @@ hold the rule that every variable the code reads is written down somewhere.
 | `EXAKIT_VERBOSE_BOOTSTRAP` | 1 prints the bootstrap's progress lines (uv download, the managed Python); silent otherwise, failures always shown |
 | `EXAKIT_EXAPUMP_SHIM_IMAGE` | the container image the exapump glibc shim runs the binary in (default `exapump.glibc_shim_image` in kit.json, ubuntu:24.04) |
 | `EXAKIT_EXASOL_SCHEDULER_MIRROR_REPO` | the repository of the scheduler's mirror site, the fallback behind the upstream release (default: the kit repository) |
+| `EXAKIT_REUSE_LAUNCHER` | 1/0 answers "use the Exasol launcher already on PATH?" unattended (default yes: adopted, never replaced by the kit; no: the kit installs its own in its bin dir) |
+| `EXAKIT_REMOVE_ADOPTED` | 1 lets `exakit uninstall` delete a database that was the user's before the kit (adopted); unset, it is left in place and the terminal is asked |
 | `EXAKIT_EXASOL_SCHEDULER_RELEASE_TAG` | that mirror release's tag (default: the pinned one); `EXAKIT_EXASOL_SCHEDULER_MIRROR_TAG` is the same |
 | `EXAKIT_FORCE_COMPONENT_INSTALL` | 1 installs a component even when a system copy is present |
 | `EXAKIT_INSTALL_URL` | the installer URL the remedies quote (default https://www.exasol.com/install/starter-kit.sh) |

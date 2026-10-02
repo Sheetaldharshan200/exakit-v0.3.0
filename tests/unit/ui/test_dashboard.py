@@ -47,7 +47,7 @@ class FakeData:
         return [{"command": "status", "options": "", "summary": "Is the database up and healthy?", "group": "Everyday"},
                 {"command": "marketplace", "options": "", "summary": "Optional add-ons", "group": "Add-ons"}]
 
-    def help_page(self, topic):
+    def help_page(self, topic, width=100):
         return f"HELP PAGE FOR {topic}"
 
     def scheduler(self):
@@ -293,3 +293,48 @@ class OneLineRowsTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(rows), 3)
             self.assertTrue(all(len(row) <= 24 for row in rows), rows)
             self.assertEqual(rows[0], " ▸ dash-server  install…")
+
+
+@unittest.skipUnless(HAVE_TEXTUAL, "textual is not installed here")
+class CatalogAndCopyTest(unittest.IsolatedAsyncioTestCase):
+    def test_the_catalog_detail_carries_the_whole_help_page(self):
+        from exakit.ui.tui.sections import catalog_detail
+        text = catalog_detail(CATALOG[0], "QUICKSTART\n  exakit start\n").plain
+        self.assertIn("QUICKSTART", text)
+        self.assertIn("exakit start", text)
+        self.assertNotIn("More: exakit help", text)
+        self.assertIn("More: exakit help personal", catalog_detail(CATALOG[0]).plain)
+        self.assertIn("Managed", catalog_detail({**CATALOG[0], "managed": "database: yours before the kit, adopted into it"}).plain)
+
+    async def test_the_catalog_view_shows_the_help_page_of_the_entry(self):
+        from exakit.ui.tui.dashboard import DashboardApp
+        data = FakeData()
+        app = DashboardApp(data, title="t")
+        async with app.run_test(size=(120, 40)) as pilot:
+            for _ in range(400):
+                await pilot.pause(0.02)
+                if app.state.get("catalog") and app.query("#view"):
+                    break
+            await app.show_section("catalog")
+            await pilot.pause(0.3)
+            from textual.widgets import Static
+            widget = app.query_one(".detail-text", Static)
+            text = getattr(widget, "renderable", None)
+            text = widget.content if text is None else text
+            self.assertIn("HELP PAGE FOR personal", text.plain if hasattr(text, "plain") else str(text))
+
+    def test_the_copier_gets_the_text_the_app_copies(self):
+        from exakit.ui.tui.dashboard import DashboardApp
+        from exakit.ui.tui.app import KitApp
+        copied: list[str] = []
+        DashboardApp(FakeData(), title="t", copier=lambda s: copied.append(s) or True).copy_to_clipboard("one")
+        KitApp(title="t", copier=lambda s: copied.append(s) or True).copy_to_clipboard("two")
+        self.assertEqual(copied, ["one", "two"])
+
+
+class HelpHeaderTest(unittest.TestCase):
+    def test_the_boxed_title_of_a_help_page_is_dropped_in_the_catalog(self):
+        from exakit.ui.tui.sections import _without_header
+        page = "  ----------\n   Exasol Personal (the runtime)\n  The local database.\n  ----------\n\n  The body.\n"
+        self.assertEqual(_without_header(page), "  The body.")
+        self.assertEqual(_without_header("QUICKSTART\n  exakit start\n"), "QUICKSTART\n  exakit start\n")

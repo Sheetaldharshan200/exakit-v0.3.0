@@ -2,6 +2,24 @@
 
 ## 0.3.0 (in progress; the date is added when the tag is cut)
 
+**The kit knows what is yours.** An Exasol launcher already on PATH is
+used only if you say so (adopted) and is then never replaced by an update;
+a database already running is adopted the same way and `exakit uninstall`
+leaves it in place unless you say otherwise. What you kept apart is never
+started, stopped or removed by the kit. `exakit status`, `exakit info
+--json`, the catalog and the database card say whose each piece is.
+
+**A folder loads into a schema named after it**, and a folder of folders is
+a tree to tick: every chosen folder becomes its own schema. `EXAKIT_SCHEMA`
+still names the top folder's schema.
+
+**Copy works in every terminal.** A selection in the screens is on the
+clipboard the moment the mouse is released, so Cmd-C in Terminal.app or
+iTerm2 - which never reaches a program - finds it there; Ctrl-C copies again.
+
+**The catalog shows the whole help page** of each component and add-on,
+not an overview.
+
 **The MCP handshake works under the kit.** The launcher puts the kit
 folder on `PYTHONPATH`, and the kit ships its own `mcp` package, so the MCP
 server started by the kit imported that instead of the MCP SDK and failed

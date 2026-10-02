@@ -1,3 +1,4 @@
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -245,7 +246,7 @@ class FilesTest(unittest.TestCase):
             folder.mkdir()
             (folder / "sales.csv").write_text("a,b\n1,2\n")
             (folder / "orders.csv").write_text("a;b\n1;2\n")
-            listing_after = _listing({"STARTER_KIT.SALES": 1, "STARTER_KIT.ORDERS": 1})
+            listing_after = _listing({"EXPORTS.SALES": 1, "EXPORTS.ORDERS": 1})
 
             class StatefulPump(FakeExapump):
                 listings = 0
@@ -261,13 +262,13 @@ class FilesTest(unittest.TestCase):
             box.ctx.runtime = FakeRuntime()
             result = data_folder.load_folder(box.ctx, folder)
             self.assertEqual(result.status, "loaded")
-            self.assertEqual({(u[1], u[3]) for u in pump.uploads}, {("STARTER_KIT.SALES", ","), ("STARTER_KIT.ORDERS", ";")})
-            self.assertIn("STARTER_KIT: 2 files loaded", box.screen())
+            self.assertEqual({(u[1], u[3]) for u in pump.uploads}, {("EXPORTS.SALES", ","), ("EXPORTS.ORDERS", ";")}, "the folder's name is the schema")
+            self.assertIn("EXPORTS: 2 files loaded", box.screen())
             m = box.manifest()
             self.assertEqual(m.get("data.last_load.type"), "local_folder")
             self.assertEqual(m.get("data.last_load.files"), 2)
             receipts = data_files.Receipts.load(box.ctx.paths.cache / "load-receipts.tsv")
-            self.assertEqual({r[0] for r in receipts.rows}, {"STARTER_KIT.SALES", "STARTER_KIT.ORDERS"})
+            self.assertEqual({r[0] for r in receipts.rows}, {"EXPORTS.SALES", "EXPORTS.ORDERS"})
             box.out.truncate(0)
             box.out.seek(0)
             pump.uploads.clear()
@@ -283,7 +284,7 @@ class FilesTest(unittest.TestCase):
             folder = Path(box.tmp.name) / "exports"
             folder.mkdir()
             (folder / "sales.csv").write_text("a,b\n1,2\n")
-            pump = FakeExapump([("EXA_ALL_SCHEMAS", Completed(0, "EXAKIT_SCHEMA_PRESENT", "")), ("LISTING_ANSWERED", _listing({"STARTER_KIT.SALES": 9}))])
+            pump = FakeExapump([("EXA_ALL_SCHEMAS", Completed(0, "EXAKIT_SCHEMA_PRESENT", "")), ("LISTING_ANSWERED", _listing({"EXPORTS.SALES": 9}))])
             box.ctx.exapump = pump
             data_folder.load_folder(box.ctx, folder)
             self.assertEqual(pump.uploads, [])
@@ -291,7 +292,7 @@ class FilesTest(unittest.TestCase):
             self.assertIn("already holds every file", box.screen())
             box.env["EXAKIT_ON_EXISTING"] = "replace"
             data_folder.load_folder(box.ctx, folder)
-            self.assertTrue(any("DROP TABLE IF EXISTS STARTER_KIT.SALES" in t for _, t in pump.calls))
+            self.assertTrue(any("DROP TABLE IF EXISTS EXPORTS.SALES" in t for _, t in pump.calls))
             self.assertEqual(len(pump.uploads), 1)
         finally:
             box.close()
@@ -299,3 +300,60 @@ class FilesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TreeTest(unittest.TestCase):
+    """A folder tree: one schema per folder, named after it; the user ticks the folders."""
+
+    def test_a_folder_name_becomes_a_schema_name(self):
+        from exakit.app.loading import data_tree
+        self.assertEqual(data_tree.schema_name(Path("/x/sales-2024")), "SALES_2024")
+        self.assertEqual(data_tree.schema_name(Path("/x/2024 sales")), "_2024_SALES")
+        self.assertEqual(data_tree.schema_name(Path("/x/--")), "DATA")
+
+    def test_the_tree_lists_every_folder_with_loadable_files_and_keeps_schema_names_apart(self):
+        from exakit.app.loading import data_tree
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "exports"
+            (root / "north" / "sales").mkdir(parents=True)
+            (root / "south" / "sales").mkdir(parents=True)
+            (root / ".git").mkdir()
+            (root / "top.csv").write_text("a,b\n1,2\n")
+            (root / "north" / "sales" / "q1.csv").write_text("a,b\n1,2\n")
+            (root / "south" / "sales" / "q1.csv").write_text("a,b\n3,4\n")
+            (root / ".git" / "x.csv").write_text("a,b\n1,2\n")
+            plans = data_tree.scan_tree(root)
+            self.assertEqual([(p.path.name, p.depth, p.schema) for p in plans], [("exports", 0, "EXPORTS"), ("sales", 2, "SALES"), ("sales", 2, "SOUTH_SALES")])
+            self.assertEqual([len(p.loadable) for p in plans], [1, 1, 1])
+
+    def test_unattended_every_folder_loads_and_the_env_names_the_top_schema(self):
+        from exakit.app.loading import data_tree
+        box = Sandbox(manifest=MANIFEST, env={"EXAKIT_SCHEMA": "mine"})
+        try:
+            root = Path(box.tmp.name) / "exports"
+            (root / "orders").mkdir(parents=True)
+            (root / "top.csv").write_text("a,b\n1,2\n")
+            (root / "orders" / "o.csv").write_text("a,b\n1,2\n")
+            plans = data_tree.scan_tree(root)
+            chosen = data_tree.choose_plans(box.ctx, plans, root)
+            self.assertEqual([p.schema for p in chosen], ["MINE", "ORDERS"])
+        finally:
+            box.close()
+
+    def test_a_tree_loads_each_folder_into_its_own_schema(self):
+        box = Sandbox(manifest=MANIFEST)
+        try:
+            root = Path(box.tmp.name) / "exports"
+            (root / "orders").mkdir(parents=True)
+            (root / "sales.csv").write_text("a,b\n1,2\n")
+            (root / "orders" / "lines.csv").write_text("a,b\n1,2\n")
+            pump = FakeExapump([("EXA_ALL_SCHEMAS", Completed(0, "EXAKIT_SCHEMA_PRESENT", "")), ("LISTING_ANSWERED", LISTING_EMPTY)])
+            box.ctx.exapump = pump
+            box.ctx.runtime = FakeRuntime()
+            result = data_folder.load_folder(box.ctx, root)
+            self.assertEqual(result.data["schemas"], ["EXPORTS", "ORDERS"])
+            self.assertEqual({u[1] for u in pump.uploads}, {"EXPORTS.SALES", "ORDERS.LINES"})
+            self.assertIn("orders/ -> ORDERS", box.screen())
+            self.assertEqual(box.manifest().get("data.last_load.target"), "EXPORTS, ORDERS")
+        finally:
+            box.close()

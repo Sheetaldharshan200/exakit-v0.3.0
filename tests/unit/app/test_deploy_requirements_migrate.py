@@ -28,12 +28,16 @@ class DeployTest(unittest.TestCase):
             self.assertTrue(deploy.deploy_local(box.ctx))
             self.assertIn("Reusing the existing Exasol deployment", box.screen())
             self.assertEqual(box.manifest().get("runtime.status"), "healthy")
+            self.assertEqual(box.manifest().get("ownership.database"), "adopted", "a database found running was the user's before the kit")
+            self.assertIn("yours from before the kit (adopted)", box.screen())
         finally:
             box.close()
         box = box_with("running", True, env={"EXAKIT_REUSE_DB": "0"})
         try:
             self.assertFalse(deploy.deploy_local(box.ctx))
             self.assertTrue(box.ctx.paths.failure_note.exists())
+            self.assertEqual(box.manifest().get("ownership.database"), "external", "declined: the kit never touches it")
+            self.assertIn("the kit will not stop, update or remove it", box.screen())
         finally:
             box.close()
 
@@ -59,6 +63,7 @@ class DeployTest(unittest.TestCase):
                 self.assertTrue(deploy.deploy_local(box.ctx))
             self.assertEqual((box.ctx.runtime.destroyed, box.ctx.runtime.installed_local), (1, 1))
             self.assertIn("Exasol Personal deployed and answering", box.screen())
+            self.assertEqual(box.manifest().get("ownership.database"), "kit", "a fresh deployment is the kit's own")
         finally:
             box.close()
 

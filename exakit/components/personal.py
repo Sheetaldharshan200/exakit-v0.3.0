@@ -8,6 +8,7 @@ from pathlib import Path
 
 from exakit.adapters.net.digest import digest_from_checksums, verify_sha256
 from exakit.adapters.net.github import download_url
+from exakit.domain import ownership
 from exakit.domain.errors import Failed
 from exakit.domain.versions import is_newer, parse_version
 from exakit.lifecycles.base import temp_dir
@@ -78,10 +79,9 @@ class Lifecycle(ComponentBase):
         """Download the verified launcher archive and place the binary."""
         if not self.force():
             existing = self._existing_supports_local()
-            if existing:
-                self.ctx.ui.ok(f"Exasol launcher already installed: {existing}")
+            if existing and self._reuse(existing):
                 return
-            if self.ctx.runner.which("exasol"):
+            if self.ctx.runner.which("exasol") and not existing:
                 self.ctx.ui.warn(f"The installed Exasol launcher ({self.ctx.runner.which('exasol')}) does not support the 'local' preset (too old).")
                 self.ctx.ui.info(f"Installing launcher v{version} to {self.bin} - your existing launcher is left untouched")
         self.refuse_downgrade(version)
@@ -112,6 +112,27 @@ class Lifecycle(ComponentBase):
             self.ctx.ui.info(f"Confirm it with: codesign -dv \"{self.bin}\"   An ad-hoc signature unblocks you locally: codesign -s - \"{self.bin}\"")
             raise Failed("The Exasol launcher was downloaded and verified but cannot be executed on this machine.")
         self.ctx.ui.ok(f"Exasol launcher v{version} installed to {self.bin} ({self.elapsed(started)})")
+        self._tag(ownership.KIT)
+
+    def _reuse(self, existing: str) -> bool:
+        """A launcher is already on PATH: the kit's own is simply there; another is adopted when the user says so, else the kit installs its own beside it."""
+        if Path(existing).resolve() == self.bin.resolve() or ownership.tag(self.ctx.manifest(), "launcher") == ownership.ADOPTED:
+            self.ctx.ui.ok(f"Exasol launcher already installed: {existing}")
+            return True
+        value = self.ctx.env.get("EXAKIT_REUSE_LAUNCHER", "").strip().lower()
+        answer = True if value in ("1", "y", "yes") else False if value in ("0", "n", "no") else None
+        if answer is None:
+            answer = (self.ctx.ui.confirm(f"An Exasol launcher is already installed at {existing}. Use it with this kit?", default=True)
+                      if self.ctx.ui.interactive else True)
+        if answer:
+            self.ctx.ui.ok(f"Using your Exasol launcher: {existing} (adopted - the kit never replaces or removes it)")
+            self._tag(ownership.ADOPTED)
+            return True
+        self.ctx.ui.info(f"Installing the kit's own launcher to {self.bin} - yours at {existing} is left untouched")
+        return False
+
+    def _tag(self, value: str) -> None:
+        self.ctx.manifest_store.update(lambda m: ownership.set_tag(m, "launcher", value))
 
     # --- update -------------------------------------------------------------------------------------
 
@@ -134,6 +155,10 @@ class Lifecycle(ComponentBase):
             mode = option.lstrip("-")
         latest = self.target_version()
         current = self.installed_version()
+        if ownership.tag(self.ctx.manifest(), "launcher") == ownership.ADOPTED and not self.force():
+            self.ctx.ui.info(f"Your own Exasol launcher is in use (adopted), so the kit does not replace it; {latest} is advertised. "
+                             "Update it the way you installed it - or EXAKIT_FORCE_COMPONENT_INSTALL=1 exakit update runtime installs the kit's own.")
+            return
         if latest == current:
             self.ctx.ui.ok(f"Exasol Personal launcher is already current ({current})")
             return

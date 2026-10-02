@@ -82,6 +82,12 @@ def dashboard_wanted() -> bool:
     return Paths.from_env(env, Path.home()).manifest.exists()
 
 
+def clipboard_copier():
+    """The host's clipboard tool for the screens (pbcopy, clip, wl-copy, xclip or xsel), from the adapters."""
+    from exakit.adapters import clipboard
+    return clipboard.copy
+
+
 def tui_site(ctx: Context) -> Path | None:
     """The screens' site-packages (architecture A3): ready, or prepared now by uv from the pin; None keeps the console."""
     from exakit.adapters import tui_env

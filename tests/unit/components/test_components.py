@@ -446,3 +446,50 @@ class SkillSetTest(unittest.TestCase):
             self.assertIn("AI skills updated to 1.12.2", box.screen())
         finally:
             box.close()
+
+
+class LauncherOwnershipTest(unittest.TestCase):
+    """A launcher that was there before the kit is adopted when the user says so, and then never replaced; declined, the kit installs its own beside it."""
+
+    def _box(self, **env):
+        runner = FakeRunner(responses={("/usr/local/bin/exasol", "install", "--help"): Completed(0, "presets: local, cloud", "")},
+                            which={"exasol": "/usr/local/bin/exasol"})
+        box = Sandbox(manifest=MANIFEST, runner=runner, env=env)
+        box.ctx.runtime = FakeRuntime("stopped")
+        return box
+
+    def test_unattended_the_existing_launcher_is_adopted_and_the_kit_never_updates_it(self):
+        box = self._box()
+        try:
+            lc = for_component(box.ctx, "personal")
+            lc.install("2.3.0")
+            self.assertIn("Using your Exasol launcher: /usr/local/bin/exasol (adopted", box.screen())
+            self.assertEqual(box.manifest().get("ownership.launcher"), "adopted")
+            self.assertFalse(lc.bin.exists(), "nothing was downloaded")
+            lc.target_version = lambda: "9.9.9"
+            lc.installed_version = lambda: "2.3.0"
+            lc.update()
+            self.assertIn("Your own Exasol launcher is in use (adopted), so the kit does not replace it", box.screen())
+            self.assertFalse(lc.bin.exists())
+            box.out.truncate(0)
+            box.out.seek(0)
+            lc.install("2.3.0")
+            self.assertIn("already installed", box.screen(), "the question is asked once; the record remembers the answer")
+        finally:
+            box.close()
+
+    def test_declined_the_kit_installs_its_own_launcher_beside_the_existing_one(self):
+        box = self._box(EXAKIT_REUSE_LAUNCHER="0")
+        try:
+            body = tarball({"exasol": "#!/bin/sh\n"}, prefix="exasol-personal")
+            base = "https://github.com/exasol/exasol-personal/releases/download/v2.3.0"
+            box.downloader.pages[f"{base}/exasol-personal_macOS_arm64.tar.gz"] = body
+            box.downloader.pages[f"{base}/exasol-personal_2.3.0_checksums.txt"] = f"{hashlib.sha256(body).hexdigest()}  exasol-personal_macOS_arm64.tar.gz\n"
+            lc = for_component(box.ctx, "personal")
+            lc.install("2.3.0")
+            self.assertIn("Installing the kit's own launcher to", box.screen())
+            self.assertIn("yours at /usr/local/bin/exasol is left untouched", box.screen())
+            self.assertTrue(lc.bin.exists())
+            self.assertEqual(box.manifest().get("ownership.launcher"), "kit")
+        finally:
+            box.close()

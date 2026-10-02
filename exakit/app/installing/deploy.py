@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 import time
 
+from exakit.domain import ownership
 from exakit.adapters.process.ports import port_in_use
 
 from .. import Context
@@ -59,15 +60,24 @@ def foreign_db_hint(ctx: Context) -> str:
     return hint
 
 
+def _tag(ctx: Context, value: str | None) -> None:
+    """Whose database the record says it is: the kit's own, or adopted when nothing says otherwise (None)."""
+    ctx.manifest_store.update(lambda m: ownership.set_tag(m, "database", value) if value else ownership.adopt_unless_tagged(m, "database"))
+
+
 def _reuse_running(ctx: Context) -> bool:
     rt = runtime(ctx)
     ctx.ui.info(f"An Exasol database is already running on port {rt.db_port()}.")
     if confirm_env(ctx, "EXAKIT_REUSE_DB", "Use it instead of deploying a new one?", default=True):
         ctx.ui.ok("Reusing the existing Exasol deployment")
         record(ctx, "healthy")
+        _tag(ctx, None)
+        if ownership.tag(ctx.manifest(), "database") == ownership.ADOPTED:
+            ctx.ui.info("It is yours from before the kit (adopted): the kit starts, stops and reads it, and never deletes it unasked.")
         return True
-    ctx.ui.info(f"Stop it first ('exakit stop', or 'exasol stop'), then re-run the installer to deploy a fresh one - port {rt.db_port()} "
-                f"stays in use while it is running: {ctx.install_command()}")
+    _tag(ctx, ownership.EXTERNAL)
+    ctx.ui.info(f"It stays yours - the kit will not stop, update or remove it. Stop it first ('exasol stop'), then re-run the installer to deploy "
+                f"the kit's own - port {rt.db_port()} stays in use while it is running: {ctx.install_command()}")
     note_failure(ctx, f"Declined to reuse the database already running on port {rt.db_port()}")
     return False
 
@@ -84,6 +94,7 @@ def _start_existing(ctx: Context) -> bool | None:
             if not rt.wait_ready_or_deploy(ctx.ui.info):
                 return False
             record(ctx, "healthy")
+            _tag(ctx, None)
             return True
         ctx.ui.warn(f"The failed deployment could not be brought up.{foreign_db_hint(ctx)}")
     ctx.ui.info("An Exasol deployment was found, not running.")
@@ -104,6 +115,7 @@ def _start_existing(ctx: Context) -> bool | None:
         if not rt.wait_ready_or_deploy(ctx.ui.info):
             return False
         record(ctx, "healthy")
+        _tag(ctx, None)
         return True
     ctx.ui.warn("The existing deployment could not be started, even after clearing orphaned runners.")
     return None
@@ -162,6 +174,7 @@ def _deploy_fresh(ctx: Context) -> bool:
         return False
     ctx.ui.ok(f"Exasol Personal deployed and answering on 127.0.0.1:{rt.db_port()} ({int(time.monotonic() - started)}s)")
     record(ctx, "healthy")
+    _tag(ctx, ownership.KIT)
     return True
 
 

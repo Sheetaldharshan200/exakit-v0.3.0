@@ -208,3 +208,32 @@ class RepairRuntimeTest(unittest.TestCase):
                 repair.run(box.ctx, ["--frob"])
         finally:
             box.close()
+
+
+class OwnershipTest(unittest.TestCase):
+    """What was the user's before the kit is left in place unless they say otherwise."""
+
+    def test_an_adopted_database_is_left_in_place_unless_told_otherwise(self):
+        for env, kept in (({}, True), ({"EXAKIT_REMOVE_ADOPTED": "1"}, False)):
+            box = installed_box(env=env)
+            try:
+                box.ctx.manifest_store.update(lambda m: m.set("ownership.database", "adopted"))
+                with mock.patch("exakit.app.kit.uninstall.for_component") as comp:
+                    comp.return_value.uninstall = lambda dry_run: []
+                    result = uninstall.run(box.ctx, ["--yes"])
+                self.assertEqual(result.status, "removed")
+                self.assertEqual("left in place: the local Exasol deployment (yours before the kit, adopted into it)" in box.screen(), kept)
+                self.assertEqual("deployment and ALL its data" in box.screen(), not kept)
+            finally:
+                box.close()
+
+    def test_an_external_database_is_never_removed(self):
+        box = installed_box()
+        try:
+            box.ctx.manifest_store.update(lambda m: m.set("ownership.database", "external"))
+            with mock.patch("exakit.app.kit.uninstall.for_component") as comp:
+                comp.return_value.uninstall = lambda dry_run: []
+                uninstall.run(box.ctx, ["--yes"])
+            self.assertIn("left in place: the local Exasol deployment (managed outside the kit)", box.screen())
+        finally:
+            box.close()

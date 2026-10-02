@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ from exakit.domain.plan import Plan, Step
 from exakit.ui.progress import ProgressState
 
 from .choices import ChoiceList
+from .copying import CopyKeys
 from .palette import KitProvider
 from .panels import Loader, LogPane, ProgressRow, WordmarkHeader
 from .sections import SECTIONS, ComingSoonView, EntryList, JobView, MarketplaceView, RunJob, StatusView, catalog_detail
@@ -125,7 +127,7 @@ class SearchBar(Vertical):
         event.prevent_default()
 
 
-class DashboardApp(App[None]):
+class DashboardApp(CopyKeys, App[None]):
     """The sidebar on the left, the view on the right, the search on top, the palette on Ctrl-P."""
 
     CSS_PATH = "app.tcss"
@@ -134,8 +136,9 @@ class DashboardApp(App[None]):
                 Binding("escape", "to_sidebar", "Sidebar", show=False), Binding("ctrl+c", "copy_or_hint", "Copy", show=False, priority=True),
                 Binding("super+c", "copy_or_hint", "Copy", show=False, priority=True)]
 
-    def __init__(self, data, *, title: str) -> None:
+    def __init__(self, data, *, title: str, copier: Callable[[str], bool] | None = None) -> None:
         super().__init__(ansi_color=True)
+        self.copier = copier
         self.data = data
         self.title_text = title
         self.state: dict[str, Any] = {}
@@ -199,7 +202,8 @@ class DashboardApp(App[None]):
         if name == "status":
             return StatusView(self.state)
         if name == "catalog":
-            return EntryList(self.state.get("catalog") or [], label=lambda e: f"{e['id']:<18} {e.get('status', '')}", detail=catalog_detail, key="id")
+            return EntryList(self.state.get("catalog") or [], label=lambda e: f"{e['id']:<18} {e.get('status', '')}",
+                             detail=lambda e: catalog_detail(e, self.data.help_page(e["id"], width=self._help_width())), key="id")
         if name == "marketplace":
             return MarketplaceView(self.state)
         if name == "commands":
@@ -379,11 +383,7 @@ class DashboardApp(App[None]):
             await self.show_section(self.section)
         self.query_one("#sidebar", ChoiceList).focus()
 
-    def action_copy_or_hint(self) -> None:
-        """Ctrl-C copies the selected text, or says how to select and how to quit."""
-        selected = self.screen.get_selected_text()
-        if selected:
-            self.copy_to_clipboard(selected)
-            self.notify("Copied", timeout=2)
-            return
-        self.notify("Ctrl-Q quits. Drag to select text, then Ctrl-C copies (Cmd-C where the terminal passes it on; Option-drag and Cmd-C copy through the terminal itself).", timeout=5)
+    def _help_width(self) -> int:
+        """The columns a help page is wrapped to in the detail pane: the content minus the sidebar and the entry list."""
+        content = max(self.size.width - 26, 40)
+        return max(40, min(100, content - min(48, max(24, int(content * 0.44))) - 6))

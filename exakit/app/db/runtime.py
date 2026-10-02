@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from exakit.adapters.fs.notes import clear_runtime_failure_note
+from exakit.domain import ownership
 from exakit.domain.errors import BadInput, ExakitError, Failed
 from exakit.domain.result import Result
 
@@ -17,6 +18,10 @@ def _start_database(ctx: Context) -> None:
     manifest = ctx.manifest()
     if manifest.runtime_type() != "personal":
         ensure_running(ctx, deploy=True)
+        return
+    if not ownership.controlled(manifest, "database"):
+        ctx.ui.warn(f"The database on {manifest.get('runtime.dsn') or 'its port'} is managed outside the kit, so the kit does not start it - "
+                    "start it yourself with: exasol start")
         return
     rt = runtime(ctx)
     state = rt.status()
@@ -62,6 +67,9 @@ def stop(ctx: Context) -> Result:
         except ExakitError as err:
             ctx.ui.warn(err.message)
     if ctx.manifest().runtime_type() == "personal":
+        if not ownership.controlled(ctx.manifest(), "database"):
+            ctx.ui.warn("The database is managed outside the kit, so it stays running - stop it yourself with: exasol stop")
+            return Result(True, "stopped")
         runtime(ctx).stop(ctx.ui.info)
         ctx.manifest_store.update(lambda m: m.set("runtime.status", "stopped"))
         ctx.ui.ok("Database stopped")

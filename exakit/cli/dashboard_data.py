@@ -12,6 +12,7 @@ from exakit.app.addons import marketplace as marketplace_app, services as servic
 from exakit.app.kit import status as status_app, version as version_app
 from exakit.app.kit import help as help_app
 from exakit.app.machine import kit_root
+from exakit.domain import ownership
 from exakit.domain.errors import ExakitError
 from exakit.domain.result import Result
 from exakit.ui.silent import SilentRenderer
@@ -91,6 +92,7 @@ class DashboardData:
         for cid in self.ctx.catalog.component_ids():
             component = self.ctx.catalog.component(cid)
             entries.append(self._entry(cid, component.title, component.kind, False, by_id, platforms=component.platforms, requires=component.requires))
+        self._mark_ownership(entries)
         for addon in self.ctx.catalog.addons():
             entry = self._entry(addon.id, addon.title, addon.kind, True, by_id, platforms=addon.platforms, requires=addon.requires,
                                 launcher=addon.launcher)
@@ -101,6 +103,16 @@ class DashboardData:
                 entry["advertised"] = row["version"]
             entries.append(entry)
         return entries
+
+    def _mark_ownership(self, entries: list[dict[str, Any]]) -> None:
+        """The runtime entry says whose launcher and database they are, when either is not the kit's own."""
+        manifest = self.ctx.manifest_or_none()
+        if not manifest:
+            return
+        words = [f"{piece}: {ownership.describe(manifest, piece)}" for piece in ownership.PIECES if ownership.tag(manifest, piece) != ownership.KIT]
+        for entry in entries:
+            if entry["id"] == "personal" and words:
+                entry["managed"] = "; ".join(words)
 
     def _entry(self, cid: str, title: str, kind: str, addon: bool, rows: dict[str, dict[str, Any]], **extra: Any) -> dict[str, Any]:
         doc = self.docs.get(cid) or {}
@@ -124,10 +136,10 @@ class DashboardData:
         return [{"command": c["command"], "options": c.get("options", ""), "summary": c.get("summary", ""), "group": groups.get(c["command"].split()[0], "")}
                 for c in doc.get("commands", [])]
 
-    def help_page(self, topic: str) -> str:
-        """A command's or component's help page as plain text."""
+    def help_page(self, topic: str, width: int = 100) -> str:
+        """A command's or component's help page as plain text, wrapped for ``width`` columns."""
         mode = "command" if any(c["command"].split()[0] == topic for c in (self.docs.get("exakit") or {}).get("commands", [])) else "component"
-        text, _ = help_app.render(self.docs, mode, topic, color=False, width=100)
+        text, _ = help_app.render(self.docs, mode, topic, color=False, width=width)
         return text
 
     def job(self, kind: str, target: str = "") -> Job:

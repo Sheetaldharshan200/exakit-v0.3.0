@@ -117,7 +117,7 @@ def ui_command(args: list[str], ctx: Context) -> Result:
     site = _context.tui_site(ctx)
     if site is None or not tui.load(site):
         raise Failed("The dashboard's toolkit could not be prepared here (see the log); the commands work as before.", remedy="exakit status")
-    tui.run_dashboard(ctx, DashboardData(ctx), title="Exasol Personal Local Starter Kit")
+    tui.run_dashboard(ctx, DashboardData(ctx), title="Exasol Personal Local Starter Kit", copier=_context.clipboard_copier())
     return Result(True, "closed")
 
 

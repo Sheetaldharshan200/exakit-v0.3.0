@@ -119,7 +119,8 @@ def _run(command: str, rest: list[str], ctx: Context) -> Result:
     if tui.wanted(ctx.env, sys.stdout, command=command, args=rest, json=ctx.json, dry_run=ctx.dry_run) and _platform_ok(ctx):
         site = _context.tui_site(ctx)
         if site is not None and tui.load(site):
-            return tui.run(ctx, lambda: handler(rest, ctx), title="Exasol Personal Local Starter Kit", subtitle=f"exakit {command}")
+            return tui.run(ctx, lambda: handler(rest, ctx), title="Exasol Personal Local Starter Kit", subtitle=f"exakit {command}",
+                           copier=_context.clipboard_copier())
     return handler(rest, ctx)
 
 

@@ -49,12 +49,12 @@ def load(site_dir: Path) -> bool:
     return True
 
 
-def run_dashboard(ctx, data, *, title: str) -> None:
+def run_dashboard(ctx, data, *, title: str, copier: Callable[[str], bool] | None = None) -> None:
     """Open the dashboard over ``data`` (a ``DashboardData``); actions run the ordinary commands with the screens as ``ctx.ui``."""
     from .dashboard import DashboardApp
     from .renderer import TuiRenderer
     console = ctx.ui
-    app = DashboardApp(data, title=title)
+    app = DashboardApp(data, title=title, copier=copier)
     mirror = ConsoleRenderer(palette=PLAIN, out=io.StringIO(), interactive=False, log=ctx.log)
     ctx.ui = TuiRenderer(app, mirror)
     try:
@@ -63,7 +63,8 @@ def run_dashboard(ctx, data, *, title: str) -> None:
         ctx.ui = console
 
 
-def run(ctx, job: Callable[[], Result], *, title: str, subtitle: str = "", out: IO[str] | None = None) -> Result:
+def run(ctx, job: Callable[[], Result], *, title: str, subtitle: str = "", out: IO[str] | None = None,
+        copier: Callable[[str], bool] | None = None) -> Result:
     """Run ``job`` inside the app with ``ctx.ui`` as the screens; print the plain transcript when the app closes.
 
     The job's Result is returned; an ExakitError it raised is raised here, after the console is back.
@@ -73,7 +74,7 @@ def run(ctx, job: Callable[[], Result], *, title: str, subtitle: str = "", out: 
     console = ctx.ui
     buffer = io.StringIO()
     mirror = ConsoleRenderer(palette=PLAIN, out=buffer, err=buffer, interactive=False, log=ctx.log, home=getattr(console, "home", ""))
-    app = KitApp(title=title, subtitle=subtitle)
+    app = KitApp(title=title, subtitle=subtitle, copier=copier)
     ctx.ui = TuiRenderer(app, mirror)
     app.job = job
     try:
