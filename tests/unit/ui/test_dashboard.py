@@ -332,6 +332,7 @@ class CatalogAndCopyTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(copied, ["one", "two"])
 
 
+@unittest.skipUnless(HAVE_TEXTUAL, "textual is not installed here")
 class HelpHeaderTest(unittest.TestCase):
     def test_the_boxed_title_of_a_help_page_is_dropped_in_the_catalog(self):
         from exakit.ui.tui.sections import _without_header
