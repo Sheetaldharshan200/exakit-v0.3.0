@@ -20,6 +20,11 @@ iTerm2 - which never reaches a program - finds it there; Ctrl-C copies again.
 **The catalog shows the whole help page** of each component and add-on,
 not an overview.
 
+**A Data load section in the dashboard**, second in the sidebar: the
+bundled datasets with their state, tables and rows, and your own file or
+folder with a path box; Load runs the load in the job view. The sidebar now
+reads Status, Data load, Marketplace, Virtual schemas, Catalog, Commands.
+
 **The install closes on `exakit`.** The last lines of an install name the
 dashboard and the everyday commands (status, start, stop, data-load,
 marketplace, update) instead of pointing at the help.

@@ -72,6 +72,22 @@ class DashboardData:
         tasks, enabled, last_at, last_status, failures = [*match.group(1).split("|"), "", "", "", "", ""][:5]
         return {"tasks": tasks, "enabled": enabled, "last_run": last_at, "last_status": last_status, "failures_24h": failures, "schema": schema}
 
+    def datasets(self) -> dict[str, Any]:
+        """The bundled datasets with what the database holds of each, and the last load the record remembers."""
+        from exakit.app.loading import data as data_app
+        manifest = self.ctx.manifest_or_none()
+        last = dict(manifest.get("data.last_load") or {}) if manifest else {}
+        try:
+            tables = data_app.listing(self.quiet) or {}
+            done = data_app.loaded(self.quiet, tables=tables or None, heal=False)
+        except ExakitError:
+            tables, done = {}, set()
+        items = []
+        for ds in data_app.bundled(self.quiet):
+            mine = {name: rows for name, rows in tables.items() if name.upper().startswith(f"{ds.schema.upper()}.")}
+            items.append({"id": ds.id, "label": ds.label, "schema": ds.schema, "loaded": ds.id in done, "tables": sorted(mine), "rows": sum(mine.values())})
+        return {"items": items, "last_load": last}
+
     def log_path(self) -> str | None:
         """The log file this run writes, for the job view's tail."""
         path = getattr(self.ctx.log, "path", None)
@@ -151,11 +167,28 @@ class DashboardData:
             "stop": lambda: commands.stop_command([], self.ctx),
             "service-start": lambda: self._service(target, start=True),
             "service-stop": lambda: self._service(target, start=False),
-            "data-load": lambda: commands.data_load_command([], self.ctx),
+            "data-load": lambda: self._data_load(target),
             "autostart": lambda: commands.autostart_command([], self.ctx),
             "mcp-doctor": lambda: commands.mcp_doctor_command([], self.ctx),
         }
         return table[kind]
+
+    def _data_load(self, target: str) -> Result:
+        """``dataset:<id>`` loads one bundled dataset, ``reload:<id>`` replaces it, ``path:<p>`` loads a file or folder, nothing opens the menu."""
+        kind, _, value = target.partition(":")
+        if kind in ("dataset", "reload") and value:
+            before = self.ctx.env.get("EXAKIT_DATASETS")
+            self.ctx.env["EXAKIT_DATASETS"] = value
+            try:
+                return commands.data_load_command(["--force"] if kind == "reload" else [], self.ctx)
+            finally:
+                if before is None:
+                    self.ctx.env.pop("EXAKIT_DATASETS", None)
+                else:
+                    self.ctx.env["EXAKIT_DATASETS"] = before
+        if kind == "path" and value:
+            return commands.data_load_command([value], self.ctx)
+        return commands.data_load_command([], self.ctx)
 
     def _service(self, service_id: str, *, start: bool) -> Result:
         """One service (the database or an add-on) started or stopped; the others are left as they are."""

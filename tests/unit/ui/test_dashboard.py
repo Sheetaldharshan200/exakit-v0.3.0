@@ -50,6 +50,11 @@ class FakeData:
     def help_page(self, topic, width=100):
         return f"HELP PAGE FOR {topic}"
 
+    def datasets(self):
+        return {"items": [{"id": "tpch", "label": "TPC-H", "schema": "TPCH", "loaded": True, "tables": ["TPCH.NATION", "TPCH.REGION"], "rows": 30},
+                          {"id": "energy", "label": "Energy", "schema": "ENERGY", "loaded": False, "tables": [], "rows": 0}],
+                "last_load": {"type": "local_folder", "target": "EXPORTS", "source": "/tmp/exports"}}
+
     def scheduler(self):
         return {"tasks": "3", "enabled": "2", "last_run": "2026-10-02 01:00", "last_status": "SUCCESS", "failures_24h": "1", "schema": "SCHED"}
 
@@ -128,8 +133,9 @@ class DashboardTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(cards["Exasol Personal"].query_one(Button).variant, "error")
             await pilot.press("down")
             await pilot.pause(0.05)
-            self.assertEqual(app.section, "catalog")
-            self.assertTrue(app.query(EntryList))
+            self.assertEqual(app.section, "data-load")
+            from exakit.ui.tui.data_view import DataLoadView
+            self.assertTrue(app.query(DataLoadView))
             await pilot.press("down")
             await pilot.pause(0.05)
             self.assertEqual(app.section, "marketplace")
@@ -143,6 +149,10 @@ class DashboardTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause(0.05)
             self.assertTrue(app.query(ComingSoonView))
             self.assertIn("Coming soon", app.query_one(ComingSoonView).facts.plain)
+            await pilot.press("down")
+            await pilot.pause(0.05)
+            self.assertEqual(app.section, "catalog")
+            self.assertTrue(app.query(EntryList))
             await pilot.press("down")
             await pilot.pause(0.05)
             self.assertEqual(app.section, "commands")
@@ -261,7 +271,7 @@ class DashboardTest(unittest.IsolatedAsyncioTestCase):
             hits = [hit async for hit in provider.search("dash")]
             self.assertTrue(any("dash-server" in str(h.match_display) or "dash-server" in (h.help or "") for h in hits) or hits)
             discovered = [hit async for hit in provider.discover()]
-            self.assertEqual(len(discovered), 5)
+            self.assertEqual(len(discovered), 6, "the six sidebar sections")
 
 
 @unittest.skipUnless(HAVE_TEXTUAL, "textual is not installed here")
@@ -339,3 +349,71 @@ class HelpHeaderTest(unittest.TestCase):
         page = "  ----------\n   Exasol Personal (the runtime)\n  The local database.\n  ----------\n\n  The body.\n"
         self.assertEqual(_without_header(page), "  The body.")
         self.assertEqual(_without_header("QUICKSTART\n  exakit start\n"), "QUICKSTART\n  exakit start\n")
+
+
+@unittest.skipUnless(HAVE_TEXTUAL, "textual is not installed here")
+class DataLoadViewTest(unittest.IsolatedAsyncioTestCase):
+    """The Data load section: datasets with their state, your own path, and Load running the ordinary command."""
+
+    async def test_datasets_show_their_state_and_load_runs_the_job(self):
+        from textual.widgets import Button, Input, Static
+        from exakit.ui.tui.choices import ChoiceList
+        from exakit.ui.tui.data_view import DataLoadView
+        from exakit.ui.tui.dashboard import DashboardApp
+        from exakit.ui.tui.renderer import TuiRenderer
+        from exakit.ui.console import ConsoleRenderer
+        from exakit.ui.widgets import PLAIN
+        import io
+        data = FakeData()
+        app = DashboardApp(data, title="t")
+        data.ui = TuiRenderer(app, ConsoleRenderer(palette=PLAIN, out=io.StringIO(), interactive=False))
+        async with app.run_test(size=(120, 40)) as pilot:
+            for _ in range(400):
+                await pilot.pause(0.02)
+                if app.state.get("catalog") and app.query("#view"):
+                    break
+            await app.show_section("data-load")
+            await pilot.pause(0.3)
+            view = app.query_one(DataLoadView)
+            rows = view.query_one(ChoiceList)
+            self.assertEqual([(o.label, o.hint) for o in rows.options], [("TPC-H", "loaded"), ("Energy", "not loaded"), ("Your own file or folder", "")])
+            self.assertEqual(str(view.query_one(Button).label), "Reload (replace)")
+            self.assertFalse(view.query_one("#data-path", Input).display)
+            rows.go_to(1)
+            await pilot.pause(0.1)
+            self.assertEqual(str(view.query_one(Button).label), "Load")
+            self.assertIn("ENERGY", view.query_one("#data-detail", Static).content.plain if hasattr(view.query_one("#data-detail", Static).content, "plain") else str(view.query_one("#data-detail", Static).content))
+            await pilot.click(Button)
+            await pilot.pause(1.2)
+            self.assertEqual(data.jobs, [("data-load", "dataset:energy")])
+
+    async def test_your_own_path_is_typed_and_loaded(self):
+        from textual.widgets import Input
+        from exakit.ui.tui.choices import ChoiceList
+        from exakit.ui.tui.data_view import DataLoadView
+        from exakit.ui.tui.dashboard import DashboardApp
+        from exakit.ui.tui.renderer import TuiRenderer
+        from exakit.ui.console import ConsoleRenderer
+        from exakit.ui.widgets import PLAIN
+        import io
+        data = FakeData()
+        app = DashboardApp(data, title="t")
+        data.ui = TuiRenderer(app, ConsoleRenderer(palette=PLAIN, out=io.StringIO(), interactive=False))
+        async with app.run_test(size=(120, 40)) as pilot:
+            for _ in range(400):
+                await pilot.pause(0.02)
+                if app.state.get("catalog") and app.query("#view"):
+                    break
+            await app.open_entry("dataset", "energy")
+            await pilot.pause(0.2)
+            view = app.query_one(DataLoadView)
+            self.assertEqual(view.query_one(ChoiceList).cursor, 1)
+            view.select("local")
+            await pilot.pause(0.1)
+            box = view.query_one("#data-path", Input)
+            self.assertTrue(box.display)
+            box.value = "~/exports"
+            box.focus()
+            await pilot.press("enter")
+            await pilot.pause(1.2)
+            self.assertEqual(data.jobs, [("data-load", "path:~/exports")])

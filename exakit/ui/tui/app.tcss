@@ -332,3 +332,14 @@ Button.-error, Button.-error:focus {
 Button.-error:focus {
     border: round ansi_bright_red;
 }
+
+/* The Data load view: the path box shows for "your own file or folder" alone; the button sits under it. */
+#data-path {
+    margin-top: 1;
+    width: 60;
+}
+
+#data-actions {
+    height: auto;
+    margin-top: 1;
+}

@@ -20,8 +20,8 @@ from .facts import Facts
 from .panels import LogPane
 
 ACCENT = "green"
-SECTIONS = (("status", "Status"), ("catalog", "Catalog"), ("marketplace", "Marketplace"), ("virtual-schemas", "Virtual schemas"),
-            ("commands", "Commands"))
+SECTIONS = (("status", "Status"), ("data-load", "Data load"), ("marketplace", "Marketplace"), ("virtual-schemas", "Virtual schemas"),
+            ("catalog", "Catalog"), ("commands", "Commands"))
 
 
 class RunJob(Message):

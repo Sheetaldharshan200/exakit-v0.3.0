@@ -23,11 +23,12 @@ from exakit.ui.progress import ProgressState
 
 from .choices import ChoiceList
 from .copying import CopyKeys
+from .data_view import DataLoadView
 from .palette import KitProvider
 from .panels import Loader, LogPane, ProgressRow, WordmarkHeader
 from .sections import SECTIONS, ComingSoonView, EntryList, JobView, MarketplaceView, RunJob, StatusView, catalog_detail
 
-LOADING = ("status", "versions", "catalog", "marketplace", "commands", "info", "scheduler")
+LOADING = ("status", "versions", "catalog", "marketplace", "commands", "info", "scheduler", "datasets")
 QUIET_LEVELS = {"INFO", "OK"}        # these lines came through the renderer already; the tail shows the rest (CMD, LAUNCHER, DATA, WARN...)
 
 
@@ -194,6 +195,7 @@ class DashboardApp(CopyKeys, App[None]):
         found = [("section", key, label) for key, label in SECTIONS]
         found += [("command", c["command"].split()[0], c["summary"]) for c in self.state.get("commands") or []]
         found += [("item", e["id"], e["title"]) for e in self.state.get("catalog") or []]
+        found += [("dataset", d["id"], f"{d['label']} (dataset)") for d in (self.state.get("datasets") or {}).get("items") or []]
         return found
 
     # --- the views -----------------------------------------------------------------------------
@@ -204,6 +206,8 @@ class DashboardApp(CopyKeys, App[None]):
         if name == "catalog":
             return EntryList(self.state.get("catalog") or [], label=lambda e: f"{e['id']:<18} {e.get('status', '')}",
                              detail=lambda e: catalog_detail(e, self.data.help_page(e["id"], width=self._help_width())), key="id")
+        if name == "data-load":
+            return DataLoadView(self.state)
         if name == "marketplace":
             return MarketplaceView(self.state)
         if name == "commands":
@@ -249,6 +253,10 @@ class DashboardApp(CopyKeys, App[None]):
             return
         if not self.state:
             self.pending_open = (kind, ident)
+            return
+        if kind == "dataset":
+            await self.show_section("data-load")
+            self.query_one("#view", DataLoadView).select(ident)
             return
         await self.show_section("commands" if kind == "command" else "catalog")
         self.query_one("#view", EntryList).select(ident)
