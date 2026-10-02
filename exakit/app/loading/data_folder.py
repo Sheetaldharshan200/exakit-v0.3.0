@@ -15,6 +15,7 @@ from .data_files import (
     table_name_from_path, upload_with_recovery,
 )
 from ..db.runtime_ops import exapump, profile_name
+from .names import BUILT_IN_RESERVED, KEYWORDS_SQL, parse_keywords, problem
 
 
 # --- a folder ------------------------------------------------------------------------------------
@@ -28,7 +29,7 @@ class ScanEntry:
     path: Path
 
 
-def scan_folder(folder: Path) -> list[ScanEntry]:
+def scan_folder(folder: Path, reserved: frozenset[str] = BUILT_IN_RESERVED) -> list[ScanEntry]:
     """What the folder holds, file by file, with the decision for each."""
     entries: list[ScanEntry] = []
     seen_tables: dict[str, Path] = {}
@@ -59,7 +60,7 @@ def scan_folder(folder: Path) -> list[ScanEntry]:
                 entries.append(ScanEntry("skip", "duplicate-content", other.name, path))
                 break
         else:
-            table = table_name_from_path(path)
+            table = table_name_from_path(path, reserved)
             if table in seen_tables:
                 entries.append(ScanEntry("skip", "duplicate-table", seen_tables[table].name, path))
             else:
@@ -84,10 +85,12 @@ def load_folder(ctx: Context, folder: Path) -> Result:
     pump = exapump(ctx)
     if pump is None:
         raise Failed("exapump (the data-loading CLI) is not installed", remedy="exakit update")
-    plans = scan_tree(folder)
+    reserved = reserved_words(ctx, pump)
+    top = _top_schema(ctx, reserved)
+    plans = scan_tree(folder, top_schema=top, reserved=reserved)
     if not plans:
-        _refuse_empty_folder(folder, scan_folder(folder))
-    chosen = choose_plans(ctx, plans, folder)
+        _refuse_empty_folder(folder, scan_folder(folder, reserved))
+    chosen = choose_plans(ctx, plans, reserved=reserved, top_given=top is not None)
     if chosen is None:
         return Result(True, "cancelled")
     receipts = Receipts.load(ctx.paths.cache / "load-receipts.tsv")
@@ -120,6 +123,26 @@ def _load_plan(ctx: Context, pump: Exapump, plan, receipts: Receipts, inflight: 
     settled = _settle(outcomes, schema, after, receipts)
     _print_outcomes(ctx, schema, settled)
     return _summarise(ctx, schema, settled), sum(1 for s in settled if s[0] == "ok")
+
+
+def reserved_words(ctx: Context, pump: Exapump) -> frozenset[str]:
+    """The database's reserved words and the built-in ones; the built-in ones alone when it does not answer (logged)."""
+    done = pump.sql(profile_name(ctx), KEYWORDS_SQL, timeout=60)
+    found = parse_keywords(done.out) if done.ok else frozenset()
+    if not found:
+        ctx.log.line("WARN", "the reserved-word list did not come back from the database; using the built-in one")
+    return found | BUILT_IN_RESERVED
+
+
+def _top_schema(ctx: Context, reserved: frozenset[str]) -> str | None:
+    """EXAKIT_SCHEMA, checked; None when unset."""
+    given = (ctx.env.get("EXAKIT_SCHEMA") or "").strip()
+    if not given:
+        return None
+    reason = problem(given, reserved)
+    if reason:
+        raise BadInput(f"EXAKIT_SCHEMA='{given}' cannot be used: {reason}.")
+    return given.upper()
 
 
 def _refuse_empty_folder(folder: Path, entries: list[ScanEntry]) -> None:

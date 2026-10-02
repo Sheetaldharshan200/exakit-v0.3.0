@@ -23,6 +23,7 @@ from exakit.domain.manifest import Manifest
 from exakit.domain.result import Result
 
 from .. import Context
+from .names import BUILT_IN_RESERVED, identifier
 from ..db.runtime_ops import exapump, profile_name
 
 CUT_SHORT = ("ETL-5105", "transfer closed with outstanding read data", "Transferred a partial file", "Connection reset by peer",
@@ -33,12 +34,10 @@ COMPRESSED = (".gz", ".bz2", ".zst", ".xz")
 # --- names and kinds -------------------------------------------------------------------
 
 
-def table_name_from_path(path: Path) -> str:
-    """The table name a file loads into: its stem, upper-cased and made an identifier."""
+def table_name_from_path(path: Path, reserved: frozenset[str] = BUILT_IN_RESERVED) -> str:
+    """The table name a file loads into: its stem as an unquoted identifier (2024.csv -> T_2024, order.csv -> ORDER_DATA)."""
     stem = path.name.split("?")[0].rsplit(".", 1)[0] if "." in path.name else path.name
-    name = re.sub(r"[^A-Z0-9_]", "_", stem.upper()).strip("_")
-    name = re.sub(r"_+", "_", name)
-    return name or "MY_TABLE"
+    return identifier(stem, lead="T", reserved=reserved, key=str(path)) if stem.strip("._-") else "MY_TABLE"
 
 
 def file_kind(path: Path) -> str:

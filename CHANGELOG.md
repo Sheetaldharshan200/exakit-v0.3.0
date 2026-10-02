@@ -10,7 +10,10 @@ started, stopped or removed by the kit. `exakit status`, `exakit info
 --json`, the catalog and the database card say whose each piece is.
 
 **A folder loads into a schema named after it**, and a folder of folders is
-a tree to tick: every chosen folder becomes its own schema. `EXAKIT_SCHEMA`
+a tree to tick: every chosen folder becomes its own schema, named by its path
+(`north/archive/` lands in `NORTH_ARCHIVE`, `south/archive/` in
+`SOUTH_ARCHIVE`), so adding folders later never renames one. Names are always
+valid: `2024/` lands in `DATA_2024`, `order/` in `ORDER_DATA`. `EXAKIT_SCHEMA`
 still names the top folder's schema.
 
 **Copy works in every terminal.** A selection in the screens is on the

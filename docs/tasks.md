@@ -83,6 +83,7 @@ Update this file in the same commit as the work. Design sections are in
 
 - [x] H1 `exakit ui` (help page, HANDLERS, the scenario matrix's refusal without a terminal) and a bare `exakit` in a terminal once installed; `cli/dashboard_data.DashboardData`, the facade the ui layer reads through
 - [x] H6 After the first real run of the dashboard: the Status page is one equal-height card per installed piece with the connection facts (DSN, users, password files), the kit's version and source and each component's versions; an action's job view carries a running row and tails the kit's log; the service start and stop narrate; buttons are plain boxes
+- [x] H17 Folder-tree names: path-qualified and stable (`north/archive` is `NORTH_ARCHIVE`, both sides prefixed), valid unquoted identifiers for schemas and tables (`loading/names.py`, the database's reserved words), `EXAKIT_SCHEMA` checked
 - [x] H16 Data load section in the sidebar (D48): datasets with state, your own path, Load through the job view; sidebar reordered
 - [x] H15 The install's closing lines name `exakit` (the dashboard) and the everyday commands, not the help
 - [x] H14 Ownership tags (D47): launcher and database `kit | adopted | external`, asked at install, honoured by start, stop, update, uninstall, shown by status, info, the catalog and the database card

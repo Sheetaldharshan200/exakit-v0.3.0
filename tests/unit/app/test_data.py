@@ -302,58 +302,144 @@ if __name__ == "__main__":
     unittest.main()
 
 
+def _tree(root: Path, layout: dict[str, str]) -> Path:
+    """Write ``layout`` (relative path -> CSV body) under ``root``."""
+    for rel, body in layout.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(body)
+    return root
+
+
+class NamesTest(unittest.TestCase):
+    """Every name the loader makes is usable unquoted in Exasol."""
+
+    def test_identifiers_start_with_a_letter_avoid_reserved_words_and_fit_the_limit(self):
+        from exakit.app.loading.names import MAX_IDENTIFIER, identifier
+        self.assertEqual(identifier("my-data", lead="DATA"), "MY_DATA")
+        self.assertEqual(identifier("2024", lead="DATA"), "DATA_2024")
+        self.assertEqual(identifier("order", lead="DATA"), "ORDER_DATA")
+        self.assertEqual(identifier("données", lead="DATA"), "DONNEES")
+        self.assertEqual(identifier("--", lead="DATA"), "DATA")
+        long_a, long_b = identifier("x" * 200 + "a", lead="DATA"), identifier("x" * 200 + "b", lead="DATA")
+        self.assertEqual((len(long_a), len(long_b)), (MAX_IDENTIFIER, MAX_IDENTIFIER))
+        self.assertNotEqual(long_a, long_b, "two long names stay apart")
+
+    def test_a_typed_name_is_refused_with_the_reason(self):
+        from exakit.app.loading.names import problem
+        self.assertIsNone(problem("sales"))
+        self.assertIn("reserved SQL word (try ORDER_DATA)", problem("order"))
+        self.assertIn("starts with a letter", problem("2024"))
+        self.assertIn("starts with a letter", problem("_x"))
+
+    def test_the_keyword_answer_is_parsed(self):
+        from exakit.app.loading.names import parse_keywords
+        self.assertEqual(parse_keywords("K\nEXAKIT_KW[ABSOLUTE,ORDER,ZONE]\n"), {"ABSOLUTE", "ORDER", "ZONE"})
+        self.assertEqual(parse_keywords("nothing"), frozenset())
+
+    def test_table_names_follow_the_same_rule_and_ordinary_names_do_not_change(self):
+        self.assertEqual(data_files.table_name_from_path(Path("sales.csv")), "SALES")
+        self.assertEqual(data_files.table_name_from_path(Path("Sales Q1.csv.gz")), "SALES_Q1_CSV")
+        self.assertEqual(data_files.table_name_from_path(Path("2024.csv")), "T_2024")
+        self.assertEqual(data_files.table_name_from_path(Path("order.csv")), "ORDER_DATA")
+
+
 class TreeTest(unittest.TestCase):
-    """A folder tree: one schema per folder, named after it; the user ticks the folders."""
+    """A folder tree: one schema per folder, named by its own path under the folder that was named."""
 
-    def test_a_folder_name_becomes_a_schema_name(self):
-        from exakit.app.loading import data_tree
-        self.assertEqual(data_tree.schema_name(Path("/x/sales-2024")), "SALES_2024")
-        self.assertEqual(data_tree.schema_name(Path("/x/2024 sales")), "_2024_SALES")
-        self.assertEqual(data_tree.schema_name(Path("/x/--")), "DATA")
+    LAYOUT = {"customers.csv": "id\n1\n", "orders.csv": "id\n2\n", "products.csv": "id\n3\n",
+              **{f"{side}/{name}.csv": f"id\n{side}{name}\n" for side in ("north", "south") for name in ("sales", "returns")},
+              **{f"{side}/archive/day{i}.csv": f"id\n{side}{i}\n" for side in ("north", "south") for i in range(1, 6)}}
 
-    def test_the_tree_lists_every_folder_with_loadable_files_and_keeps_schema_names_apart(self):
+    def test_the_users_layout_gives_one_clear_schema_per_folder(self):
         from exakit.app.loading import data_tree
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "exports"
-            (root / "north" / "sales").mkdir(parents=True)
-            (root / "south" / "sales").mkdir(parents=True)
-            (root / ".git").mkdir()
-            (root / "top.csv").write_text("a,b\n1,2\n")
-            (root / "north" / "sales" / "q1.csv").write_text("a,b\n1,2\n")
-            (root / "south" / "sales" / "q1.csv").write_text("a,b\n3,4\n")
-            (root / ".git" / "x.csv").write_text("a,b\n1,2\n")
+            root = _tree(Path(tmp) / "my-data", self.LAYOUT)
             plans = data_tree.scan_tree(root)
-            self.assertEqual([(p.path.name, p.depth, p.schema) for p in plans], [("exports", 0, "EXPORTS"), ("sales", 2, "SALES"), ("sales", 2, "SOUTH_SALES")])
-            self.assertEqual([len(p.loadable) for p in plans], [1, 1, 1])
+            self.assertEqual([(p.path.relative_to(root.parent).as_posix(), p.schema, len(p.loadable)) for p in plans],
+                             [("my-data", "MY_DATA", 3), ("my-data/north", "NORTH", 2), ("my-data/north/archive", "NORTH_ARCHIVE", 5),
+                              ("my-data/south", "SOUTH", 2), ("my-data/south/archive", "SOUTH_ARCHIVE", 5)])
+
+    def test_a_folder_keeps_its_schema_when_folders_are_added_beside_it(self):
+        from exakit.app.loading import data_tree
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _tree(Path(tmp) / "my-data", {"north/archive/day1.csv": "id\n1\n"})
+            before = {p.path: p.schema for p in data_tree.scan_tree(root)}
+            _tree(root, {"south/archive/day1.csv": "id\n2\n", "east/x.csv": "id\n3\n"})
+            after = {p.path: p.schema for p in data_tree.scan_tree(root)}
+            self.assertEqual(after[root / "north" / "archive"], before[root / "north" / "archive"])
+            self.assertEqual(before[root / "north" / "archive"], "NORTH_ARCHIVE")
+
+    def test_folders_that_fold_to_one_name_are_told_apart(self):
+        from exakit.app.loading import data_tree
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _tree(Path(tmp) / "data", {"a.csv": "id\n1\n", "data/b.csv": "id\n2\n", "north/archive/c.csv": "id\n3\n",
+                                                "north_archive/d.csv": "id\n4\n", "north-archive/e.csv": "id\n5\n"})
+            names = [p.schema for p in data_tree.scan_tree(root)]
+            self.assertEqual(len(names), len(set(names)), names)
+            self.assertEqual(names, ["DATA", "DATA_DATA", "NORTH_ARCHIVE", "DATA_NORTH_ARCHIVE", "NORTH_ARCHIVE_2"])
+
+    def test_digits_reserved_words_hidden_and_linked_folders(self):
+        from exakit.app.loading import data_tree
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _tree(Path(tmp) / "exports", {"2024/a.csv": "id\n1\n", "order/b.csv": "id\n2\n", ".cache/c.csv": "id\n3\n"})
+            (root / "linked").symlink_to(root / "2024")
+            self.assertEqual([p.schema for p in data_tree.scan_tree(root)], ["DATA_2024", "ORDER_DATA"])
+
+    def test_the_databases_own_reserved_words_are_honoured(self):
+        from exakit.app.loading import data_tree
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _tree(Path(tmp) / "exports", {"north/a.csv": "id\n1\n"})
+            self.assertEqual([p.schema for p in data_tree.scan_tree(root, reserved=frozenset({"NORTH"}))], ["NORTH_DATA"])
 
     def test_unattended_every_folder_loads_and_the_env_names_the_top_schema(self):
         from exakit.app.loading import data_tree
-        box = Sandbox(manifest=MANIFEST, env={"EXAKIT_SCHEMA": "mine"})
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _tree(Path(tmp) / "exports", {"top.csv": "id\n1\n", "orders/o.csv": "id\n2\n", "mine/m.csv": "id\n3\n"})
+            plans = data_tree.scan_tree(root, top_schema="MINE")
+            self.assertEqual([p.schema for p in plans], ["MINE", "EXPORTS_MINE", "ORDERS"], "the given name wins; the folder called mine steps aside")
+        box = Sandbox(manifest=MANIFEST)
         try:
-            root = Path(box.tmp.name) / "exports"
-            (root / "orders").mkdir(parents=True)
-            (root / "top.csv").write_text("a,b\n1,2\n")
-            (root / "orders" / "o.csv").write_text("a,b\n1,2\n")
-            plans = data_tree.scan_tree(root)
-            chosen = data_tree.choose_plans(box.ctx, plans, root)
-            self.assertEqual([p.schema for p in chosen], ["MINE", "ORDERS"])
+            self.assertEqual(data_tree.choose_plans(box.ctx, plans), plans)
         finally:
             box.close()
 
-    def test_a_tree_loads_each_folder_into_its_own_schema(self):
+    def test_a_bad_schema_name_in_the_environment_is_refused_before_anything_loads(self):
+        box = Sandbox(manifest=MANIFEST, env={"EXAKIT_SCHEMA": "order"})
+        try:
+            root = _tree(Path(box.tmp.name) / "exports", {"a.csv": "id\n1\n"})
+            box.ctx.exapump = FakeExapump([("EXA_ALL_SCHEMAS", Completed(0, "EXAKIT_SCHEMA_PRESENT", ""))])
+            with self.assertRaises(BadInput) as caught:
+                data_folder.load_folder(box.ctx, root)
+            self.assertIn("ORDER is a reserved SQL word", caught.exception.message)
+            self.assertEqual(box.ctx.exapump.uploads, [])
+        finally:
+            box.close()
+
+    def test_a_tree_loads_each_folder_into_its_own_schema_with_the_live_keyword_list(self):
         box = Sandbox(manifest=MANIFEST)
         try:
-            root = Path(box.tmp.name) / "exports"
-            (root / "orders").mkdir(parents=True)
-            (root / "sales.csv").write_text("a,b\n1,2\n")
-            (root / "orders" / "lines.csv").write_text("a,b\n1,2\n")
-            pump = FakeExapump([("EXA_ALL_SCHEMAS", Completed(0, "EXAKIT_SCHEMA_PRESENT", "")), ("LISTING_ANSWERED", LISTING_EMPTY)])
+            root = _tree(Path(box.tmp.name) / "exports", {"sales.csv": "a,b\n1,2\n", "orders/lines.csv": "a,b\n1,2\n",
+                                                           "orders/archive/old.csv": "a,b\n3,4\n", "zone/z.csv": "a,b\n5,6\n"})
+            pump = FakeExapump([("EXA_ALL_SCHEMAS", Completed(0, "EXAKIT_SCHEMA_PRESENT", "")), ("LISTING_ANSWERED", LISTING_EMPTY),
+                                ("EXA_SQL_KEYWORDS", Completed(0, "EXAKIT_KW[ZONE]", ""))])
             box.ctx.exapump = pump
             box.ctx.runtime = FakeRuntime()
             result = data_folder.load_folder(box.ctx, root)
-            self.assertEqual(result.data["schemas"], ["EXPORTS", "ORDERS"])
-            self.assertEqual({u[1] for u in pump.uploads}, {"EXPORTS.SALES", "ORDERS.LINES"})
-            self.assertIn("orders/ -> ORDERS", box.screen())
-            self.assertEqual(box.manifest().get("data.last_load.target"), "EXPORTS, ORDERS")
+            self.assertEqual(result.data["schemas"], ["EXPORTS", "ORDERS", "ORDERS_ARCHIVE", "ZONE_DATA"])
+            self.assertEqual({u[1] for u in pump.uploads}, {"EXPORTS.SALES", "ORDERS.LINES", "ORDERS_ARCHIVE.OLD", "ZONE_DATA.Z"})
+            self.assertIn("archive/ -> ORDERS_ARCHIVE", box.screen())
+            self.assertEqual(box.manifest().get("data.last_load.target"), "EXPORTS, ORDERS, ORDERS_ARCHIVE, ZONE_DATA")
+        finally:
+            box.close()
+
+    def test_without_the_keyword_answer_the_built_in_list_names_things_the_same(self):
+        box = Sandbox(manifest=MANIFEST)
+        try:
+            root = _tree(Path(box.tmp.name) / "exports", {"order/a.csv": "a,b\n1,2\n"})
+            pump = FakeExapump([("EXA_ALL_SCHEMAS", Completed(0, "EXAKIT_SCHEMA_PRESENT", "")), ("LISTING_ANSWERED", LISTING_EMPTY),
+                                ("EXA_SQL_KEYWORDS", Completed(1, "", "connection lost"))])
+            box.ctx.exapump = pump
+            box.ctx.runtime = FakeRuntime()
+            self.assertEqual(data_folder.load_folder(box.ctx, root).data["schemas"], ["ORDER_DATA"])
         finally:
             box.close()
