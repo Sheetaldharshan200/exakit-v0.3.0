@@ -36,7 +36,10 @@ class DataLoadView(Horizontal):
             yield Input(placeholder="~/exports  or  ./sales.csv", id="data-path")
             with Vertical(id="data-actions"):
                 yield Button("Load", id="data-load-button", variant="success", compact=True)
-        self.call_after_refresh(self._refresh)
+
+    def on_mount(self) -> None:
+        """The button and the path box for the first row, once the widgets exist."""
+        self._refresh()
 
     def current(self) -> dict[str, Any] | None:
         """The dataset under the cursor; None for the local row."""
@@ -74,7 +77,10 @@ class DataLoadView(Horizontal):
         return text
 
     def _refresh(self) -> None:
-        """The detail, the path box and the button follow the cursor."""
+        """The detail, the path box and the button follow the cursor. A view the dashboard already replaced (its data came
+        back and the section was rebuilt) has no widgets left: a late call does nothing."""
+        if not self.is_attached or not self.query("#data-detail"):
+            return
         item = self.current()
         self.query_one("#data-detail", Static).update(self._detail(item))
         self.query_one("#data-path", Input).display = item is None

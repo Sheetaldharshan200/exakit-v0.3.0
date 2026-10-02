@@ -109,6 +109,7 @@ discoverable with its effect, a dry run before a change, and docs generated from
   - [x] I5.1 AGENTS.md: agent sessions, effects and `prompt_free`, the folder tree and its names, `--dry-run`, the ownership variables, personas in the catalog, every add-on with a help page
   - [x] I5.2 The skills that load data or operate the kit say the same; the skill set's version is bumped so installs take it
   - [x] I5.3 `skills/reducing-agent-prompts.md` lists exactly what the kit writes (checked by the gate)
+- [x] I8 Found in the user's real dashboard: the Data load view queued its first refresh from `compose`; when the dashboard's data came back and the section was rebuilt, that refresh ran on the removed view and crashed the app (`NoMatches: #data-detail`). It refreshes on mount now, and a late refresh, or a cursor lookup, on a replaced view does nothing
 - [x] I7 An independent review of Phase I (D54)
   - [x] I7.1 The dry run and the load agree: the same refusal for a file (`.tsv` / `.txt`), `EXAKIT_DATA_FILE` previewed, an `EXAKIT_DATASETS` that matches nothing fails, the same reserved words and `EXAKIT_SCHEMA` check for a single file
   - [x] I7.2 A folder that already loaded keeps its schema when a colliding folder appears (the receipts decide); `.` and `..` name the folder they are

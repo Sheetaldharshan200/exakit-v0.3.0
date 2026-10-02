@@ -417,3 +417,42 @@ class DataLoadViewTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("enter")
             await pilot.pause(1.2)
             self.assertEqual(data.jobs, [("data-load", "path:~/exports")])
+
+
+@unittest.skipUnless(HAVE_TEXTUAL, "textual is not installed here")
+class DataLoadRebuildTest(unittest.IsolatedAsyncioTestCase):
+    """The views refresh when the dashboard's data comes back; a Data load view replaced meanwhile must not crash the app."""
+
+    async def test_rebuilding_the_section_while_its_refresh_is_queued_does_not_crash(self):
+        from exakit.ui.tui.dashboard import DashboardApp
+        from exakit.ui.tui.data_view import DataLoadView
+        app = DashboardApp(FakeData(), title="t")
+        async with app.run_test(size=(120, 40)) as pilot:
+            for _ in range(400):
+                await pilot.pause(0.02)
+                if app.state.get("catalog") and app.query("#view"):
+                    break
+            for _ in range(5):                       # what _loaded does when the data returns: the section is rebuilt at once
+                await app.show_section("data-load")
+            await pilot.pause(0.3)
+            self.assertTrue(app.is_running, "the app is still up")
+            view = app.query_one(DataLoadView)
+            self.assertEqual(str(view.query_one("#data-load-button").label), "Reload (replace)")
+
+    async def test_a_detached_view_ignores_a_late_refresh(self):
+        from exakit.ui.tui.dashboard import DashboardApp
+        from exakit.ui.tui.data_view import DataLoadView
+        app = DashboardApp(FakeData(), title="t")
+        async with app.run_test(size=(120, 40)) as pilot:
+            for _ in range(400):
+                await pilot.pause(0.02)
+                if app.state.get("catalog") and app.query("#view"):
+                    break
+            await app.show_section("data-load")
+            await pilot.pause(0.2)
+            old = app.query_one(DataLoadView)
+            await app.show_section("status")
+            await pilot.pause(0.1)
+            old._refresh()                            # a callback that outlived its view
+            old.on_choice_list_moved(None)
+            self.assertTrue(app.is_running)

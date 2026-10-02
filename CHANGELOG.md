@@ -11,6 +11,9 @@ which schemas before anything loads, and a folder load's `--json` names what
 became of every file. A new release gate fails when the docs, the skills or the
 code name a command the CLI does not answer.
 
+**The dashboard no longer crashes on the Data load page** when its data
+refreshes while the page is open.
+
 **Every schema and table name is checked against Exasol's full list of
 reserved words** (468, read from the database itself), so a file called
 `returns.csv` or a folder called `data` loads instead of failing; a preview with

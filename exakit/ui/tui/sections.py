@@ -211,8 +211,9 @@ class EntryList(Horizontal):
         return head.strip(), rest.strip()
 
     def current(self) -> dict[str, Any] | None:
-        """The entry under the cursor."""
-        index = self.query_one(ChoiceList).cursor
+        """The entry under the cursor; None on a view the dashboard already replaced."""
+        lists = self.query(ChoiceList)
+        index = lists.first().cursor if lists else -1
         return self.entries[index] if 0 <= index < len(self.entries) else None
 
     def select(self, ident: str) -> None:
