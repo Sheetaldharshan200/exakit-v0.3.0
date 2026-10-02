@@ -20,6 +20,10 @@ iTerm2 - which never reaches a program - finds it there; Ctrl-C copies again.
 **The catalog shows the whole help page** of each component and add-on,
 not an overview.
 
+**The install closes on `exakit`.** The last lines of an install name the
+dashboard and the everyday commands (status, start, stop, data-load,
+marketplace, update) instead of pointing at the help.
+
 **The MCP handshake works under the kit.** The launcher puts the kit
 folder on `PYTHONPATH`, and the kit ships its own `mcp` package, so the MCP
 server started by the kit imported that instead of the MCP SDK and failed

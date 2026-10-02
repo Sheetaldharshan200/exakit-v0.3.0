@@ -252,6 +252,16 @@ def marketplace_offer(session: steps.Session) -> None:
             ctx.ui.warn(err.message)
 
 
+NEXT_STEPS = (
+    "  exakit                 the dashboard: status, catalog, marketplace and updates - arrows, Enter and the mouse",
+    "  exakit status          is the database up, what is loaded, what to do next",
+    "  exakit start / stop    the database and the add-on services",
+    "  exakit data-load       the sample datasets, or your own files and folders",
+    "  exakit marketplace     dashboards, dbt, the scheduler and more",
+    "  exakit update          whatever is newer",
+)
+
+
 def closing(session: steps.Session) -> None:
     """The closing sequence: summary, what's new, autostart, the marketplace, the next steps."""
     ctx = session.ctx
@@ -265,7 +275,9 @@ def closing(session: steps.Session) -> None:
     except ExakitError as err:
         ctx.log.line("WARN", f"marketplace offer: {err.message}")
     ctx.ui.rule()
-    ctx.ui.heading('Run "exakit help" for support')
+    ctx.ui.heading("From here on, one command: exakit")
+    for line in NEXT_STEPS:
+        ctx.ui.text(line)
     ctx.ui.text("")
 
 
