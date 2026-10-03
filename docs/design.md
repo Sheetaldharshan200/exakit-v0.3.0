@@ -696,6 +696,11 @@ header; Start buttons are green only while something is stopped, Stop
 buttons always red. During an install the screens keep the plan sidebar (6.1): the
 dashboard is for afterwards.
 
+Small terminals (I11): a list is as wide as its rows and at most its share of the view; under 72 columns the
+detail goes under the list; text a page wraps (the catalog's help) is wrapped to the detail's real width and
+again on resize; a path is typed in a box over the page, never in a field squeezed beside a list; the wordmark
+needs 70 columns and 36 rows.
+
 The sidebar reads Status, Data load, Marketplace, Virtual schemas, Catalog,
 Commands (D48). The Data load view lists the bundled datasets (loaded or
 not, with their tables and rows) and "your own file or folder" with a path

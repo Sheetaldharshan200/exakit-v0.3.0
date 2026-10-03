@@ -17,6 +17,7 @@ from exakit.ui.widgets import Option
 
 from .choices import ChoiceList
 from .facts import Facts
+from .layout import fitted_width, place_list
 from .panels import LogPane
 
 ACCENT = "green"
@@ -187,16 +188,6 @@ class StatusView(VerticalScroll):
             event.stop()
 
 
-LIST_MIN, LIST_MAX = 20, 48
-
-
-def fitted_width(rows: list[Option], most: int = LIST_MAX) -> int:
-    """The columns a list needs: pointer and gutter, the widest name, the widest status after two spaces, its border."""
-    names = max((len(r.label) for r in rows if not r.heading), default=0)
-    hints = max((len(r.hint) for r in rows if r.hint and not r.heading), default=0)
-    return max(LIST_MIN, min(most, 3 + names + (2 + hints if hints else 0) + 3))
-
-
 class EntryList(Horizontal):
     """A list on the left, the selected entry's detail on the right; shared by the catalog, the marketplace and the commands."""
 
@@ -209,8 +200,9 @@ class EntryList(Horizontal):
     def compose(self) -> ComposeResult:
         """The list and the detail."""
         rows = [Option(str(e[self.key]), *self._columns(e)) for e in self.entries]
+        self.fitted = fitted_width(rows)                   # as wide as its rows: the detail starts right after it
         choices = ChoiceList(rows, single=True, widget_id="entries", classes="entries", marks=False)
-        choices.styles.width = fitted_width(rows)          # as wide as its rows: the detail starts right after it
+        choices.styles.width = self.fitted
         yield choices
         with VerticalScroll(classes="detail"):
             yield Static(self.detail_of(self.entries[0]) if self.entries else Text("Nothing here yet.", style="dim"), classes="detail-text")
@@ -222,6 +214,17 @@ class EntryList(Horizontal):
         text = self.label(entry)
         head, _, rest = text.partition("  ")
         return head.strip(), rest.strip()
+
+    def on_resize(self) -> None:
+        """Beside the detail, or above it in a narrow terminal."""
+        lists = self.query(ChoiceList)
+        if lists:
+            place_list(self, lists.first(), self.fitted, share=0.45)
+            self.call_after_refresh(self._reshow)      # the detail's width changed: wrap its text again
+
+    def _reshow(self) -> None:
+        if self.is_attached:
+            self._show(self.current())
 
     def current(self) -> dict[str, Any] | None:
         """The entry under the cursor; None on a view the dashboard already replaced."""

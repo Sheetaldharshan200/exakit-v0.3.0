@@ -333,13 +333,48 @@ Button.-error:focus {
     border: round ansi_bright_red;
 }
 
-/* The Data load view: the path box shows for "your own file or folder" alone; the button sits under it. */
-#data-path {
-    margin-top: 1;
-    width: 60;
-}
-
 #data-actions {
     height: auto;
     margin-top: 1;
 }
+
+/* The path box over the dashboard: as wide as the terminal allows, filled with the terminal's own default colour so
+   the page behind does not show through (no colour of the kit's own). */
+#path-dialog {
+    width: 100;
+    max-width: 96%;
+    height: auto;
+    border: round $foreground 50%;
+    background: ansi_default;
+    padding: 1 2;
+}
+
+#path-dialog Label {
+    width: 100%;
+    background: transparent;
+}
+
+#path-dialog #note {
+    color: $foreground 60%;
+    margin-bottom: 1;
+}
+
+#path-dialog #problem {
+    color: ansi_bright_red;
+    height: auto;
+}
+
+/* A narrow terminal: the list on top at full width, the detail under it. */
+EntryList.-narrow, DataLoadView.-narrow {
+    layout: vertical;
+}
+
+EntryList.-narrow > ChoiceList, DataLoadView.-narrow > ChoiceList {
+    height: auto;
+    max-width: 100%;
+    max-height: 50%;
+    border-right: none;
+    border-bottom: solid $foreground 20%;
+    margin-bottom: 1;
+}
+

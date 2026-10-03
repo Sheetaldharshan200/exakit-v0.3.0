@@ -16,6 +16,7 @@ from exakit.ui.widgets import WORDMARK_E, WORDMARK_REST, WORDMARK_X_LEFT, WORDMA
 
 ACCENT = "green"
 WORDMARK_WIDTH = 70        # columns the wordmark needs; narrower terminals get the title alone
+WORDMARK_HEIGHT = 36       # rows a terminal needs before the wordmark's seven are worth giving up; shorter ones get the title alone
 GLYPHS = {StepState.DONE: ("✓", ACCENT), StepState.PENDING: ("·", "dim"), StepState.SKIPPED: ("-", "dim"), StepState.FAILED: ("✗", "red")}
 STYLES = {"accent": ACCENT, "dim": "dim", "bold": "bold", "": ""}
 
@@ -38,7 +39,7 @@ class WordmarkHeader(Static):
         self.redraw()
 
     def on_resize(self) -> None:
-        """Redraw: the wordmark needs 70 columns, a narrower terminal gets the title alone."""
+        """Redraw: the wordmark needs 70 columns and 36 rows; a smaller terminal gets the title alone."""
         self.redraw()
 
     def set_title(self, title: str, subtitle: str = "") -> None:
@@ -49,7 +50,7 @@ class WordmarkHeader(Static):
     def redraw(self) -> None:
         """Compose the header text."""
         text = Text()
-        if self.app.size.width >= WORDMARK_WIDTH:
+        if self.app.size.width >= WORDMARK_WIDTH and self.app.size.height >= WORDMARK_HEIGHT:
             for e, xl, xr, rest in zip(WORDMARK_E, WORDMARK_X_LEFT, WORDMARK_X_RIGHT, WORDMARK_REST, strict=True):
                 text.append(e, style="bold").append(xl, style=f"bold {ACCENT}").append(xr + rest + "\n", style="bold")
         text.append(self.title_text, style="bold")

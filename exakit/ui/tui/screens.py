@@ -7,6 +7,7 @@ The keys match the console menus: Up/Down move, Space ticks, Enter continues, a 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -17,6 +18,7 @@ from textual.widgets import Button, Input, Label
 from exakit.ui.widgets import Option
 
 from .choices import ChoiceList
+from .paths import PathSuggester, complete_path
 
 
 class SelectScreen(ModalScreen[str | None]):
@@ -164,3 +166,55 @@ class PromptScreen(ModalScreen[str]):
     def action_cancel(self) -> None:
         """Esc: the default."""
         self.dismiss(self.default)
+
+
+class PathScreen(ModalScreen[str | None]):
+    """A file or folder to load: a field as wide as the terminal allows, Tab completing from the disk, the path checked
+    before the box closes. None when the user went back."""
+
+    BINDINGS = [Binding("escape", "cancel", "Back"), Binding("tab", "complete", "Complete", show=False, priority=True)]
+
+    def __init__(self, title: str, default: str = "") -> None:
+        super().__init__()
+        self.title_text = title
+        self.default = default
+
+    def compose(self) -> ComposeResult:
+        """The title, what can be loaded, the field, the problem line and the keys."""
+        with Vertical(id="path-dialog"):
+            yield Label(self.title_text, id="title")
+            yield Label("A CSV, Parquet or JSON file, or a folder of them (its subfolders too). ~ is your home folder.", id="note")
+            yield Input(value=self.default, placeholder="~/exports   or   ~/Downloads/sales.csv", id="answer", suggester=PathSuggester())
+            yield Label("", id="problem")
+            yield Label("Tab completes   Enter loads   Esc goes back", id="hint")
+
+    def on_mount(self) -> None:
+        """Focus the field, the cursor at the end."""
+        field = self.query_one(Input)
+        field.focus()
+        field.cursor_position = len(field.value)
+
+    def action_complete(self) -> None:
+        """Tab: the completion the ghost text shows."""
+        field = self.query_one(Input)
+        found = complete_path(field.value)
+        if found:
+            field.value = found
+            field.cursor_position = len(found)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Enter: the path when it exists; otherwise the box stays and says why."""
+        value = event.value.strip()
+        problem = self.query_one("#problem", Label)
+        if not value:
+            problem.update("Type a file or folder path first.")
+            return
+        if not Path(value).expanduser().exists():
+            problem.update(f"No such file or folder: {value}")
+            return
+        self.dismiss(value)
+
+    def action_cancel(self) -> None:
+        """Esc: back, nothing loaded."""
+        self.dismiss(None)
+

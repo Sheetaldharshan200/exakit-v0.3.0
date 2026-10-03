@@ -356,7 +356,7 @@ class DataLoadViewTest(unittest.IsolatedAsyncioTestCase):
     """The Data load section: datasets with their state, your own path, and Load running the ordinary command."""
 
     async def test_datasets_show_their_state_and_load_runs_the_job(self):
-        from textual.widgets import Button, Input, Static
+        from textual.widgets import Button, Static
         from exakit.ui.tui.choices import ChoiceList
         from exakit.ui.tui.data_view import DataLoadView
         from exakit.ui.tui.dashboard import DashboardApp
@@ -380,12 +380,11 @@ class DataLoadViewTest(unittest.IsolatedAsyncioTestCase):
                              [("Your own file or folder", "", False), ("", "", True), ("Sample data", "", True),
                               ("TPC-H", "loaded", False), ("Energy", "not loaded", False)])
             self.assertEqual(rows.cursor, 0, "your own data first")
-            self.assertTrue(view.query_one("#data-path", Input).display)
+            self.assertEqual(str(view.query_one(Button).label), "Choose a file or folder…")
             rows.move(1)
             await pilot.pause(0.1)
             self.assertEqual(rows.cursor, 3, "Down skips the gap and the heading")
             self.assertEqual(str(view.query_one(Button).label), "Reload (replace)")
-            self.assertFalse(view.query_one("#data-path", Input).display)
             rows.go_to(2)
             self.assertEqual(rows.cursor, 3, "a heading never takes the cursor")
             rows.go_to(4)
@@ -396,36 +395,48 @@ class DataLoadViewTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause(1.2)
             self.assertEqual(data.jobs, [("data-load", "dataset:energy")])
 
-    async def test_your_own_path_is_typed_and_loaded(self):
-        from textual.widgets import Input
+    async def test_your_own_path_is_asked_in_a_box_checked_and_loaded(self):
+        import tempfile
+        from textual.widgets import Input, Label
         from exakit.ui.tui.choices import ChoiceList
         from exakit.ui.tui.data_view import DataLoadView
         from exakit.ui.tui.dashboard import DashboardApp
         from exakit.ui.tui.renderer import TuiRenderer
+        from exakit.ui.tui.screens import PathScreen
         from exakit.ui.console import ConsoleRenderer
         from exakit.ui.widgets import PLAIN
         import io
         data = FakeData()
         app = DashboardApp(data, title="t")
         data.ui = TuiRenderer(app, ConsoleRenderer(palette=PLAIN, out=io.StringIO(), interactive=False))
-        async with app.run_test(size=(120, 40)) as pilot:
-            for _ in range(400):
-                await pilot.pause(0.02)
-                if app.state.get("catalog") and app.query("#view"):
-                    break
-            await app.open_entry("dataset", "energy")
-            await pilot.pause(0.2)
-            view = app.query_one(DataLoadView)
-            self.assertEqual(view.query_one(ChoiceList).cursor, 4)
-            view.select("local")
-            await pilot.pause(0.1)
-            box = view.query_one("#data-path", Input)
-            self.assertTrue(box.display)
-            box.value = "~/exports"
-            box.focus()
-            await pilot.press("enter")
-            await pilot.pause(1.2)
-            self.assertEqual(data.jobs, [("data-load", "path:~/exports")])
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "exports").mkdir()
+            async with app.run_test(size=(96, 30)) as pilot:          # the terminal size of the user's screenshot
+                for _ in range(400):
+                    await pilot.pause(0.02)
+                    if app.state.get("catalog") and app.query("#view"):
+                        break
+                await app.open_entry("dataset", "energy")
+                await pilot.pause(0.2)
+                view = app.query_one(DataLoadView)
+                self.assertEqual(view.query_one(ChoiceList).cursor, 4)
+                view.select("local")
+                view.on_choice_list_chosen(None)
+                await pilot.pause(0.2)
+                self.assertIsInstance(app.screen, PathScreen)
+                field = app.screen.query_one(Input)
+                self.assertGreaterEqual(field.size.width, 60, "the field is wide even in a 96-column terminal")
+                field.value = str(Path(tmp) / "nope")
+                await pilot.press("enter")
+                await pilot.pause(0.1)
+                self.assertIsInstance(app.screen, PathScreen, "a path that does not exist keeps the box open")
+                self.assertIn("No such file or folder", str(app.screen.query_one("#problem", Label).render()))
+                field.value = str(Path(tmp) / "exp")
+                await pilot.press("tab")
+                self.assertEqual(field.value, str(Path(tmp) / "exports") + "/", "Tab completes from the disk")
+                await pilot.press("enter")
+                await pilot.pause(1.2)
+                self.assertEqual(data.jobs, [("data-load", f"path:{Path(tmp) / 'exports'}/")])
 
 
 @unittest.skipUnless(HAVE_TEXTUAL, "textual is not installed here")
@@ -446,7 +457,7 @@ class DataLoadRebuildTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause(0.3)
             self.assertTrue(app.is_running, "the app is still up")
             view = app.query_one(DataLoadView)
-            self.assertEqual(str(view.query_one("#data-load-button").label), "Load", "your own file or folder is first")
+            self.assertEqual(str(view.query_one("#data-load-button").label), "Choose a file or folder…", "your own file or folder is first")
 
     async def test_a_detached_view_ignores_a_late_refresh(self):
         from exakit.ui.tui.dashboard import DashboardApp
@@ -472,7 +483,7 @@ class CatalogListTest(unittest.IsolatedAsyncioTestCase):
     async def test_the_catalog_lists_names_only_in_a_list_as_wide_as_its_rows(self):
         from exakit.ui.tui.choices import ChoiceList
         from exakit.ui.tui.dashboard import DashboardApp
-        from exakit.ui.tui.sections import LIST_MIN, fitted_width
+        from exakit.ui.tui.layout import LIST_MIN, fitted_width
         from exakit.ui.widgets import Option
         app = DashboardApp(FakeData(), title="t")
         async with app.run_test(size=(140, 40)) as pilot:
@@ -513,3 +524,83 @@ class HeadingRowsTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("Group", rows.render().plain.splitlines()[0])
             self.assertNotIn("▸", rows.render().plain.splitlines()[0])
 
+
+@unittest.skipUnless(HAVE_TEXTUAL, "textual is not installed here")
+class PathCompletionTest(unittest.TestCase):
+    def test_tab_completes_folders_files_and_keeps_tilde(self):
+        import tempfile
+        from exakit.ui.tui.paths import complete_path
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            (home / "exports").mkdir()
+            (home / "Exports-old").mkdir()
+            (home / "sales.csv").write_text("a\n1\n")
+            (home / ".hidden").mkdir()
+            self.assertEqual(complete_path("~/exp", home), "~/exports/")
+            self.assertEqual(complete_path("~/Exp", home), "~/exports/", "case is ignored; the entry's own spelling is filled in")
+            self.assertEqual(complete_path("~/sa", home), "~/sales.csv")
+            self.assertEqual(complete_path("~/.h", home), "~/.hidden/")
+            self.assertIsNone(complete_path("~/zz", home))
+            self.assertEqual(complete_path(f"{home}/sal"), f"{home}/sales.csv")
+
+
+@unittest.skipUnless(HAVE_TEXTUAL, "textual is not installed here")
+class NarrowLayoutTest(unittest.IsolatedAsyncioTestCase):
+    async def test_a_narrow_terminal_stacks_the_detail_under_the_list_and_wraps_the_help_to_it(self):
+        from exakit.ui.tui.dashboard import DashboardApp
+        from exakit.ui.tui.sections import EntryList
+        app = DashboardApp(FakeData(), title="t")
+        async with app.run_test(size=(96, 30)) as pilot:
+            for _ in range(400):
+                await pilot.pause(0.02)
+                if app.state.get("catalog") and app.query("#view"):
+                    break
+            await app.show_section("catalog")
+            await pilot.pause(0.4)
+            view = app.query_one(EntryList)
+            self.assertTrue(view.has_class("-narrow"))
+            detail = view.query_one(".detail")
+            self.assertGreater(detail.size.width, 50, "the detail has the full width under the list")
+            self.assertGreaterEqual(app._help_width(), detail.size.width - 4)
+        async with DashboardApp(FakeData(), title="t").run_test(size=(160, 40)) as pilot:
+            app = pilot.app
+            for _ in range(400):
+                await pilot.pause(0.02)
+                if app.state.get("catalog") and app.query("#view"):
+                    break
+            await app.show_section("catalog")
+            await pilot.pause(0.4)
+            self.assertFalse(app.query_one(EntryList).has_class("-narrow"), "a wide terminal keeps them side by side")
+
+
+
+@unittest.skipUnless(HAVE_TEXTUAL, "textual is not installed here")
+class SmallTerminalTest(unittest.IsolatedAsyncioTestCase):
+    async def test_long_labels_give_way_so_every_status_shows_whole_and_aligned(self):
+        from textual.app import App
+        from exakit.ui.tui.choices import ChoiceList
+        from exakit.ui.widgets import Option
+
+        class Box(App):
+            CSS = "ChoiceList { width: 50; }"
+
+            def compose(self):
+                yield ChoiceList([Option("a", "TPC-H retail benchmark (~175k rows)", "loaded"),
+                                  Option("b", "City weather daily history (10 European cities, ~11k rows)", "not loaded")],
+                                 single=True, marks=False)
+
+        async with Box().run_test(size=(60, 6)) as pilot:
+            rows = pilot.app.query_one(ChoiceList).render().plain.splitlines()
+            self.assertTrue(rows[1].rstrip().endswith("not loaded"), rows)
+            self.assertIn("…", rows[1])
+            self.assertEqual(rows[0].index("loaded"), rows[1].index("not loaded"), "the statuses start in one column")
+
+    async def test_the_wordmark_shows_only_when_the_terminal_has_the_rows_for_it(self):
+        from textual.widgets import Static
+        from exakit.ui.tui.dashboard import DashboardApp
+        for rows, shown in ((30, False), (44, True)):
+            app = DashboardApp(FakeData(), title="Exasol Personal Local Starter Kit")
+            async with app.run_test(size=(120, rows)) as pilot:
+                await pilot.pause(0.2)
+                header = str(app.query_one("#header", Static).render())
+                self.assertEqual("█" in header or "▀" in header or "╗" in header or len(header.splitlines()) > 3, shown, rows)

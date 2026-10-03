@@ -40,6 +40,11 @@ class KitApp(CopyKeys, App[None]):
         self.final = ""
         self._outcome: tuple[str, Any] | None = None
 
+    def on_resize(self) -> None:
+        """A height change alone does not resize the header: redraw it, so the wordmark comes and goes with the rows."""
+        for header in self.query(WordmarkHeader):
+            header.redraw()
+
     # --- layout ---------------------------------------------------------------------
 
     def compose(self) -> ComposeResult:

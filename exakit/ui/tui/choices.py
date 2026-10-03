@@ -14,10 +14,13 @@ from exakit.ui.widgets import Option
 
 ACCENT = "green"
 MIN_HINT = 6                                                # the shortest hint worth aligning a column for
+LABEL_KEEP = 12                                             # the fewest label characters worth keeping a status whole for
 
 
 def fit(label: str, hint: str, column: int, room: int) -> tuple[str, str]:
     """Cut a row's label and hint to one line of ``room`` cells: the label padded to ``column`` (0 for none), the hint shortened with an ellipsis, dropped when nothing is left for it."""
+    if column and len(label) > column:                      # the column was narrowed for the statuses: the label ends in …
+        label = label[: column - 1] + "…"
     if len(label) > room:
         return label[: max(room - 1, 0)] + "…", ""
     label = label.ljust(column) if column else label
@@ -98,8 +101,11 @@ class ChoiceList(Static, can_focus=True):
         """The rows: pointer, tick box, label, hint. A row is one line whatever the width, so a click's line is its row."""
         text = Text(no_wrap=True, overflow="ellipsis")
         column = max((len(o.label) for o in self.options if o.hint and not o.heading), default=0)
+        widest = max((len(o.hint) for o in self.options if o.hint and not o.heading), default=0)
         room = (self.content_size.width or 10_000) - 3 - (2 if self.marks else 0)
-        if column + 2 + MIN_HINT > room:
+        if column and column + 2 + widest > room:
+            column = room - 2 - widest                      # the labels give way so every status shows whole, still aligned
+        if column and (column < LABEL_KEEP or column + 2 + MIN_HINT > room):
             column = 0                                      # too narrow for aligned columns: the hint follows its label
         for index, option in enumerate(self.options):
             if option.heading:
