@@ -14,8 +14,9 @@ def tick(options: Sequence[Option], chosen: set[str], index: int) -> None:
     that can be ticked; unticking it, or any other row, unticks it.
     """
     option = options[index]
-    if option.disabled:
+    if option.disabled or option.heading:
         return
+    tickable = [o for o in options if not o.disabled and not o.heading]     # a heading is drawn, never ticked
     if option.id in chosen:
         chosen.discard(option.id)
         chosen.difference_update({o.id for o in options if o.everything})
@@ -24,12 +25,12 @@ def tick(options: Sequence[Option], chosen: set[str], index: int) -> None:
         return
     if option.everything:
         chosen.clear()
-        chosen.update(o.id for o in options if not o.disabled and not o.exclusive)
+        chosen.update(o.id for o in tickable if not o.exclusive)
         return
     if option.exclusive:
         chosen.clear()
     else:
         chosen.difference_update({o.id for o in options if o.exclusive})
     chosen.add(option.id)
-    if all(o.id in chosen for o in options if not o.disabled and not o.exclusive and not o.everything):
+    if all(o.id in chosen for o in tickable if not o.exclusive and not o.everything):
         chosen.update(o.id for o in options if o.everything)

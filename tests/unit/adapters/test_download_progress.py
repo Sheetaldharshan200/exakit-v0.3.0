@@ -75,6 +75,7 @@ class ProgressStateTest(unittest.TestCase):
     def test_the_line_has_the_phase_the_bar_the_percent_and_the_elapsed(self):
         state = ProgressState("Deploying", unit="percent")
         state.stage(35, 65, 25, "Getting Exasol ready")
+        state.t0 = state.segment_t0          # the job began with this stage: a slow runner between the two lines must not add a second
         line = "".join(t for t, _ in progress_parts(state, frame="⠋", cols=100, fancy=True, now=state.segment_t0 + 10))
         self.assertTrue(line.startswith("⠋ Getting Exasol ready"))
         self.assertIn("█", line)
