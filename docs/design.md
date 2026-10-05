@@ -400,7 +400,7 @@ the literals out of the package.
   "exapump":  { "glibc_shim_image": "ubuntu:24.04" },   // where the binary runs when the host glibc is older than 2.38
   "notice":   { "interval_seconds": 86400 },
   "ui":       { "package": "textual", "venv_dir": "ui-venv" },
-  "feedback": { "email": "starter-kit-feedback@example.com", "note": "..." }   // named at the end of an uninstall; nothing is ever sent
+  "feedback": { "email": "plg.connect@exasol.com", "note": "..." }   // named at the end of an uninstall; nothing is ever sent
 }
 ```
 
