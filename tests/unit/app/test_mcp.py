@@ -92,7 +92,7 @@ class SetupTest(unittest.TestCase):
             result = mcp.setup(box.ctx)
             self.assertEqual(result.status, "configured")
             self.assertEqual(box.ctx.clients.calls[-1], ("setup", ("claude_code",)))
-            self.assertIn("MCP configured for Claude Code (CLI)", box.screen())
+            self.assertIn("MCP configured for Claude Code\n", box.screen())
             self.assertIn("skipped: claude_desktop,cursor", box.screen())
         finally:
             box.close()
@@ -224,3 +224,89 @@ class StatusDoctorRemoveTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ClaudeTogetherTest(unittest.TestCase):
+    """"Claude" is the desktop app and Claude Code: one menu row, one name, one status row."""
+
+    def _states(self, box, **states):
+        rows = [{"id": cid, "detected": state != "missing", "configured": state == "connected"} for cid, state in states.items()]
+        box.ctx.clients = FakeClientOps(docs={"discover": {"clients": rows}})
+
+    def test_one_claude_row_configures_both_apps(self):
+        box = _box()
+        try:
+            self._states(box, claude_desktop="pending", claude_code="pending", codex="pending")
+            self.assertEqual(mcp._select_from_menu(box.ctx), ["claude_desktop", "claude_code", "codex"])
+        finally:
+            box.close()
+
+    def test_the_claude_row_says_which_app_it_still_connects(self):
+        from exakit.app.bridge.mcp_clients import _group_row
+        row = _group_row("claude", ("claude_desktop", "claude_code"), {"claude_desktop": "connected", "claude_code": "pending"})
+        self.assertEqual((row.label, row.hint, row.disabled), ("Claude", "Claude Code (desktop app already connected)", False))
+        both = _group_row("claude", ("claude_desktop", "claude_code"), {"claude_desktop": "pending", "claude_code": "pending"})
+        self.assertEqual(both.hint, "desktop app and Claude Code")
+        none = _group_row("claude", ("claude_desktop", "claude_code"), {"claude_desktop": "missing", "claude_code": "missing"})
+        self.assertEqual((none.hint, none.disabled), ("not installed", True))
+        box = _box()
+        try:
+            self._states(box, claude_desktop="connected", claude_code="pending")
+            self.assertEqual(mcp._select_from_menu(box.ctx), ["claude_code"], "only the app still waiting is configured")
+        finally:
+            box.close()
+
+    def test_the_names_put_both_apps_under_claude(self):
+        from exakit.app.bridge.mcp_clients import client_names
+        self.assertEqual(client_names(["claude_desktop", "claude_code", "cursor"]), ["Claude (desktop app and Claude Code)", "Cursor"])
+        self.assertEqual(client_names(["claude_code"]), ["Claude Code"])
+
+
+class RestartNeededTest(unittest.TestCase):
+    """An app that read its config before the kit changed it has not loaded the server: the doctor and the setup say so."""
+
+    def _doc(self, path):
+        return {"status": "success", "artifacts": [{"client": "claude_desktop", "path": str(path), "removed_at": None}]}
+
+    def test_claude_desktop_open_since_before_the_change_must_be_reopened(self):
+        import os
+        import tempfile
+        import time
+        from pathlib import Path
+        from exakit.app.bridge.mcp_clients import _mark_restart, restart_needed
+        from exakit.domain.platform import Platform
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "claude_desktop_config.json"
+            config.write_text("{}")
+            changed = time.time()
+            os.utime(config, (changed, changed))
+            before = time.strftime("%a %b %d %H:%M:%S %Y", time.localtime(changed - 120))
+            after = time.strftime("%a %b %d %H:%M:%S %Y", time.localtime(changed + 120))
+            ps = ("ps", "-axo", "lstart=,comm=")
+            for started, expected in ((before, ["claude_desktop"]), (after, [])):
+                box = _box(platform=Platform("macos", "aarch64"))
+                try:
+                    box.runner.responses[ps] = Completed(0, f"{started} /Applications/Claude.app/Contents/MacOS/Claude\n", "")
+                    self.assertEqual(restart_needed(box.ctx, self._doc(config)), expected)
+                    doc = self._doc(config)
+                    _mark_restart(box.ctx, doc)
+                    self.assertEqual(doc["status"], "success_with_warnings" if expected else "success")
+                    self.assertEqual((doc.get("details") or {}).get("restart_needed"), expected or None)
+                finally:
+                    box.close()
+            box = _box(platform=Platform("linux", "x86_64"))
+            try:
+                self.assertEqual(restart_needed(box.ctx, self._doc(config)), [], "an OS that cannot say asks for nothing")
+            finally:
+                box.close()
+
+    def test_the_start_time_is_read_on_macos_and_windows(self):
+        from exakit.adapters.process.apps import started_at
+        from tests.unit.fakes import FakeRunner
+        mac = FakeRunner(responses={("ps", "-axo", "lstart=,comm="): Completed(0, "Mon Oct  5 11:39:30 2026 /Applications/Claude.app/Contents/MacOS/Claude\n"
+                                                                             "Mon Oct  5 11:39:31 2026 /Applications/Claude.app/Contents/Frameworks/Helper\n", "")})
+        self.assertIsNotNone(started_at(mac, "macos", "claude_desktop"))
+        win = FakeRunner(responses={("powershell",): Completed(0, "2026-10-05T06:09:30.0000000Z\n", "")})
+        self.assertEqual(started_at(win, "windows", "claude_desktop"), 1791180570.0)
+        self.assertIsNone(started_at(FakeRunner(), "macos", "claude_desktop"), "not running")
+

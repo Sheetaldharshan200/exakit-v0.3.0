@@ -12,8 +12,7 @@
   "db_user": "mcp_readonly",
   "boundary": "Prove the boundary, do not assert it: as the MCP user, SELECT PRIVILEGE FROM SYS.EXA_USER_SYS_PRIVS returns exactly CREATE SESSION, SELECT ANY TABLE, USE ANY SCHEMA.",
   "clients": [
-    "Claude Desktop",
-    "Claude Code (CLI)",
+    "Claude (the desktop app and Claude Code, one choice)",
     "Codex",
     "Cursor",
     "GitHub Copilot (VS Code)",

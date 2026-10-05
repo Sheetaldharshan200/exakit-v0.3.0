@@ -150,7 +150,7 @@ class StatusScreenTest(unittest.TestCase):
         try:
             status.run(box.ctx)
             screen = box.screen()
-            for word in ("Kit", "Add-ons", "AI clients (MCP)", "Data", "personal · stopped", "not reachable", "Claude Code (CLI) configured",
+            for word in ("Kit", "Add-ons", "AI clients (MCP)", "Data", "personal · stopped", "not reachable", "Claude            configured · Claude Code only",
                          "8 tables, 1,234 rows", "available         dash-server", "Missing:     pyexasol  repair: exakit update", "Start it:    exakit start"):
                 self.assertIn(word, screen, word)
         finally:

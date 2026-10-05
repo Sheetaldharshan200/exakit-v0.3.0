@@ -11,17 +11,16 @@ from typing import Any
 
 from exakit.adapters.clients import CLIENT_IDS, ClientCall, client_states, managed_clients
 from exakit.domain.errors import BadInput, Failed, NotInstalled, NotRunning
-from exakit.domain.ids import CLIENT_WORDS_HELP, is_skip_word, parse_client_selection
+from exakit.domain.ids import CLIENT_WORDS_HELP, client_rows, is_skip_word, parse_client_selection
 from exakit.domain.result import Result
 from exakit.ui.widgets import Option
 
 from .. import Context
 from ..machine import kit_root
+from .mcp_clients import LABELS, _group_row, _mark_restart, _say_restart, client_names, restart_needed
 from .mcp_readonly import configure_readonly_access
 from ..db.runtime_ops import ensure_running, is_running, runtime_remedy
 
-LABELS = {"claude_desktop": "Claude", "claude_code": "Claude Code (CLI)", "cursor": "Cursor", "codex": "Codex",
-          "vscode_copilot": "GitHub Copilot", "gemini_cli": "Gemini CLI", "opencode": "OpenCode", "continue": "Continue"}
 REPAIRABLE_CODES = {"permission_drift", "manifest_drift_hash_mismatch", "manifest_drift_missing_artifact",
                     "managed_artifact_missing", "managed_entry_outdated"}
 
@@ -80,15 +79,19 @@ def _select_from_menu(ctx: Context) -> list[str] | None:
             ctx.ui.info("Check them with 'exakit mcp-status'; new clients appear here once installed.")
         return None
     options = []
-    for cid in CLIENT_IDS:
-        state = states.get(cid, "missing")
+    for row, members in client_rows():
+        if len(members) > 1:
+            options.append(_group_row(row, members, states))
+            continue
+        state = states.get(row, "missing")
         hint = "already connected" if state == "connected" else "not installed" if state == "missing" else ""
-        options.append(Option(cid, LABELS[cid], hint=hint, disabled=state != "pending"))
-    chosen = ctx.ui.checkboxes("AI clients to connect", options, defaults=pending)
+        options.append(Option(row, LABELS[row], hint=hint, disabled=state != "pending"))
+    chosen = ctx.ui.checkboxes("AI clients to connect", options, defaults=[o.id for o in options if not o.disabled])
     if not chosen:
         ctx.ui.info("No AI client selected - connect one any time with: exakit mcp-setup")
         return None
-    return chosen
+    picked = {m for row, members in client_rows() if row in chosen for m in members if states.get(m) == "pending"}
+    return [cid for cid in CLIENT_IDS if cid in picked]
 
 
 def setup(ctx: Context) -> Result:
@@ -114,7 +117,7 @@ def _report_setup(ctx: Context, call: ClientCall) -> Result:
         ctx.log.line("ERROR", f"mcp setup: {call.stderr.strip()[-400:]}")
         raise Failed("Could not write the MCP entry for this AI client. What failed: exakit logs setup. Retry with: exakit mcp-setup",
                      remedy="exakit mcp-setup")
-    labels = ", ".join(LABELS.get(c, c) for c in configured) or "no clients"
+    labels = ", ".join(client_names(configured)) or "no clients"
     if str(status).startswith("success"):
         ctx.ui.ok(f"MCP configured for {labels}")
     else:
@@ -131,6 +134,7 @@ def _report_setup(ctx: Context, call: ClientCall) -> Result:
     manifest = ctx.manifest()
     dsn, user = manifest.get("runtime.dsn"), manifest.get("components.mcp_server.connection.user") or "mcp_readonly"
     ctx.ui.ok(f"MCP server 'exasol' - {dsn} as {user} (read-only), started by your AI client on demand")
+    _say_restart(ctx, restart_needed(ctx, doc))
     ctx.log.line("INFO", "Config file paths and per-client state: exakit mcp-status")
     data = {"configured_clients": configured, "skipped_clients": [s.get("client") for s in skipped], "mcp_status": status}
     return Result(True, "configured" if configured else "partial", data=data, exit_code=0 if configured else 1)
@@ -198,8 +202,8 @@ def _render_status(ctx: Context, doc: dict[str, Any]) -> None:
             ctx.ui.text(f"  - {note}")
 
 
-def doctor(ctx: Context, args: list[str]) -> Result:
-    """``exakit mcp-doctor``: check and repair the configuration."""
+def _doctor_ready(ctx: Context) -> None:
+    """The doctor needs an install, a recorded runtime and a running database; each missing one is refused with its remedy."""
     manifest = ctx.manifest_or_none()
     if manifest is None:
         raise NotInstalled("No installation found.", remedy=ctx.install_command())
@@ -212,12 +216,18 @@ def doctor(ctx: Context, args: list[str]) -> Result:
         raise NotRunning(f"The database is not running - fix that first: {remedy}", remedy=remedy,
                          hint="MCP diagnostics need a live database (the read-only user and its grants are checked against it)",
                          data={"installed": True, "status": "stopped", "database": "not running"})
+
+
+def doctor(ctx: Context, args: list[str]) -> Result:
+    """``exakit mcp-doctor``: check and repair the configuration."""
+    _doctor_ready(ctx)
     clients = _clients_from_args(args)
     configure_readonly_access(ctx)
     call = _clients(ctx).operation("doctor", ctx.paths.home, clients)
     if call.doc is None:
         raise Failed("Could not run MCP diagnostics", remedy="exakit logs setup")
     doc = _stamp(dict(call.doc))
+    _mark_restart(ctx, doc)
     repairable = any(f.get("code") in REPAIRABLE_CODES and f.get("severity") in ("warning", "error", "critical")
                      for f in doc.get("findings") or [])
     if not ctx.json:
@@ -229,6 +239,7 @@ def doctor(ctx: Context, args: list[str]) -> Result:
                 ctx.ui.info("Nothing to repair: the managed client config is already consistent.")
             recheck = _clients(ctx).operation("doctor", ctx.paths.home, clients)
             doc = _stamp(dict(recheck.doc or doc))
+            _mark_restart(ctx, doc)
             call = recheck
             if recheck.code == 0:
                 ctx.ui.ok("Everything the repair could fix is fixed.")

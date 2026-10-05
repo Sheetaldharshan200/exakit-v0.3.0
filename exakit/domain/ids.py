@@ -31,6 +31,27 @@ _CLIENT_ALIASES: dict[str, tuple[str, ...]] = {
 
 CLIENT_WORDS_HELP = "claude, codex, cursor, copilot, gemini, opencode, continue, all, skip"
 
+# Clients a person thinks of as one: "Claude" is the desktop app and Claude Code. The menu offers one row for them,
+# the messages and the status name them together; the config files (and exakit mcp-status) stay one per app.
+CLIENT_GROUPS: dict[str, tuple[str, ...]] = {"claude": ("claude_desktop", "claude_code")}
+
+
+def client_group(client: str) -> str | None:
+    """The group a client id belongs to, or None."""
+    return next((group for group, members in CLIENT_GROUPS.items() if client in members), None)
+
+
+def client_rows() -> list[tuple[str, tuple[str, ...]]]:
+    """The menu's rows in the kit's order: a group once, where its first member sits; every other client on its own."""
+    rows: list[tuple[str, tuple[str, ...]]] = []
+    for cid in CLIENT_IDS:
+        group = client_group(cid)
+        if group is None:
+            rows.append((cid, (cid,)))
+        elif all(row[0] != group for row in rows):
+            rows.append((group, CLIENT_GROUPS[group]))
+    return rows
+
 _TOKEN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 

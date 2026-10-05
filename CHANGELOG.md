@@ -11,6 +11,13 @@ which schemas before anything loads, and a folder load's `--json` names what
 became of every file. A new release gate fails when the docs, the skills or the
 code name a command the CLI does not answer.
 
+**Claude is one choice.** The AI-client menu has one Claude row that connects the
+desktop app and Claude Code together, and `exakit status` shows one Claude line
+saying which of them are connected. When Claude Desktop has been open since before
+the kit changed its config, `exakit mcp-doctor` and `exakit mcp-setup` now say so
+and tell you to reopen it, instead of reporting it as connected while the app
+has not loaded the server.
+
 **The dashboard works in a small terminal.** Your own file or folder is typed
 in a box over the page, with Tab completing the path; in a narrow terminal the
 detail goes under the list instead of being squeezed beside it; long dataset

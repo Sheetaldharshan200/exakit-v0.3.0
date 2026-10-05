@@ -12,6 +12,7 @@ from typing import Any
 from exakit.domain import ownership
 from exakit.adapters.fs.notes import lock_holder_alive, read_failure_note
 from exakit.domain.errors import NotInstalled
+from exakit.domain.ids import client_rows
 from exakit.domain.manifest import Manifest
 from exakit.domain.result import Result
 
@@ -21,7 +22,8 @@ from ..loading import data
 
 from ..addons import services
 from ..machine import addon_installed_version, installed_version
-from ..bridge.mcp import LABELS
+
+from ..bridge.mcp_clients import LABELS, MEMBER_WORDS
 from ..db.runtime_ops import runtime
 
 STEP_REMEDIES = [("launcher", None), ("runtime", None), ("exapump", None), ("mcp", "exakit mcp-setup"),
@@ -261,7 +263,16 @@ def _addon_lines(ctx: Context, manifest: Manifest, service_states: dict[str, str
 
 def _client_lines(manifest: Manifest) -> list[str]:
     configured = manifest.mcp_client_setup().get("configured_clients") or []
-    lines = [_pad(LABELS.get(cid, cid), "configured") for cid in LABELS if cid in configured]
+    lines = []
+    for row, members in client_rows():
+        present = [m for m in members if m in configured]
+        if not present:
+            continue
+        if len(members) == 1:
+            lines.append(_pad(LABELS.get(row, row), "configured"))
+        else:                       # one row for Claude: which of its apps are connected
+            which = " and ".join(MEMBER_WORDS.get(m, m) for m in present)
+            lines.append(_pad(LABELS.get(row, row), f"configured · {which}{' only' if len(present) < len(members) else ''}"))
     return lines or [_pad("none", "connect one with: exakit mcp-setup")]
 
 
